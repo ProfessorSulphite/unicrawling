@@ -1,0 +1,1145 @@
+{
+  "main_info": {
+    "name": "Beaconhouse National University",
+    "abbreviation": "BNU",
+    "country": "Pakistan",
+    "city": "Lahore",
+    "established_year": null,
+    "accreditation_body": "HEC",
+    "admission_cycles_offered": [
+      "Fall",
+      "Spring"
+    ],
+    "primary_instruction_language": "English",
+    "website": "https://www.bnu.edu.pk/",
+    "type": "private",
+    "description": "Beaconhouse National University (BNU) is a non-profit liberal arts institution in Lahore, Pakistan, offering undergraduate and graduate programs across various disciplines including arts, architecture, media, IT, education, management, and psychology.",
+    "domain_verified": false,
+    "verification_note": null,
+    "key_links": {
+      "academics_url": "https://www.bnu.edu.pk/bnu-program-finder",
+      "admissions_url": "https://www.bnu.edu.pk/admissions-schedule",
+      "application_portal_url": "https://admission.bnu.edu.pk/"
+    },
+    "rankings": [],
+    "exa_enriched": false
+  },
+  "programs": {
+    "undergraduate": [
+      {
+        "name": "BBA (Hons.)",
+        "program_info_link": "https://www.bnu.edu.pk/program/bba-hons",
+        "department": "School of Management Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Marketing Companies, Advertising, Distribution, Financial Sector, NGOs, Regulatory Bodies, HR Firms",
+        "courses_taught": [
+          "Introduction to Business",
+          "Principles of Management",
+          "Financial Management & Islamic Finance",
+          "Business Analytics",
+          "Corporate Law and Governance"
+        ],
+        "summary_3_lines": "Designed for students aspiring to become business leaders and entrepreneurs.\nBlends theoretical knowledge with practical skills across multiple business disciplines.\nOffers specializations in Marketing, Finance, Entrepreneurship, and Business Analytics.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Business Intelligence and Analytics",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-business-intelligence-and-analytics",
+        "department": "School of Management Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Business Intelligence Analyst, Data Analyst, Business Analytics Consultant, Data Architect, Market Research Analyst, Risk Analyst",
+        "courses_taught": [
+          "Fundamentals of Programming",
+          "Statistical Computing for Analytics",
+          "Machine Learning for Business Analytics",
+          "Data Mining and Visualization"
+        ],
+        "summary_3_lines": "Equips students to develop data-driven strategies for modern corporate businesses.\nProvides hands-on experience using cutting-edge data visualization and big data tools.\nIncorporates interdisciplinary learning across business, statistics, and data analysis.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BDes Visual Communication Design",
+        "program_info_link": "https://www.bnu.edu.pk/program/bdes-visual-communication-design",
+        "department": "Mariam Dawood School of Visual Arts & Design",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "437,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [
+          "Integrated Studio",
+          "History of Ideas",
+          "Visual Communication Design Major Studio",
+          "Current Discourse in Visual Communication Design"
+        ],
+        "summary_3_lines": "Comprehensive 144-credit design degree bridging creative ideation and visual communication.\nCombines intensive studio electives with theoretical knowledge and professional practice.\nIncludes a foundational year leading into specialized major studios.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": "35% Matric/O level, 35% Intermediate/A level, 30% Admission Test/Interview and Portfolio (for Dean's scholarship eligibility)"
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Artificial Intelligence",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-artificial-intelligence",
+        "department": "School of Computer & IT",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Machine Learning Engineer, AI Product Developer, NLP Specialist, Intelligent Systems Architect",
+        "courses_taught": [
+          "Programming for AI",
+          "Machine Learning",
+          "Artificial Neural Networks & Deep Learning",
+          "Computer Vision"
+        ],
+        "summary_3_lines": "Focuses on ethical AI design, real-world deployment, and hands-on algorithm training.\nStudents master Deep Learning, NLP, Computer Vision, and Intelligent Systems.\nPrepares computing professionals for complex computing problems in emerging tech fields.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Computer Science",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-computer-science",
+        "department": "School of Computer & IT",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Software Engineering, System Architecture, Data Analysis, AI Development, Game Design, Cybersecurity",
+        "courses_taught": [
+          "Programming Fundamentals",
+          "Object Oriented Programming",
+          "Data Structures & Algorithms",
+          "Computer Networks",
+          "Artificial Intelligence"
+        ],
+        "summary_3_lines": "Accredited program preparing students with deep theoretical and practical computing knowledge.\nOffers specializations in AI, Cybersecurity, Data Science, and Multimedia & Game Development.\nBuilds a strong foundation in programming, software engineering, and system design.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Economics",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-economics",
+        "department": "School of Management Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Banking and Financial Sector, Commerce and Industry, Research Organizations, Regulatory Bodies, Planning Institutions, NGOs",
+        "courses_taught": [
+          "Principles of Microeconomics",
+          "Principles of Macroeconomics",
+          "Econometrics",
+          "Public Finance",
+          "Data Visualization"
+        ],
+        "summary_3_lines": "Blends theoretical economic knowledge with practical application and data analysis.\nAllows specializations in areas such as Finance, Data Science, and Public Policy.\nPrepares students for challenges in finance, government, and research institutions.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Economics and Finance",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-economics-and-finance",
+        "department": "School of Management Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Banking and Financial Sector, Commerce and Industry, Research Organizations, Regulatory Bodies, NGOs",
+        "courses_taught": [
+          "Intermediate Microeconomics",
+          "Financial Management & Islamic Finance",
+          "Strategic Corporate Finance",
+          "Econometrics"
+        ],
+        "summary_3_lines": "Equips students with highly marketable dual specialization in economics and finance.\nIntegrates robust theoretical study with applied analytics for the financial sector.\nPrepares graduates for diverse analytical, technical, and corporate finance roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Economics with Minor in Data Analytics",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-economics-with-minor-in-data-analytics",
+        "department": "School of Management Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Banking and Financial Sector, Commerce and Industry, Research Organizations, Regulatory Bodies, NGOs",
+        "courses_taught": [
+          "Introduction to Big Data Analytics",
+          "Intro to Python",
+          "Applied Economics with Data Science",
+          "Data Visualization"
+        ],
+        "summary_3_lines": "Combines robust economic theory with advanced data science and analytics techniques.\nTrains students to utilize computational tools like Python for economic problem-solving.\nEmpowers future leaders with the analytical insight needed for modern data-driven careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Hospitality Management",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-hospitality-management",
+        "department": "School of Management Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Hotel and Resort Management, Event Planning, Food & Beverage Management, Tourism Operations",
+        "courses_taught": [
+          "Global Tourism & Hospitality",
+          "Rooms Division Operations",
+          "Food & Beverage Operation",
+          "Customer Relationship Management in the Tourism & Hospitality Industry"
+        ],
+        "summary_3_lines": "Developed collaboratively with Hashoo School of Hospitality Management and CTH UK.\nProvides hands-on practicum sessions at top-tier hotels like Pearl Continental.\nOffers exceptional guaranteed job placements in global hospitality and tourism sectors.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Management & Business Computing",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-management-business-computing",
+        "department": "School of Computer & IT",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Enterprise Software & ERP Systems, Financial Technology (FinTech), IT Strategy & Digital Transformation, Tech Startups",
+        "courses_taught": [
+          "Principles of Management",
+          "Programming Fundamentals",
+          "Financial Accounting",
+          "Artificial Intelligence"
+        ],
+        "summary_3_lines": "Bridges the gap between computing capabilities and strategic business management.\nStudents specialize in AI for Business, Fintech, Software Project Management, and UI/UX.\nPrepares graduates to drive innovation and lead digital transformation across industries.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Software Engineering",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-software-engineering",
+        "department": "School of Computer & IT",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Software Development, Agile & DevOps Practices, Quality Assurance & Testing, Secure Software Development",
+        "courses_taught": [
+          "Software Design and Architecture",
+          "Software Construction and Development",
+          "Software Project Management",
+          "Software Quality Engineering"
+        ],
+        "summary_3_lines": "Equips students with rigorous skills in software design, development, and quality assurance.\nFeatures specialized tracks in Cloud Computing, DevOps, AI, and Mobile/Web Development.\nAccredited by NCEAC, preparing graduates for competitive tech industry roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS in Applied Psychology",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-in-applied-psychology",
+        "department": "Institute of Psychology",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Clinical Psychology, Counseling Psychology, Organizational Behavior, Educational Psychology, Neuroscience",
+        "courses_taught": [
+          "Introduction to Perspectives in Psychology",
+          "Psychosocial Influences on Behavior",
+          "Cognition: Sensation, Perception and Emotion",
+          "Psychometrics",
+          "Counseling Psychology"
+        ],
+        "summary_3_lines": "Integrates empirical research with supervised practical training in applied psychology.\nProvides specializations in Clinical, Industrial/Organizational, and Educational Psychology.\nDevelops critical analytical competencies to investigate complex psychological phenomena.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS in Liberal Arts & Social Sciences",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-in-liberal-arts-social-sciences",
+        "department": "Seeta Majeed School of Liberal Arts & Social Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Academia, Research, Media, Civil Services, Journalism, Publishing, Public Policy",
+        "courses_taught": [
+          "Introduction to Liberal Arts",
+          "Ancient Civilizations: Rise and Fall",
+          "World Literature I",
+          "History of Ideas"
+        ],
+        "summary_3_lines": "Provides a comprehensive foundation spanning multiple disciplines within liberal arts.\nOffers Minors in Media Studies and Theatre/Film, with Specializations in History and Literature.\nFosters interdisciplinary critical thinking to confront global and local challenges.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "55%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS in Political Science",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-in-political-science",
+        "department": "Seeta Majeed School of Liberal Arts & Social Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Public Policy and Governance, Law, Justice and Human Rights, Conflict and Peace Studies, Diplomacy",
+        "courses_taught": [
+          "Introduction to Political Science",
+          "Political Thought",
+          "Comparative Politics",
+          "Public Administration",
+          "History and Politics of Pakistan"
+        ],
+        "summary_3_lines": "Equips students with a robust foundation in political theory, statecraft, and governance.\nEncourages interdisciplinary thinking rooted deeply in the liberal arts tradition.\nPrepares graduates for careers in public service, policy analysis, diplomacy, and academia.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS in Political Science with Specialization in International Relations",
+        "program_info_link": "https://www.bnu.edu.pk/program/bs-in-political-science-with-specialization-in-international-relations",
+        "department": "Seeta Majeed School of Liberal Arts & Social Sciences",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Policy, Diplomacy, Research, Advanced Academic Studies, Conflict and Security Studies",
+        "courses_taught": [
+          "Introduction to International Relations",
+          "Theories of IR",
+          "International Law",
+          "Foreign Policy of Pakistan"
+        ],
+        "summary_3_lines": "Focuses on global politics, diplomacy, international organizations, and security studies.\nIntegrates core political science principles with focused international affairs training.\nDevelops critical and analytical reasoning for addressing global policy dynamics.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS in Theatre, Film & TV",
+        "program_info_link": "https://bnu.edu.pk/program/bs-in-theatre-film-tv",
+        "department": "School of Media and Mass Communication",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Acting, Directing, Screenwriting, Dramaturgy, Production Studies",
+        "courses_taught": [
+          "Introduction to Film and TV",
+          "Fundamentals of Editing",
+          "Cinematography",
+          "Writing for Screen"
+        ],
+        "summary_3_lines": "Designed to develop innovative storytellers and practitioners for the entertainment industry.\nIntegrates dramatic arts traditions with evolving screen and production practices.\nIncludes hands-on thesis projects such as short films, documentaries, and TV drama pilots.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "Bachelor in Interior Design",
+        "program_info_link": "https://bnu.edu.pk/program/bachelor-in-interior-design",
+        "department": "Razia Hassan School of Architecture",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "437,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [
+          "Interior Design Studio",
+          "History of Interior Design",
+          "Material, Construction & Systems",
+          "Lighting & Acoustics"
+        ],
+        "summary_3_lines": "Empowers students to translate design concepts into innovative interior spatial solutions.\nExplores color, texture, scale, and materiality within a lab-oriented learning setup.\nInstills strong technical drawing skills and sustainable design practices.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "Bachelor of Architecture",
+        "program_info_link": "https://bnu.edu.pk/program/bachelor-of-architecture",
+        "department": "Razia Hassan School of Architecture",
+        "degree_level": "undergraduate",
+        "duration": "5 Years",
+        "tuition_fee": "437,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [
+          "Architecture Design Studio",
+          "Thinking Drawing and Communicating Architecture",
+          "Histories Theories and Criticism of Architecture",
+          "Structure and Form"
+        ],
+        "summary_3_lines": "Professional 5-year architecture program balancing artistic expression and scientific rigor.\nFocuses heavily on design studios, architectural history, and construction technologies.\nInculcates socioeconomic responsibility in developing sustainable built environments.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "Bachelor of Education",
+        "program_info_link": "https://www.bnu.edu.pk/program/bachelor-of-education",
+        "department": "School of Education",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Teacher Professional Development Facilitator, Education Trainer, Guidance Counselor, Inclusive Education Support Specialist",
+        "courses_taught": [
+          "Foundations of Education",
+          "Inclusive Education",
+          "Educational Psychology",
+          "Curriculum Development"
+        ],
+        "summary_3_lines": "Develops knowledgeable, reflective educators via rigorous pedagogy and practical training.\nIntegrates disciplinary foundations with extensive school-based practicum requirements.\nEmphasizes inclusive practices, ethical leadership, and technology-enhanced learning.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BFA Visual Arts",
+        "program_info_link": "https://bnu.edu.pk/program/bfa-visual-arts",
+        "department": "Mariam Dawood School of Visual Arts & Design",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "437,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "An intensive 4-year undergraduate fine arts program rooted in creative visual practices.\nPart of MDSVAD, it includes an interdisciplinary foundation studies year.\nFosters conceptual exploration and material experimentation for emerging artists.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BDes Textile, Fashion & Accessories Design",
+        "program_info_link": null,
+        "department": "Mariam Dawood School of Visual Arts & Design",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "437,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Offers distinct specializations in Textile & Fibre, Fashion, and Jewellery & Accessories.\nBegins with a comprehensive Foundation Studies program to explore design fundamentals.\nFocuses on craft revival, innovative design methodologies, and material techniques.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BA (Hons) IEDA – Interdisciplinary Expanded Design & Art",
+        "program_info_link": "https://bnu.edu.pk/program/ba-hons-ieda-interdisciplinary-expanded-design-art",
+        "department": "Mariam Dawood School of Visual Arts & Design",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "437,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A unique interdisciplinary art and design program spanning 144 credit hours.\nEncourages students to cross traditional boundaries between varying creative fields.\nIncludes shared foundation studies alongside specialized project-based learning.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Immersive Media",
+        "program_info_link": "https://bnu.edu.pk/program/bs-immersive-media",
+        "department": "School of Media and Mass Communication",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A 136-credit program diving into modern, immersive digital communication technologies.\nEmphasizes interactive storytelling and advanced new media environments.\nProvides targeted education for careers in next-generation media production.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "BS Journalism & Media Studies",
+        "program_info_link": "https://bnu.edu.pk/program/bs-journalism-and-media-studies",
+        "department": "School of Media and Mass Communication",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": "Dean's Scholarship, Merit/Need Based Scholarships, NEST Scholarships, Madanjeet Singh Art Scholarships",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Prepares future journalists with rigorous training in reporting, editing, and media ethics.\nOffers specializations in Digital Media & Broadcasting or Public Relations & Advertising.\nBlends critical media theory with hands-on practice in contemporary media landscapes.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      }
+    ],
+    "graduate": [
+      {
+        "name": "Master of Art & Design Studies [MA ADS]",
+        "program_info_link": "https://bnu.edu.pk/program/master-of-art-design-studies-ma-ads",
+        "department": "Mariam Dawood School of Visual Arts & Design (MDSVAD)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "550,000",
+        "currency": "PKR",
+        "scholarships_info": "Madanjeet Singh Art Scholarships, NEST Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [
+          "Integrated Graduate Colloquium I",
+          "Research Methods and Academic Writing for Art and Design I",
+          "Contexts and Strategies in Practice",
+          "History of Ideas",
+          "Graduate Colloquium III",
+          "Major Project III & Thesis"
+        ],
+        "summary_3_lines": "A 2-year Master's program focusing on rigorous art and design studies.\nBlends practical studio work with critical, historical, and philosophical frameworks.\nPrepares students to explore diverse intellectual perspectives in creative practice.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50",
+          "entry_tests_accepted": [
+            "Department Interview"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "Master of Art Education [MA AE]",
+        "program_info_link": "https://bnu.edu.pk/program/master-of-art-education-ma-ae",
+        "department": "Mariam Dawood School of Visual Arts & Design (MDSVAD)",
+        "degree_level": "graduate",
+        "duration": "2.5 Years",
+        "tuition_fee": "236,000",
+        "currency": "PKR",
+        "scholarships_info": "Madanjeet Singh Art Scholarships, NEST Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [
+          "Studio I: Thinking Through Materials",
+          "Curriculum and Instructional Design",
+          "Artistic Development and Psychology",
+          "Diversity in Art Education",
+          "Tools and Technologies in Art Education"
+        ],
+        "summary_3_lines": "A 2.5-year master's degree aimed at advancing pedagogical skills in art education.\nIntegrates materials exploration, instructional design, and educational psychology.\nIncludes extensive coursework and a final practicum or thesis component.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50",
+          "entry_tests_accepted": [
+            "Department Interview"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MS Computer Science (Weekend Track)",
+        "program_info_link": "https://bnu.edu.pk/program/ms-computer-science-weekend-track",
+        "department": "School of Computer & IT (SCIT)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "321,000",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": "Software Development, Artificial Intelligence & Data Science, Systems & Network Security, Cloud Computing & DevOps, Human Computer Interaction, Research in Computing & Emerging Technologies",
+        "courses_taught": [
+          "Advanced Analysis of Algorithms",
+          "Advanced Operating Systems",
+          "Theory of Programming Languages",
+          "Theory of Automata II",
+          "Advanced Computer Architecture",
+          "Information Privacy & Security",
+          "Statistical and Mathematical Methods For Data Science",
+          "Advanced Machine Learning",
+          "Advanced Software System Architecture",
+          "Research Methodology",
+          "MS Thesis"
+        ],
+        "summary_3_lines": "A 2-year weekend program delivering practical grounding in advanced computer science.\nMerges technical proficiency and hands-on applications with robust theoretical knowledge.\nWelcomes students seeking to excel professionally, accommodating varying academic backgrounds.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MPhil Educational Leadership and Management (Weekend Track)",
+        "program_info_link": "https://www.bnu.edu.pk/program/mphil-educational-leadership-and-management-weekend-track",
+        "department": "School of Education (SE)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "160,500",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [
+          "Ideologies and Philosophies Shaping Education",
+          "Strategic Educational Governance and Leadership",
+          "Scholarly Research Design and Analysis - I",
+          "AI and Ed-Tech Leadership",
+          "Psycho-Educational Assessment and Intervention",
+          "Education for Sustainable Futures",
+          "Scholarly Research Design and Analysis - II",
+          "Effective Professional Development: Tools and Approaches",
+          "Equity in Education: Inclusive Pedagogies",
+          "STEM Curriculum Design and Implementation",
+          "Thesis or Practicum"
+        ],
+        "summary_3_lines": "A 2-year MPhil designed for professionals to master educational leadership and management.\nEmpowers students to resolve complex educational problems and plan organizational development.\nRequires 3 years of work experience in a managerial or leadership role.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50",
+          "entry_tests_accepted": [
+            "NTS GAT",
+            "UGAT (BNU)"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MPhil Educational Leadership and Management (Regular Track)",
+        "program_info_link": "https://bnu.edu.pk/program/mphil-educational-leadership-and-management-regular-track",
+        "department": "School of Education (SE)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "127,000",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A regular 2-year MPhil program focused on educational leadership and administration.\nPrepares upcoming educators with advanced skills in leadership, research, and policy.\nEmpowers professionals to spearhead change in the educational sector.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50",
+          "entry_tests_accepted": [
+            "NTS GAT",
+            "UGAT (BNU)"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MPhil Linguistics and TESOL",
+        "program_info_link": "https://bnu.edu.pk/program/mphil-linguistics-and-tesol",
+        "department": "School of Education (SE)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "127,000",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A 2-year MPhil program specializing in applied linguistics and TESOL.\nProvides advanced knowledge and research expertise for language educators.\nPrepares graduates for leadership roles in language teaching and education policy.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50",
+          "entry_tests_accepted": [
+            "BNU Admission Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MS Film Direction",
+        "program_info_link": "https://bnu.edu.pk/program/ms-film-direction",
+        "department": "School of Media and Mass Communication (SMC)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "254,000",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A 2-year MS program dedicated to the craft of film direction and storytelling.\nFocuses on specialized practical training and conceptual approaches to filmmaking.\nOffered by the Department of Theatre, Film and Television.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "BNU Admission Test",
+            "Interview"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MS Public Relations & Advertising",
+        "program_info_link": "https://bnu.edu.pk/program/ms-public-relations-and-advertising",
+        "department": "School of Media and Mass Communication (SMC)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "254,000",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A 2-year MS program focused on advanced strategies in public relations and advertising.\nEquips students with the analytical and practical skills required in media management.\nDesigned for future leaders in corporate communications and advertising agencies.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "BNU Admission Test",
+            "Interview"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      },
+      {
+        "name": "MS Clinical and Counseling Psychology",
+        "program_info_link": "https://bnu.edu.pk/program/ms-clinical-and-counseling-psychology",
+        "department": "Institute of Psychology (IP)",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "254,000",
+        "currency": "PKR",
+        "scholarships_info": null,
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": "4000",
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "A 2-year MS program offering clinical and counseling psychology specializations.\nIncludes tracks for substance abuse, neurodevelopmental disorders, and school psychology.\nAlso provides intensive training in family, marital, and adolescent mental health counseling.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "BNU Admission Test",
+            "Interview"
+          ],
+          "aggregate_formula": "Must have completed a 4-year (Honors) degree in Psychology from an HEC recognized university."
+        },
+        "application_status": "open",
+        "application_deadline": "July 29, 2026"
+      }
+    ],
+    "postgraduate_and_phd": []
+  },
+  "faculties": [
+    {
+      "faculty_name": "Mariam Dawood School of Visual Arts & Design",
+      "description": null,
+      "departments": [
+        "Visual Arts Department",
+        "Textile, Fashion, and Accessories Department",
+        "Department of Visual Communication Design"
+      ],
+      "faculty_website": "https://www.bnu.edu.pk/mdsvad"
+    },
+    {
+      "faculty_name": "Razia Hassan School of Architecture",
+      "description": "Razia Hassan School of Architecture offers a 5-year professional Bachelor of Architecture degree program spanning over 10 semesters. The aim is to educate and empower the future architect whose design skills can range across scale and scope, in service of an individual client as well as the society at large; who on one hand is taught in an environment of history, theory, and artistic expression but on the other hand has enough understanding of allied scientific and technical subjects to work with engineering consultants and construction industry.",
+      "departments": [],
+      "faculty_website": "https://www.bnu.edu.pk/rhsa"
+    },
+    {
+      "faculty_name": "Seeta Majeed School of Liberal Arts & Social Sciences",
+      "description": null,
+      "departments": [
+        "Department of Liberal Arts"
+      ],
+      "faculty_website": "https://www.bnu.edu.pk/slass"
+    },
+    {
+      "faculty_name": "School of Media and Mass Communication",
+      "description": null,
+      "departments": [
+        "Department of Journalism & Mass Communication",
+        "Department of Theatre, Film and Television"
+      ],
+      "faculty_website": "https://www.bnu.edu.pk/smc"
+    },
+    {
+      "faculty_name": "School of Computer & IT",
+      "description": "BNU's School of Computer & IT prepares students for the digital age, offering comprehensive programs aligned with HEC standards. With hands-on lab sessions and a focus on merit, students gain practical skills. Faculty-led research in AI, databases, and more enriches the academic environment. Graduates enjoy high employability, industry recognition, and international opportunities.",
+      "departments": [
+        "Department of Computer Science",
+        "Department of Software Engineering"
+      ],
+      "faculty_website": "https://www.bnu.edu.pk/scit"
+    },
+    {
+      "faculty_name": "School of Education",
+      "description": "Since 2005, the School of Education (SE) at BNU has developed educators and leaders, enhancing teacher education in Pakistan. As a leading institution, SE is dedicated to positively transforming individuals, institutions, and society through quality education, leadership, and innovative practices, addressing the critical need for educational improvement.",
+      "departments": [
+        "English Language Unit"
+      ],
+      "faculty_website": "https://www.bnu.edu.pk/se"
+    },
+    {
+      "faculty_name": "School of Management Sciences",
+      "description": "The School of Management Sciences offers a robust academic platform encompassing business, economics, and hospitality management. Through rigorous coursework and practical experiences, students gain a deep understanding of industry dynamics, strategic management principles, and effective leadership strategies. Our comprehensive programs equip graduates with the knowledge, skills, and expertise needed to thrive in today's competitive business landscape.",
+      "departments": [
+        "Department of Management Sciences",
+        "Department of Hospitality Management"
+      ],
+      "faculty_website": "https://www.bnu.edu.pk/sms"
+    },
+    {
+      "faculty_name": "Institute of Psychology",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://www.bnu.edu.pk/ip"
+    }
+  ],
+  "contact": {
+    "official_email": "info@bnu.edu.pk",
+    "phone_numbers": [
+      "042-38100156",
+      "042-111-268-547"
+    ],
+    "physical_address": "Tarogil Campus, 13 Km Off Thokar Niazbeg, Raiwind Road, Tarogil, Lahore - 53700, Pakistan",
+    "admissions_office_location": "Admissions Office on campus",
+    "sub_campuses_contact": []
+  },
+  "programs_possibly_truncated": false
+}

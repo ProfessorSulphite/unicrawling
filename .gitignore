@@ -1,0 +1,28 @@
+# Environment & Secrets
+.env
+*.env
+
+# Python & IDE cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.vscode/
+.claude/
+
+# Runtime DB & Logs
+loggings/*.log
+src/loggings/*.log
+data/state.sqlite
+data/state.sqlite-wal
+data/state.sqlite-shm
+data/*backup*
+outputs_backup*
+
+# Temporary link extracts & scratch
+extracted_links.txt
+extracted_links_detailed.txt
+
+# OS / Editor files
+.DS_Store
+*.tmp

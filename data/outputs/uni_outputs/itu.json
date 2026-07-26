@@ -1,0 +1,882 @@
+{
+  "main_info": {
+    "name": "Information Technology University",
+    "abbreviation": "ITU",
+    "country": "Pakistan",
+    "city": "Lahore",
+    "established_year": 2012,
+    "accreditation_body": "HEC, PEC, NCEAC",
+    "admission_cycles_offered": [
+      "Fall"
+    ],
+    "primary_instruction_language": "English",
+    "website": "https://itu.edu.pk/",
+    "type": "public",
+    "description": "Established in 2012, Information Technology University (ITU) is a research-oriented public university in Lahore, Pakistan, offering undergraduate and graduate programs in engineering, computer science, business, and humanities.",
+    "domain_verified": true,
+    "verification_note": "Identity fields sourced from resources/rankings_pk.json registry.",
+    "key_links": {
+      "academics_url": "https://itu.edu.pk/academics/",
+      "admissions_url": "https://itu.edu.pk/admissions/",
+      "application_portal_url": "https://application.itu.edu.pk/"
+    },
+    "rankings": [],
+    "exa_enriched": false
+  },
+  "programs": {
+    "undergraduate": [
+      {
+        "name": "BS Artificial Intelligence",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-artificial-intelligence",
+        "department": "Department of Artificial Intelligence",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Agriculture, defense, healthcare, governance, transportation, e-commerce, finance, and education sectors",
+        "courses_taught": [
+          "Functional English",
+          "Digital Logic Design",
+          "Programming Fundamentals",
+          "Object Oriented Programming",
+          "Database Systems",
+          "Data Structures",
+          "Artificial Intelligence",
+          "Machine Learning",
+          "Computer Vision"
+        ],
+        "summary_3_lines": "The program imparts in-depth knowledge to transform complex scenarios into actionable decisions.\nIt focuses on utilizing knowledge, vision, language, and large databases to enhance human capabilities.\nThe curriculum includes machine learning, neural networks, computer vision, and natural language processing.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "SAT",
+            "USAT-CS",
+            "USAT-E",
+            "USAT-GS"
+          ],
+          "aggregate_formula": "Academic Record 50% (Matric/O-Level 15% + Inter part I/Inter/A-Level 35%) + Admission Test/SAT-I/USAT 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Computer Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-computer-engineering",
+        "department": "Department of Computer and Software Engineering",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, PEEF, HEC Need Based, Pakistan Engineering Council Scholarship, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Artificial intelligence (AI), machine learning, internet of things (IoT) technology, system-on-chip (SOC) design, robotics, cyber physical systems, cloud computing, and big data analytics",
+        "courses_taught": [
+          "Calculus & Analytical Geometry",
+          "Computer Fundamentals and Programming",
+          "Applied Physics",
+          "Electronic Devices & Circuits",
+          "Computer Organization & Architecture",
+          "Data Structures and Algorithms"
+        ],
+        "summary_3_lines": "Integrates electronic engineering with computer sciences for industrial automation, robotics, and AI.\nProvides a high-quality engineering education emphasizing industrial engagement and hands-on laboratory experience.\nPrepares students for emerging careers in IoT, system-on-chip design, and cyber-physical systems.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "ECAT",
+            "NTS-NAT IE",
+            "NTS-NAT ICS",
+            "HEC USAT-E",
+            "HEC USAT-CS",
+            "SAT",
+            "ACT"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test/ECAT/USAT/NTS 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Computer Science",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-computer-science",
+        "department": "Department of Computer Science",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Highly skilled professionals capable of tackling complex computer science related problems to transform the IT industry",
+        "courses_taught": [
+          "Programming Fundamentals",
+          "Object Oriented Programming",
+          "Data Structures",
+          "Operating Systems",
+          "Database Systems",
+          "Artificial Intelligence",
+          "Theory of Automata"
+        ],
+        "summary_3_lines": "Aims to impart research-oriented and design-centered education to transform the IT industry.\nThe curriculum is tailored to bridge the knowledge and skills gap through rigorous hands-on practice.\nAwarded the highest-rated W category by the National Computing Education and Accreditation Council.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "SAT",
+            "USAT-CS",
+            "USAT-E",
+            "USAT-GS"
+          ],
+          "aggregate_formula": "Academic Record 50% (Matric/O-Level 15% + Inter part I/Inter/A-Level 35%) + Admission Test/SAT-I/USAT 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Economics with Data Science",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-economics-with-data-science",
+        "department": "Department of Economics",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Research and policy thinking, participating in developing economic paradigms and designing projects or policies",
+        "courses_taught": [
+          "Introduction to Economics",
+          "Introduction to Programming",
+          "Principles of Microeconomics",
+          "Principles of Macroeconomics",
+          "Calculus 1",
+          "Econometrics",
+          "Data Structures",
+          "Data Mining"
+        ],
+        "summary_3_lines": "Combines rigorous training in mainstream economics and data science with broad exposure to social sciences.\nAddresses central challenges like global economic crises, societal inequality, and environmental sustainability.\nEquips students to participate in building a new economic paradigm using big data and machine learning.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "40%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "SAT",
+            "USAT",
+            "NTS"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test/SAT-I/NTS/USAT 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Electrical Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-electrical-engineering",
+        "department": "Department of Electrical Engineering",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, PEEF, HEC Need Based, Pakistan Engineering Council Scholarship, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Technologists, entrepreneurs, and engineering workforce for the private and public sectors",
+        "courses_taught": [
+          "Calculus & Analytical Geometry",
+          "Applied Physics",
+          "Linear Circuit Analysis",
+          "Computer Programming",
+          "Electronic Devices and Circuits",
+          "Signals and Systems",
+          "Electric Network Analysis"
+        ],
+        "summary_3_lines": "Offers high-quality engineering education focusing on hands-on experience and sustainable development practices.\nProvides specializations in two major streams: Electronics Stream and Computer Systems Stream.\nRecognized by the Higher Education Commission and accredited by the Pakistan Engineering Council.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "ECAT",
+            "NTS-NAT IE",
+            "NTS-NAT ICS",
+            "HEC USAT-E",
+            "HEC USAT-CS",
+            "SAT",
+            "ACT"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test/ECAT/USAT/NTS 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Financial Technology",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-financial-technology",
+        "department": "School of Business & Management",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Digital banking, E-commerce and payment systems, Insurance Tech, Investment and wealth platforms, Telecom and mobile financial services, and Fintech startups",
+        "courses_taught": [
+          "Principles of Management",
+          "Fundamentals of Accounting",
+          "Financial Accounting",
+          "Data Analytics",
+          "Business Finance",
+          "Artificial Intelligence"
+        ],
+        "summary_3_lines": "Brings together finance, accounting, data science, and programming in one forward-looking undergraduate degree.\nPrepares students to build fintech products, understand digital banking, and use data for financial decisions.\nEmphasizes practical exposure through internships, industry interaction, and an extended final year project.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "SAT",
+            "USAT",
+            "NTS"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test/SAT-I/NTS 60%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Management and Technology",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-management-and-technology",
+        "department": "School of Business & Management",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Value-addition sectors including technology, food and beverages, transportation, telecom, automotive, health sectors, and start-up businesses",
+        "courses_taught": [
+          "Principles of Management",
+          "Introductory Programming",
+          "Financial Accounting",
+          "Operations Management",
+          "Entrepreneurship",
+          "Strategic Management",
+          "Managing Technological Innovation"
+        ],
+        "summary_3_lines": "Aims at providing technology-oriented and management skills to future business graduates and entrepreneurs.\nRelying on a combination of management and technical courses to foster new value-creation start-ups.\nPrepares candidates to apply technology to management and grow businesses through creative new ideas.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "SAT",
+            "USAT",
+            "NTS"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test/SAT-I/NTS 60%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "BS Software Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-software-engineering",
+        "department": "Department of Computer and Software Engineering",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, Pakistan Engineering Council Scholarship, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Enterprise software development, financial technologies, health informatics, telecommunications, cybersecurity, e-commerce, cloud services, and AI-driven product development",
+        "courses_taught": [
+          "Programming Fundamentals",
+          "Object Oriented Programming",
+          "Software Engineering",
+          "Data Structures",
+          "Software Requirement Engineering",
+          "Database Systems",
+          "Software Design and Architecture"
+        ],
+        "summary_3_lines": "Develops professionals capable of engineering large, reliable, and efficient software systems.\nEmphasizes systematic design, testing, deployment, and maintenance of complex software solutions.\nCovers software architecture, requirements engineering, quality assurance, DevOps, and project management.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "ECAT",
+            "NTS-NAT IE",
+            "NTS-NAT ICS",
+            "HEC USAT-E",
+            "HEC USAT-CS",
+            "SAT",
+            "ACT"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test/ECAT/USAT/NTS 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      }
+    ],
+    "graduate": [
+      {
+        "name": "MS Computer Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-computer-engineering",
+        "department": "Department of Computer and Software Engineering",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "327,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "R&D, Industrial Automation, Robotics, Multimedia, Sensing, and Artificial Intelligence",
+        "courses_taught": [
+          "Advanced Computer Architecture – I",
+          "Advanced Digital Systems Design",
+          "Advanced Digital Signal Processing",
+          "Advanced Computer Networks",
+          "Stochastic Systems",
+          "Advanced Mathematics",
+          "Real Time Embedded Systems",
+          "System on Chip Design",
+          "Hardware Software Co-Design",
+          "ASIC Design Methodologies",
+          "Hardware Security",
+          "Emerging Computing Architectures for AI",
+          "VLSI Testing and Verification",
+          "VLSI Architecture and Systems",
+          "Advanced Computer Architecture-II",
+          "Industrial Automation",
+          "Internet of Things",
+          "Mobile and Wireless Networks",
+          "Information Security",
+          "Cloud Computing with Big Data Applications",
+          "Embedded IoT",
+          "Blockchain",
+          "Digital Image Processing",
+          "Computer Vision",
+          "Machine Learning",
+          "Deep Learning",
+          "Pattern Recognition",
+          "Engineering Aspects of Remote Sensing",
+          "Radar Interferometry",
+          "Image Processing Methodologies for Remote Sensing Data",
+          "Natural Language Processing",
+          "Advanced Algorithms Analysis",
+          "Advanced Operating Systems",
+          "Information Retrieval and Text Mining",
+          "Tools and Techniques for Data Science",
+          "Parallel & Distributed Computing",
+          "Applied Optimization",
+          "Advanced Software Engineering",
+          "Scientific Writing and Research Methodologies"
+        ],
+        "summary_3_lines": "Focuses on cutting-edge technologies like Hardware Design, Embedded IoT, and Artificial Intelligence.\nPrepares professionals for leading roles in engineering and scientific industry teams.\nRequires 30 credit hours including coursework and a research thesis.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Data Science",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-data-science",
+        "department": "Department of Computer Science",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "327,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Data scientist, data engineer, data analyst, statistician, data manager, data architect, business analyst",
+        "courses_taught": [
+          "Tools and Techniques for Data Science",
+          "Statistical and Mathematical Methods for Data Analysis",
+          "Machine Learning",
+          "Big Data Analytics",
+          "Deep learning",
+          "Research Methodology",
+          "Computer Vision",
+          "Blockchain",
+          "Theory and Application of Virtual Reality",
+          "Spatial Data Science",
+          "Natural Language Processing",
+          "Theory of Automata- II",
+          "Medical Image Computing",
+          "Advanced Algorithms Analysis",
+          "Cyber-Physical Systems",
+          "Introduction to Speech Processing",
+          "LLM and Generative Models",
+          "Remote Sensing: Data & Methods",
+          "ML and DL Ops",
+          "Cyber Security"
+        ],
+        "summary_3_lines": "Provides a comprehensive introduction to data science procedures and big data analytics.\nDevelops real-world problem-solving skills with a focus on high social impact.\nOffers opportunities to work on real-world projects in collaboration with PITB and the Punjab Government.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test 60%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Development Studies: Development, Technology and Policy",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-development-studies",
+        "department": "Faculty of Humanities & Social Sciences",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "327,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Government Departments, Non-Governmental Organizations, Academia and specialized development research institutes, Donor Agencies, Private Sector Organizations, Consultancy firms",
+        "courses_taught": [
+          "Key Challenges in Development and Policy",
+          "Technology and Policy with a Data Lab component",
+          "Research Methodology for Development Policy",
+          "Concepts, Values and Knowledge: Historical Development of Social Science",
+          "Data Analysis for Social Scientists",
+          "Public Policy Seminar",
+          "Social and Economic Anthropology",
+          "Political Economy of Development",
+          "Economics of Pandemics",
+          "Health Financing",
+          "Sustainable Development and Health",
+          "Systems and Sustainable Development",
+          "Media and Development Studies",
+          "Economic History",
+          "Seminar in Public Policy",
+          "Introduction to Economics",
+          "Researching Culture and Society",
+          "Social and Political Implications of Technology",
+          "Health, Education and Development",
+          "Methods for Development Practice",
+          "Urban Studies and Planning",
+          "Welfare, Well-being and Social Development",
+          "Participation, Power, and Change",
+          "Philosophical Issues in Economic Development",
+          "Spatial Analysis",
+          "Governance, Politics, and the State",
+          "Development and Public Policy in Pakistan",
+          "Human Rights and Humanitarian Action",
+          "State & Society in the Developing World",
+          "Development and International Politics",
+          "Bureaucracy, Governance and Development",
+          "Cyberpolitics and Development",
+          "International Organizations",
+          "Ethics and Politics of Migration",
+          "State Formation, Deformation and Failure",
+          "Dynamics of Power: Gender, Class, Ethnicity",
+          "Firms and Society",
+          "Migration and Development",
+          "Gender Issues and Development",
+          "Human Development and Education",
+          "Housing, Community, and Land Use Policy",
+          "Development and Livelihoods",
+          "Society, Entrepreneurship and Sustainable Development",
+          "Public Budgeting",
+          "Economics of Government Expenditure",
+          "Economics of Government Revenue",
+          "Government Accounting",
+          "Introduction to Public Finance",
+          "Directed Readings in Public Financial Management",
+          "Quantitative Methods",
+          "Time Series Forecasting",
+          "Microeconomics I",
+          "Mathematics for Economists",
+          "Econometrics I",
+          "Introduction to Public Administration",
+          "Theories of the Policy Process",
+          "Health Policy and Politics",
+          "Advanced Quantitative Methods"
+        ],
+        "summary_3_lines": "Combines social sciences knowledge with mathematical statistics and big data techniques.\nAims to enable evidence-based design of development policy to address global challenges.\nPrepares students for roles in government, NGOs, donor agencies, and academia.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test",
+            "GRE General",
+            "GAT General"
+          ],
+          "aggregate_formula": "Academic Record 30% + Admission Test/GRE/GAT 40% + Interview 30%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "Executive MBA (EMBA)",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-executive-mba/",
+        "department": "Faculty of Business and Management Science",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Govt. Employee Concession (50% Tuition Fee Waiver), Top 3 Merit Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Designed for maximum flexibility combined with maximum rigor.\nFocuses on data analysis and technology-oriented entrepreneurship.\nLeverages established excellence in technology to impact the practice of management.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "ITU Graduate Test",
+            "GRE General",
+            "GMAT"
+          ],
+          "aggregate_formula": "Academic Record 40% + Assessment & Interview 60%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Management and Technology",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-management-technology/",
+        "department": "Faculty of Business and Management Science",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Designed to leverage university excellence in technology to impact the practice of management.\nProvides students with an integrated command over tech innovation and data analysis.\nPrepares graduates to test their ideas and lead change in a fast-paced economy.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "ITU Graduate Test",
+            "GRE General",
+            "GMAT"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test 40% + Interview 20%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Computer Science",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-computer-science/",
+        "department": "Department of Computer Science",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Bridges the knowledge and skills gap in the IT industry and academia.\nProvides opportunities for exciting collaborations across disciplines like Bioinformatics and Cryptography.\nAims to transform students into motivated professionals equipped for industrial challenges.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test 60%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Cybersecurity",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-cyber-security/",
+        "department": "Department of Computer Science",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Advanced graduate degree focused on cybersecurity principles and practices.\nPrepares students to tackle modern information security challenges.\nPart of the rigorous, research-oriented offerings at the Faculty of Sciences.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test 60%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Electrical Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-electrical-engineering/",
+        "department": "Department of Electrical Engineering",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Offers advanced education in electrical engineering with a strong research focus.\nFeatures a thriving high-quality research culture with state-of-the-art laboratories.\nPrepares students for leadership roles in academia and the technology industry.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "MS Public Policy and Society",
+        "program_info_link": null,
+        "department": "Faculty of Humanities & Social Sciences",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Interdisciplinary graduate program focused on public policy and societal frameworks.\nIntegrates data science and economics with traditional public policy studies.\nOffers opportunities to engage in funded research projects to address relevant societal issues.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test",
+            "GRE General",
+            "GAT General"
+          ],
+          "aggregate_formula": "Academic Record 30% + Admission Test/GRE/GAT 40% + Interview 30%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "PHD Electrical Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/phd-electrical-engineering/",
+        "department": "Department of Electrical Engineering",
+        "degree_level": "graduate",
+        "duration": "5 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Pre-Doctoral Fellowship (PKR 80,000/month and Tuition Fee waived off)",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Careers in R&D as well as for conducting independent research at the university level",
+        "courses_taught": [],
+        "summary_3_lines": "Designed to prepare students for careers in R&D and independent university-level research.\nRequires a minimum of 18 credit hours of coursework and 30 credit hours of doctoral research.\nOffered exclusively as a full-time program with a 5-year candidacy period.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test 40% + Interview 20%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      },
+      {
+        "name": "PHD Computer Science",
+        "program_info_link": "https://itu.edu.pk/admissions/phd-computer-science/",
+        "department": "Department of Computer Science",
+        "degree_level": "graduate",
+        "duration": "4 Years",
+        "tuition_fee": "9900 per Credit Hour",
+        "currency": "PKR",
+        "scholarships_info": "Pre-Doctoral Fellowship (PKR 80,000/month and Tuition Fee waived off)",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Provides technically oriented and scientific postgraduate education to motivated researchers.\nOffers opportunities to study the philosophical and theoretical foundations of computer science.\nRequires preparation of a research-intensive thesis to make a scholarly contribution to the field.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "First division",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 30% + Admission Test 35% + Interview 35%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      }
+    ],
+    "postgraduate_and_phd": [
+      {
+        "name": "PhD Computer Science",
+        "program_info_link": "https://itu.edu.pk/admissions/phd-computer-science/",
+        "department": "Department of Computer Science",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "Pre-Doctoral Fellowship Program provides PKR 80,000 to 90,000 per month for 4 years with a tuition fee waiver.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "The program emphasizes scholarly proficiency and the capacity for independent, original investigation.\nStudents must prepare a detailed research proposal and defend original research that contributes to their field.\nThe curriculum aims to provide a technically oriented education covering the discipline's theoretical foundations.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60% or 1st division in annual system, or CGPA of 3.0",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 30% + Admission Test 35% + Interview 35%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      },
+      {
+        "name": "PhD Electrical Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/phd-electrical-engineering/",
+        "department": "Department of Electrical Engineering",
+        "degree_level": "postgraduate_phd",
+        "duration": "5 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "Pre-Doctoral Fellowship Program provides PKR 80,000 to 90,000 per month for 4 years with a tuition fee waiver.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Prepares students for careers in R&D and for conducting independent university-level research.",
+        "courses_taught": [],
+        "summary_3_lines": "This full-time program prepares students for R&D careers and independent academic research.\nStudents are required to complete a minimum of 18 credit hours of coursework specified by their supervisor.\nCandidates must also successfully complete 30 credit hours of doctoral research for their final thesis defense.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60% in annual system, or CGPA of 3.0",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 40% + Admission Test 40% + Interview 20%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      }
+    ]
+  },
+  "faculties": [
+    {
+      "faculty_name": "Faculty of Sciences",
+      "description": "Since its inception in 2012, ITU has been redefining modern education and the perception of research-oriented universities in Pakistan. The Faculty of Science has developed and provided solutions to several local problems and remains committed to not only generating research-based solutions, but also to developing solutions that can be scaled up and can constructively impact the mores of modern industry and education.",
+      "departments": [
+        "Department of Computer Science",
+        "Department of Artificial Intelligence"
+      ],
+      "faculty_website": "https://itu.edu.pk/faculty/faculty-of-science/"
+    },
+    {
+      "faculty_name": "Faculty of Engineering",
+      "description": "The Faculty of Engineering at Information Technology University, Lahore was established in 2013 with the aim of providing state of the art engineering education and research facilities to meet the next generation challenges. Comprising the Department of Electrical Engineering (EE) and the Department of Computer Engineering (CE), we have world-class faculty who have studied and worked in institutions of international repute.",
+      "departments": [
+        "Department of Electrical Engineering",
+        "Department of Computer Engineering",
+        "Department of Computer and Software Engineering"
+      ],
+      "faculty_website": "https://itu.edu.pk/faculty/faculty-of-engineering/"
+    },
+    {
+      "faculty_name": "Faculty of Business & Management Sciences",
+      "description": "The Faculty of Business and Management Science offers 3 programs, EMBA (formerly known as EMBITE), BS Management and Technology and MS Management and Technology. Both these programs are designed to leverage ITU’s established excellence in technology and impact the practice of management, while giving the students an integrated command over tech innovation.",
+      "departments": [
+        "School of Business & Management"
+      ],
+      "faculty_website": "https://itu.edu.pk/faculty/faculty-of-business-management-science/"
+    },
+    {
+      "faculty_name": "Faculty of Humanities & Social Sciences",
+      "description": "ITU has been pushing the frontiers of inter-disciplinary research since its inception in 2012. This objective resulted in the Faculty of Humanities and Social Sciences being established in 2015. Consequently, new pathways have been opened to increasingly relevant problems which allows scholars to focus on interdisciplinary realms which rarely cross paths otherwise.",
+      "departments": [
+        "Department of Governance and Global studies",
+        "Department of Economics"
+      ],
+      "faculty_website": "https://itu.edu.pk/faculty/faculty-of-humanities-social-sciences/"
+    }
+  ],
+  "contact": {
+    "official_email": "admission@itu.edu.pk",
+    "phone_numbers": [
+      "042-99046061",
+      "0307-0111488",
+      "042-111-111-488"
+    ],
+    "physical_address": "6th Floor, Arfa Software Technology Park, Ferozepur Road, Lahore",
+    "admissions_office_location": "ITU Admissions Office, 6th Floor, Arfa Software Technology Park, Ferozepur Road, Lahore",
+    "sub_campuses_contact": []
+  },
+  "programs_possibly_truncated": false
+}

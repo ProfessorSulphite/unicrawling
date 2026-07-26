@@ -1,0 +1,148 @@
+{
+  "_meta": {
+    "purpose": "Ground-truth registry for Pakistani universities, keyed by canonical domain. Supplies main_info identity fields deterministically so the LLM is never asked to guess them, and supplies rankings so the LLM is never asked to invent a numeric rank.",
+    "rankings_status": "UNPOPULATED",
+    "rankings_populate_instructions": "Rankings are deliberately empty. Populate from https://www.webometrics.info/en/Asia/Pakistan (national + world rank) and https://www.topuniversities.com/world-university-rankings (QS). Each entry must carry source, scope, year, rank and source_url. Never populate this file from an LLM answer -- numeric ranks are the single most hallucinated field in the payload. Until populated, MainInfo.rankings stays [] and inspect_cli reports 0% ranking coverage, which is the correct and honest signal.",
+    "schema": {
+      "<domain>": {
+        "name": "str  -- official registered name",
+        "abbreviation": "str | null",
+        "city": "str | null",
+        "type": "public | private | other",
+        "aliases": ["alternate domains that resolve to the same institution"],
+        "rankings": [
+          {
+            "source": "Webometrics | QS | THE",
+            "scope": "world | national | asia",
+            "subject": "str | null",
+            "year": "int",
+            "rank": "int",
+            "source_url": "str | null"
+          }
+        ]
+      }
+    }
+  },
+  "universities": {
+    "nust.edu.pk": {
+      "name": "National University of Sciences and Technology",
+      "abbreviation": "NUST",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": ["seecs.nust.edu.pk", "sines.nust.edu.pk", "ceme.nust.edu.pk", "pnec.nust.edu.pk", "mcs.nust.edu.pk"],
+      "rankings": []
+    },
+    "lums.edu.pk": {
+      "name": "Lahore University of Management Sciences",
+      "abbreviation": "LUMS",
+      "city": "Lahore",
+      "type": "private",
+      "aliases": [],
+      "rankings": []
+    },
+    "nu.edu.pk": {
+      "name": "National University of Computer and Emerging Sciences",
+      "abbreviation": "FAST-NUCES",
+      "city": "Multi-Campus",
+      "type": "private",
+      "aliases": ["isb.nu.edu.pk", "lhr.nu.edu.pk", "khi.nu.edu.pk"],
+      "rankings": []
+    },
+    "itu.edu.pk": {
+      "name": "Information Technology University",
+      "abbreviation": "ITU",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "comsats.edu.pk": {
+      "name": "COMSATS University Islamabad",
+      "abbreviation": "CUI",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": ["cuiatd.edu.pk", "cuilahore.edu.pk"],
+      "rankings": []
+    },
+    "qau.edu.pk": {
+      "name": "Quaid-i-Azam University",
+      "abbreviation": "QAU",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "uet.edu.pk": {
+      "name": "University of Engineering and Technology Lahore",
+      "abbreviation": "UET Lahore",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "aku.edu": {
+      "name": "Aga Khan University",
+      "abbreviation": "AKU",
+      "city": "Karachi",
+      "type": "private",
+      "aliases": [],
+      "rankings": []
+    },
+    "iba.edu.pk": {
+      "name": "Institute of Business Administration Karachi",
+      "abbreviation": "IBA Karachi",
+      "city": "Karachi",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "pu.edu.pk": {
+      "name": "University of the Punjab",
+      "abbreviation": "PU",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "uaf.edu.pk": {
+      "name": "University of Agriculture Faisalabad",
+      "abbreviation": "UAF",
+      "city": "Faisalabad",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "giki.edu.pk": {
+      "name": "Ghulam Ishaq Khan Institute of Engineering Sciences and Technology",
+      "abbreviation": "GIKI",
+      "city": "Topi",
+      "type": "private",
+      "aliases": [],
+      "rankings": []
+    },
+    "au.edu.pk": {
+      "name": "Air University",
+      "abbreviation": "AU",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "bahria.edu.pk": {
+      "name": "Bahria University",
+      "abbreviation": "BU",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    },
+    "gcu.edu.pk": {
+      "name": "Government College University Lahore",
+      "abbreviation": "GCU",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": [],
+      "rankings": []
+    }
+  }
+}

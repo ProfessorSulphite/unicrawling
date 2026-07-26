@@ -1,0 +1,116 @@
+{
+  "_meta": {
+    "purpose": "Ground-truth global university identity and rankings registry, keyed by domain name. Sourced for deterministic identity completion across Pakistan, Germany, US, UK, and Europe.",
+    "schema": {
+      "<domain>": {
+        "name": "str",
+        "abbreviation": "str",
+        "country": "str",
+        "city": "str",
+        "established_year": "int",
+        "accreditation_body": "str",
+        "rankings": [
+          {
+            "source": "QS World University Rankings | THE | Webometrics",
+            "scope": "Global | National",
+            "subject": "Overall",
+            "year": 2026,
+            "rank": "int",
+            "source_url": "str"
+          }
+        ]
+      }
+    }
+  },
+  "universities": {
+    "lmu.de": {
+      "name": "Ludwig-Maximilians-Universität München",
+      "abbreviation": "LMU",
+      "country": "Germany",
+      "city": "Munich",
+      "established_year": 1472,
+      "accreditation_body": "Bavarian State Ministry of Science and the Arts / System Accreditation",
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 54,
+          "source_url": "https://www.topuniversities.com/universities/lmu-munich"
+        },
+        {
+          "source": "Times Higher Education",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 38,
+          "source_url": "https://www.timeshighereducation.com/world-university-rankings/lmu-munich"
+        }
+      ]
+    },
+    "tum.de": {
+      "name": "Technical University of Munich",
+      "abbreviation": "TUM",
+      "country": "Germany",
+      "city": "Munich",
+      "established_year": 1868,
+      "accreditation_body": "Bavarian State Ministry of Science and the Arts",
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 28,
+          "source_url": "https://www.topuniversities.com/universities/technical-university-munich"
+        }
+      ]
+    },
+    "nust.edu.pk": {
+      "name": "National University of Sciences and Technology",
+      "abbreviation": "NUST",
+      "country": "Pakistan",
+      "city": "Islamabad",
+      "established_year": 1991,
+      "accreditation_body": "Higher Education Commission (HEC) / PEC",
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 353,
+          "source_url": "https://www.topuniversities.com/universities/national-university-sciences-technology-nust-islamabad"
+        }
+      ]
+    },
+    "itu.edu.pk": {
+      "name": "Information Technology University",
+      "abbreviation": "ITU",
+      "country": "Pakistan",
+      "city": "Lahore",
+      "established_year": 2012,
+      "accreditation_body": "Higher Education Commission (HEC)",
+      "rankings": []
+    },
+    "lums.edu.pk": {
+      "name": "Lahore University of Management Sciences",
+      "abbreviation": "LUMS",
+      "country": "Pakistan",
+      "city": "Lahore",
+      "established_year": 1984,
+      "accreditation_body": "Higher Education Commission (HEC) / NBEAC",
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 540,
+          "source_url": "https://www.topuniversities.com/universities/lahore-university-management-sciences-lums"
+        }
+      ]
+    }
+  }
+}

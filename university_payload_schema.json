@@ -1,0 +1,571 @@
+{
+  "$defs": {
+    "ApplicationStatus": {
+      "enum": [
+        "open",
+        "closed",
+        "rolling",
+        "upcoming"
+      ],
+      "title": "ApplicationStatus",
+      "type": "string"
+    },
+    "ContactInfo": {
+      "properties": {
+        "official_email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Official Email"
+        },
+        "phone_numbers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Phone Numbers",
+          "type": "array"
+        },
+        "physical_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Physical Address"
+        },
+        "admissions_office_location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Admissions Office Location"
+        },
+        "sub_campuses_contact": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SubCampusContact"
+          },
+          "title": "Sub Campuses Contact",
+          "type": "array"
+        }
+      },
+      "title": "ContactInfo",
+      "type": "object"
+    },
+    "DegreeLevel": {
+      "enum": [
+        "undergraduate",
+        "graduate",
+        "postgraduate_phd"
+      ],
+      "title": "DegreeLevel",
+      "type": "string"
+    },
+    "EligibilityRequirements": {
+      "properties": {
+        "minimum_marks_percentage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum Marks Percentage"
+        },
+        "entry_tests_accepted": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Entry Tests Accepted",
+          "type": "array"
+        },
+        "aggregate_formula": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregate Formula"
+        }
+      },
+      "title": "EligibilityRequirements",
+      "type": "object"
+    },
+    "FacultyItem": {
+      "properties": {
+        "faculty_name": {
+          "title": "Faculty Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "departments": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Departments",
+          "type": "array"
+        },
+        "faculty_website": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Faculty Website"
+        }
+      },
+      "required": [
+        "faculty_name"
+      ],
+      "title": "FacultyItem",
+      "type": "object"
+    },
+    "KeyLinks": {
+      "properties": {
+        "academics_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Academics Url"
+        },
+        "admissions_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Admissions Url"
+        },
+        "application_portal_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PRIMARY FOCUS",
+          "title": "Application Portal Url"
+        }
+      },
+      "title": "KeyLinks",
+      "type": "object"
+    },
+    "MainInfo": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "abbreviation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Abbreviation"
+        },
+        "country": {
+          "default": "Pakistan",
+          "title": "Country",
+          "type": "string"
+        },
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "City"
+        },
+        "website": {
+          "title": "Website",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/UniversityType",
+          "default": "public"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "domain_verified": {
+          "default": false,
+          "title": "Domain Verified",
+          "type": "boolean"
+        },
+        "verification_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Note"
+        },
+        "key_links": {
+          "$ref": "#/$defs/KeyLinks"
+        },
+        "rankings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RankingItem"
+          },
+          "title": "Rankings",
+          "type": "array"
+        },
+        "exa_enriched": {
+          "default": false,
+          "title": "Exa Enriched",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "website",
+        "description",
+        "key_links"
+      ],
+      "title": "MainInfo",
+      "type": "object"
+    },
+    "ProgramCategoryBlock": {
+      "properties": {
+        "undergraduate": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProgramItem"
+          },
+          "title": "Undergraduate",
+          "type": "array"
+        },
+        "graduate": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProgramItem"
+          },
+          "title": "Graduate",
+          "type": "array"
+        },
+        "postgraduate_and_phd": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProgramItem"
+          },
+          "title": "Postgraduate And Phd",
+          "type": "array"
+        }
+      },
+      "title": "ProgramCategoryBlock",
+      "type": "object"
+    },
+    "ProgramItem": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "program_info_link": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Program Info Link"
+        },
+        "department": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Department"
+        },
+        "degree_level": {
+          "$ref": "#/$defs/DegreeLevel"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration"
+        },
+        "tuition_fee": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tuition Fee"
+        },
+        "currency": {
+          "default": "PKR",
+          "title": "Currency",
+          "type": "string"
+        },
+        "scholarships_info": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scholarships Info"
+        },
+        "courses_taught": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Courses Taught",
+          "type": "array"
+        },
+        "summary_3_lines": {
+          "title": "Summary 3 Lines",
+          "type": "string"
+        },
+        "eligibility_requirements": {
+          "$ref": "#/$defs/EligibilityRequirements"
+        },
+        "application_status": {
+          "$ref": "#/$defs/ApplicationStatus",
+          "default": "rolling"
+        },
+        "application_deadline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Application Deadline"
+        }
+      },
+      "required": [
+        "name",
+        "degree_level",
+        "summary_3_lines",
+        "eligibility_requirements"
+      ],
+      "title": "ProgramItem",
+      "type": "object"
+    },
+    "RankingItem": {
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject"
+        },
+        "year": {
+          "title": "Year",
+          "type": "integer"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        }
+      },
+      "required": [
+        "source",
+        "scope",
+        "year",
+        "rank"
+      ],
+      "title": "RankingItem",
+      "type": "object"
+    },
+    "SubCampusContact": {
+      "properties": {
+        "campus_name": {
+          "title": "Campus Name",
+          "type": "string"
+        },
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "City"
+        },
+        "contact_details": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contact Details"
+        }
+      },
+      "required": [
+        "campus_name"
+      ],
+      "title": "SubCampusContact",
+      "type": "object"
+    },
+    "UniversityType": {
+      "enum": [
+        "public",
+        "private",
+        "other"
+      ],
+      "title": "UniversityType",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "main_info": {
+      "$ref": "#/$defs/MainInfo"
+    },
+    "programs": {
+      "$ref": "#/$defs/ProgramCategoryBlock"
+    },
+    "faculties": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FacultyItem"
+      },
+      "title": "Faculties",
+      "type": "array"
+    },
+    "contact": {
+      "$ref": "#/$defs/ContactInfo"
+    },
+    "programs_possibly_truncated": {
+      "default": false,
+      "title": "Programs Possibly Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "main_info",
+    "programs",
+    "contact"
+  ],
+  "title": "UniversityPayload",
+  "type": "object"
+}

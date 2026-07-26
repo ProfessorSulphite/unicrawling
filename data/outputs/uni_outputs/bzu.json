@@ -1,0 +1,1945 @@
+{
+  "main_info": {
+    "name": "Bahauddin Zakariya University",
+    "abbreviation": "BZU",
+    "country": "Pakistan",
+    "city": "Multan",
+    "established_year": 1975,
+    "accreditation_body": "HEC",
+    "admission_cycles_offered": [
+      "Fall",
+      "Spring"
+    ],
+    "primary_instruction_language": "English",
+    "website": "https://bzu.edu.pk/",
+    "type": "public",
+    "description": "Bahauddin Zakariya University is the largest public university in South Punjab, Pakistan, established in 1975. It provides a wide range of undergraduate and postgraduate programs across more than 51 departments and institutes.",
+    "domain_verified": false,
+    "verification_note": null,
+    "key_links": {
+      "academics_url": "https://bzu.edu.pk/faculties.php",
+      "admissions_url": "https://bzu.edu.pk/international-admissions.php",
+      "application_portal_url": "https://apply.bzu.edu.pk/"
+    },
+    "rankings": [],
+    "exa_enriched": false
+  },
+  "programs": {
+    "undergraduate": [
+      {
+        "name": "BS in Applied Psychology",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=13",
+        "department": "Department of Applied Psychology",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Mental health facilities, counseling, guidance, and human resource management.",
+        "courses_taught": [],
+        "summary_3_lines": "Provides essential knowledge in Applied Psychology.\nOffered in morning and evening shifts.\nEquips students with research and clinical skills.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "B.Sc. Civil Engineering",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=23",
+        "department": "Department of Civil Engineering",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Civil engineering, project management, and sustainable development sectors.",
+        "courses_taught": [],
+        "summary_3_lines": "Four-year Outcome-Based Education (OBE) program.\nEquips students with industry-demanded engineering skills.\nIncludes comprehensive labs for building material testing.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60",
+          "entry_tests_accepted": [
+            "ECAT",
+            "University Entry Test"
+          ],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Geography",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=8",
+        "department": "Department of Geography",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Explores the physical features and landforms of the earth.\nInvestigates how natural surroundings influence human life.\nPrepares students to contribute to regional resource development.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in GIS & Remote Sensing",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=8",
+        "department": "Department of Geography",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on geographic information systems and remote sensing.\nDevelops technical skills for modern spatial data analysis.\nAddresses the growing need for technological geography experts.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BSc (Hons.) Human Nutrition and Dietetics",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=66",
+        "department": "Department of Human Nutrition",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Multisectoral disciplines in nutrition and public health fields.",
+        "courses_taught": [
+          "Public Health Nutrition",
+          "Human Physiology",
+          "Microbiology and immunology",
+          "Diet-health Linkages",
+          "Community nutrition",
+          "Nutraceutical and functional foods",
+          "Preventive Nutrition",
+          "Clinical Nutrition",
+          "Medical Nutrition therapies"
+        ],
+        "summary_3_lines": "Focuses on public health, clinical, and preventive nutrition.\nTeaches the importance of balanced diets to alleviate disease.\nPrepares graduates for multisectoral disciplines in health.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "Pharm.D",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=35",
+        "department": "Department of Pharmacy Practice",
+        "degree_level": "undergraduate",
+        "duration": "5 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Community pharmacy, hospital pharmacy, pharmaceutical sales and marketing.",
+        "courses_taught": [],
+        "summary_3_lines": "Develops the professional roles and clinical skills of pharmacists.\nCovers community, hospital, and therapeutic drug management.\nIncludes hands-on training and clinical pharmacy research projects.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BBA",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=18",
+        "department": "Institute of Banking and Finance",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Banking, finance, and corporate management.",
+        "courses_taught": [],
+        "summary_3_lines": "Provides foundational knowledge in business administration.\nDeveloped in collaboration with the banking and finance sector.\nPrepares students for diverse corporate and managerial roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Digital Marketing",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=18",
+        "department": "Institute of Banking and Finance",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Corporate sector, digital marketing, and trade industries.",
+        "courses_taught": [],
+        "summary_3_lines": "Equips students with modern digital marketing strategies.\nDesigned to meet the latest needs of the industry and trade.\nFosters practical decision-making and business acumen.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS Pakistan Studies",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=7",
+        "department": "Pakistan Study Centre",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [
+          "History",
+          "Geography",
+          "Economics",
+          "Politics",
+          "Foreign Relations",
+          "Sociology",
+          "Literature of Pakistan"
+        ],
+        "summary_3_lines": "Interdisciplinary study of Pakistan's history, geography, and economy.\nProvides in-depth understanding of national culture and politics.\nPrepares students for public service and national development roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS Computational Social Sciences",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=7",
+        "department": "Pakistan Study Centre",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Integrates social science theories with computational methodologies.\nFocuses on data-driven approaches to societal and cultural issues.\nAddresses the challenges of the digital age in policy and research.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS Economics",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=1",
+        "department": "School of Economics",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Academia, government, financial institutions, international organizations, and corporate sector.",
+        "courses_taught": [],
+        "summary_3_lines": "Delivers rigorous training in economic theory and econometrics.\nFocuses on quantitative methods and modern policy analysis.\nPrepares students for academia, government, and financial sectors.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS Economics with Finance",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=1",
+        "department": "School of Economics",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Financial institutions, international organizations, and corporate sector.",
+        "courses_taught": [],
+        "summary_3_lines": "Integrates core economic principles with financial management.\nResponds to emerging global trends and market demands.\nEquips graduates with interdisciplinary skills for financial markets.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS Economics with Business",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=1",
+        "department": "School of Economics",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Corporate sector, business development, and policymaking bodies.",
+        "courses_taught": [],
+        "summary_3_lines": "Combines economic theories with practical business applications.\nDevelops analytical skills required for the corporate sector.\nPrepares students to tackle complex business and economic challenges.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS Economics with Data Science",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=1",
+        "department": "School of Economics",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Data analysis, research organizations, and public policy institutions.",
+        "courses_taught": [],
+        "summary_3_lines": "Merges economics with advanced data analytics and data science.\nFocuses on quantitative research and computational modeling.\nProduces highly competent analysts for the modern digital economy.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Arabic",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=28",
+        "department": "Department of Arabic",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teaching, research, and various other fields in Pakistan and abroad.",
+        "courses_taught": [],
+        "summary_3_lines": "Explores Arabic language and its rich literary heritage.\nDevelops inter-cultural and inter-regional understanding.\nPrepares graduates for roles in education, translation, and research.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Education",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=4",
+        "department": "Department of Education",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teaching and educational administration.",
+        "courses_taught": [],
+        "summary_3_lines": "Produces enlightened, competent, and well-disciplined educators.\nEquips students with modern pedagogical methodologies.\nOffers access to computer and science laboratories for practical skills.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in English",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=29",
+        "department": "Department of English",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teaching, Civil Services, Provincial Management Services, Media, Armed Forces, and Content Writing.",
+        "courses_taught": [],
+        "summary_3_lines": "Combines contemporary literature studies with modern linguistics.\nEngages with geopolitical, socio-economic, and cultural concerns.\nPrepares graduates for teaching, civil services, and media careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in History and Civilization Studies",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=5",
+        "department": "Department of History and Civilization Studies",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Explores the historical developments of diverse civilizations.\nFosters critical thinking regarding historical and cultural events.\nPrepares students for research, academia, and civil services.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in International Relations",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=10",
+        "department": "Department of International Relations",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on global politics, foreign policy, and international affairs.\nDevelops analytical skills for understanding international dynamics.\nPrepares students for diplomatic, governmental, and think-tank roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Philosophy and Interdisciplinary Studies",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=14",
+        "department": "Department of Philosophy and Interdisciplinary Studies",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Explores metaphysical, socio-political, and cultural problems.\nIntegrates philosophical insights with other academic disciplines.\nAddresses traditional and modern challenges in scientific thought.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Political Science",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=9",
+        "department": "Department of Political Science",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Public and private institutes, organizations at national and international levels.",
+        "courses_taught": [
+          "Political Science",
+          "Legal and Specific Analytic Tools",
+          "Microeconomic Theory",
+          "Macroeconomic Theory",
+          "Quantitative Methods for Policy Analysis"
+        ],
+        "summary_3_lines": "Focuses on political systems, policy making, and governance.\nEmphasizes practical and applied dimensions of public policy.\nProduces skilled policymakers and scholars for public administration.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      },
+      {
+        "name": "BS in Social & Cultural Studies",
+        "program_info_link": "https://bzu.edu.pk/department.php?id=3",
+        "department": "Institute of Social Cultural Studies",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, CM Honhaar, HEC Needs-Based, BISP, and various other scholarships available.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Managerial positions in national, state, local governments, think tanks, and non-profit organizations.",
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on anthropology, sociology, and cultural sciences.\nPrepares students for policy analysis and program evaluation.\nTrains graduates for managerial roles in public and private sectors.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "closed",
+        "application_deadline": null
+      }
+    ],
+    "graduate": [
+      {
+        "name": "M.Phil. in Applied Psychology",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=13&ptype=2",
+        "department": "Department of Applied Psychology",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Mental health counselor, behavioral scientist, human resource manager.",
+        "courses_taught": [],
+        "summary_3_lines": "Provides vital mental health facilities and counseling training.\nFosters the development of high-quality professionals and behavioral scientists.\nAvailable as regular and weekend programs with research options.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Sc. in Applied Psychology",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=13&ptype=2",
+        "department": "Department of Applied Psychology",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Mental health counselor, behavioral scientist, human resource manager.",
+        "courses_taught": [],
+        "summary_3_lines": "Forward-thinking curriculum delivered under a structured semester system.\nIntegrates rigorous coursework with foundational behavioral research.\nEquips students to address cultural and socioeconomic issues.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.A. in Arabic",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=28&ptype=2",
+        "department": "Department of Arabic",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Linguist, literature expert, serving in various sectors nationwide and abroad.",
+        "courses_taught": [],
+        "summary_3_lines": "Focuses extensively on Arabic language and literature.\nAims to develop inter-culture and inter-regional understanding.\nGraduates serve in various sectors nationwide and abroad.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in Arabic",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=28&ptype=2",
+        "department": "Department of Arabic",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Linguist, literature expert, serving in various sectors nationwide and abroad.",
+        "courses_taught": [],
+        "summary_3_lines": "Advanced research program focusing on Arabic linguistics and literature.\nExplores the growth of human society through Islamic civilization.\nPrepares students for academic and research-oriented careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Sc. in Civil Engineering",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=23&ptype=2",
+        "department": "Department of Civil Engineering",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Civil engineering professional, project manager, researcher.",
+        "courses_taught": [],
+        "summary_3_lines": "Fosters deeper expertise and innovative research in civil engineering.\nEquips students to tackle complex modern engineering challenges.\nPromotes professional growth for sustainable socioeconomic development.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in Commerce",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=19&ptype=2",
+        "department": "Department of Commerce",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Accountant, financial analyst, business manager, entrepreneur.",
+        "courses_taught": [],
+        "summary_3_lines": "Provides an academic and analytical foundation for business decision-making.\nStructured around team-based learning, case studies, and field research.\nPrepares students to tackle future challenges in the corporate world.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.A. Education",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=4&ptype=2",
+        "department": "Department of Education",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teacher, education administrator, academic coordinator.",
+        "courses_taught": [],
+        "summary_3_lines": "Designed to produce competent, enlightened, and well-disciplined teachers.\nAccommodates both Arts and Science students pursuing education careers.\nSupported by well-equipped science and computer laboratories.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Ed.",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=4&ptype=2",
+        "department": "Department of Education",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teacher, education administrator, academic coordinator.",
+        "courses_taught": [],
+        "summary_3_lines": "Advanced professional degree for educators and administrators.\nEnhances teaching competencies and disciplinary knowledge.\nPrepares graduates for leadership roles in educational institutions.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in Education",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=4&ptype=2",
+        "department": "Department of Education",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teacher, education administrator, academic researcher.",
+        "courses_taught": [],
+        "summary_3_lines": "Research-oriented graduate program focused on pedagogical sciences.\nDevelops advanced analytical skills for educational evaluation.\nPrepares candidates for doctoral studies and policy-making roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in English",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=29&ptype=2",
+        "department": "Department of English",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teacher, researcher, civil service, media anchor, content writer.",
+        "courses_taught": [],
+        "summary_3_lines": "Delivers quality education combining literature and linguistic studies.\nEmploys theoretical frameworks to engage with contemporary global concerns.\nProduces professionals for academia, media, and civil services.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in Geography",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=8&ptype=2",
+        "department": "Department of Geography",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Deals with distributive phenomena on earth and environmental science.\nProvides skills to contribute to a highly developed human society.\nFocuses on the unique natural features and climate of Southern Punjab.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in History",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=5&ptype=2",
+        "department": "Department of History and Civilization Studies",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Running since 1997 to provide advanced historical research training.\nOffers deep insights into regional and global civilization studies.\nPrepares scholars for doctoral projects and academic leadership.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.A. Pakistan Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=7&ptype=2",
+        "department": "Pakistan Study Centre",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Interdisciplinary program exploring Pakistan's history and culture.\nOffers courses in economics, politics, foreign relations, and sociology.\nProvides an in-depth understanding of the nation's heritage.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in Human Nutrition",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=66&ptype=2",
+        "department": "Department of Human Nutrition",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Nutritionist, dietetics expert, public health researcher.",
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on public health nutrition, clinical nutrition, and dietetics.\nTrains graduates to alleviate disease burden through balanced diets.\nProvides an exceptional teaching and research environment.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.A. in International Relations",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=10&ptype=2",
+        "department": "Department of International Relations",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Explores global political dynamics and international diplomacy.\nFosters talent in geopolitical analysis and international affairs.\nEnrolls postgraduate students aiming for foreign service careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in International Relations",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=10&ptype=2",
+        "department": "Department of International Relations",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Advanced research degree in international studies and relations.\nProvides intensive training in global policy and strategic analysis.\nPrepares graduates for roles in think tanks and academic institutions.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in Pharmaceutical Chemistry",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=38&ptype=2",
+        "department": "Department of Pharmaceutical Chemistry",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Pharmaceutical researcher, drug design scientist.",
+        "courses_taught": [],
+        "summary_3_lines": "Provides a robust foundation in pharmaceutical sciences.\nEmphasizes natural product chemistry and computer-aided drug design.\nFosters industry-academia linkage to produce practical professionals.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in Pharmacy Practice",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=35&ptype=2",
+        "department": "Department of Pharmacy Practice",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Community pharmacist, hospital pharmacist, clinical researcher.",
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on the professional roles of pharmacists in clinical settings.\nCovers community pharmacy, hospital pharmacy, and disease management.\nPromotes advanced research and therapeutic drug monitoring.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in Philosophy and Interdisciplinary Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=14&ptype=2",
+        "department": "Department of Philosophy and Interdisciplinary Studies",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Deals with the intellectual growth and development of human understanding.\nResolves socio-political problems at regional and global levels.\nConnects traditional philosophical thought with scientific advancements.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.A. Political Science",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=9&ptype=2",
+        "department": "Department of Political Science",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Scholar, professional policy maker, public administration.",
+        "courses_taught": [],
+        "summary_3_lines": "Explores practical and applied dimensions of policymaking.\nIntegrates microeconomic theory and quantitative methods.\nProduces scholars and policymakers for public and private institutes.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in Political Science",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=9&ptype=2",
+        "department": "Department of Political Science",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Scholar, professional policy maker, public administration.",
+        "courses_taught": [],
+        "summary_3_lines": "Research-intensive program with great ideological and intellectual diversity.\nPrepares graduates for changing patterns in global education.\nFosters innovation, modernization, and advanced policy analysis.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "Master in Sports Sciences",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=15&ptype=2",
+        "department": "Department of Sports Sciences",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Fitness instructor, sports nutritionist, scientific researcher, coach.",
+        "courses_taught": [],
+        "summary_3_lines": "Involves scientific principles of exercise and human physical performance.\nCovers physiology and biomechanics of human motion and adaptability.\nLeads to careers in fitness instruction, nutrition, and coaching.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "MBA",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=18&ptype=2",
+        "department": "Institute of Banking and Finance",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Banking sector expert, financial analyst.",
+        "courses_taught": [],
+        "summary_3_lines": "Fulfills the growing needs of the banking and finance sectors.\nDeveloped in collaboration with the Punjab Government and Bank Alfalah.\nFocuses on market research to develop new financial products.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in Banking and Finance",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=18&ptype=2",
+        "department": "Institute of Banking and Finance",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Banking sector expert, financial analyst.",
+        "courses_taught": [],
+        "summary_3_lines": "Advanced degree preparing experts for the financial and corporate sectors.\nKeeps professionals abreast of new developments in banking.\nOffers comprehensive training in financial management and analysis.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "open",
+        "application_deadline": null
+      },
+      {
+        "name": "MS in Social Cultural Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=3&ptype=2",
+        "department": "Institute of Social Cultural Studies",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Managerial positions in nation-building, think tanks, consulting firms.",
+        "courses_taught": [],
+        "summary_3_lines": "Prepares students for managerial positions in nation-building activities.\nCovers anthropology, criminology, social work, and public finance.\nEquips graduates to work in government, consulting, and non-profits.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. in Pakistan Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=7&ptype=2",
+        "department": "Pakistan Study Centre",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Promotes advanced research in national history, culture, and geography.\nSupports detailed analytical studies on Pakistan's socioeconomic landscape.\nPrepares scholars for high-level academic and policy-oriented careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "M.Phil. Economics",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=1&ptype=2",
+        "department": "School of Economics",
+        "degree_level": "graduate",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM Honhaar, and BISP scholarships available.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Economist, researcher, university faculty, policymaker, development professional.",
+        "courses_taught": [],
+        "summary_3_lines": "Combines theoretical foundations with advanced empirical research.\nOffers specializations in public finance, development, and econometrics.\nProduces competent economists for academia and international organizations.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      }
+    ],
+    "postgraduate_and_phd": [
+      {
+        "name": "PhD in Food Safety and Applied Nutrition",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=70&ptype=3",
+        "department": "Center for Research in Food Safety Applied Nutrition",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Offers advanced research opportunities in food safety and applied nutrition.\nFocuses on curriculum development and creating awareness for food safety.\nAims to address nutrition-related issues for public wellbeing and stable economies.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Applied Psychology",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=13&ptype=3",
+        "department": "Department of Applied Psychology",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Integrates research and coursework to prepare students in applied psychology.\nAims to address socioeconomic and cultural issues through sound policy research.\nDevelops behavioral scientists to serve as intellectual leaders and resources.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Arabic",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=28&ptype=3",
+        "department": "Department of Arabic",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Serving in different works of life all over the country and abroad.",
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on advanced Arabic language and literature research.\nExplores the treasure house of knowledge produced by Islamic civilization.\nAims to develop inter-cultural and inter-regional understanding.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Civil Engineering",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=23&ptype=3",
+        "department": "Department of Civil Engineering",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Prepares students to tackle complex civil engineering challenges.\nFocuses on advanced studies and innovative research in the field.\nEquips graduates to make a positive impact on communities and the environment.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Commerce",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=19&ptype=3",
+        "department": "Department of Commerce",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Advanced research program in commerce, finance, and business.\nFosters interdisciplinary research addressing local commercial challenges.\nDevelops ethical leaders committed to sustainable business practices.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Education",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=4&ptype=3",
+        "department": "Department of Education",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Advanced doctoral study focusing on educational methodologies.\nProduces competent, enlightened, and well-disciplined educators.\nProvides comprehensive research facilities and scientific laboratories.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in English",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=29&ptype=3",
+        "department": "Department of English",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Teaching and Research, Civil Services, Media, Armed Forces, Judiciary, Content Writing.",
+        "courses_taught": [],
+        "summary_3_lines": "Combines literature and linguistics with contemporary theoretical frameworks.\nEngages with global geo-political and socio-economic concerns.\nEquips students for academia, civil services, and media careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Geography",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=8&ptype=3",
+        "department": "Department of Geography",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Advanced research program in geographical sciences and GIS.\nExamines how natural surroundings influence human life and development.\nAims to develop highly skilled professionals contributing to societal progress.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in History and Civilization Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=5&ptype=3",
+        "department": "Department of History and Civilization Studies",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Offers specialized research projects in history and civilization.\nSupported by highly qualified faculty with extensive academic experience.\nFeatures regular course work integrated with advanced historical research.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Human Nutrition",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=66&ptype=3",
+        "department": "Department of Human Nutrition",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Serving in multispectral disciplines in the nutrition field.",
+        "courses_taught": [],
+        "summary_3_lines": "Focuses on public health nutrition, clinical nutrition, and dietetics.\nAims to alleviate disease burden through comprehensive dietary research.\nProvides exceptional teaching and research environments for scholars.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in International Relations",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=10&ptype=3",
+        "department": "Department of International Relations",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Enrolls doctoral students for advanced studies in global affairs.\nFosters talent in understanding international diplomacy and policy.\nEquips graduates for roles in international organizations and academia.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Pharmaceutical Chemistry",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=38&ptype=3",
+        "department": "Department of Pharmaceutical Chemistry",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Recognized by HEC and Pharmacy Council of Pakistan.\nEmphasizes natural product chemistry and computer-aided drug design.\nProduces graduates equipped to thrive in the dynamic pharmaceutical landscape.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Pharmacy Practice",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=35&ptype=3",
+        "department": "Department of Pharmacy Practice",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Advanced doctoral research in clinical pharmacy and disease management.\nFocuses on community pharmacy, therapeutic drug monitoring, and pharmacovigilance.\nPromotes research and training facilities through international scholarly engagement.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Philosophy and Interdisciplinary Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=14&ptype=3",
+        "department": "Department of Philosophy and Interdisciplinary Studies",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Explores the intellectual growth of human society and metaphysical problems.\nConnects traditional thought patterns with fast-growing scientific approaches.\nPromotes a culture of philosophical insights to resolve socio-political issues.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Political Science",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=9&ptype=3",
+        "department": "Department of Political Science",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Serving in various public and private institutes and organizations at national and international levels.",
+        "courses_taught": [],
+        "summary_3_lines": "Research-focused program offering ideological and intellectual diversity.\nEmphasizes practical and applied dimensions of policymaking and execution.\nProduces renowned scholars and skilled policy makers for national and global roles.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Sports Sciences",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=15&ptype=3",
+        "department": "Department of Sports Sciences",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Career opportunities in fitness instruction, nutrition, scientific research, and academic institutes.",
+        "courses_taught": [],
+        "summary_3_lines": "Involves scientific study of physiology and bio-mechanics in sports.\nFocuses on the human body's adaptation to motion and physical activity.\nPrepares future sports scholars and coaches for academic and training careers.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Banking and Finance",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=18&ptype=3",
+        "department": "Institute of Banking and Finance",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Collaborates with the financial sector in research and development.\nInstitutes skilled financial experts to fulfill growing industry needs.\nFocuses on marketing new financial products and advanced financial studies.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Social and Cultural Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=3&ptype=3",
+        "department": "Institute of Social Cultural Studies",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Managerial positions in national, state, and local government, think tanks, consulting firms, and non-profit organizations.",
+        "courses_taught": [],
+        "summary_3_lines": "Offers advanced research in fields like anthropology and criminology.\nPrepares candidates for policy analysis and program evaluation.\nAims to produce useful manpower for national and international markets.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Pakistan Studies",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=7&ptype=3",
+        "department": "Pakistan Study Centre",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "Interdisciplinary research covering Pakistan's history, geography, and politics.\nProvides an in-depth understanding of the country's culture and economics.\nFeatures an advanced semester-based curriculum for doctoral scholars.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      },
+      {
+        "name": "PhD in Economics",
+        "program_info_link": "https://bzu.edu.pk/programs.php?did=1&ptype=3",
+        "department": "School of Economics",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "PEEF, HEC Needs-Based, CM's Honhaar, USAID, and others available via Financial Aid Office.",
+        "intake_terms": [
+          "Fall",
+          "Spring"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Careers in academia, government, finance, business, research, and development organisations.",
+        "courses_taught": [],
+        "summary_3_lines": "Combines theoretical foundations with advanced empirical and quantitative research.\nSpecializations include Development, Financial, Environmental, and Health Economics.\nProduces competent researchers, economists, and policymakers for global challenges.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": null,
+          "entry_tests_accepted": [],
+          "aggregate_formula": null
+        },
+        "application_status": "upcoming",
+        "application_deadline": null
+      }
+    ]
+  },
+  "faculties": [
+    {
+      "faculty_name": "Faculty of Arts and Social Sciences",
+      "description": null,
+      "departments": [
+        "Department of Applied Psychology",
+        "Department of Education",
+        "Department of Geography",
+        "Department of History and Civilization Studies",
+        "Department of International Relations",
+        "Department of Philosophy and Interdisciplinary Studies",
+        "Department of Political Science",
+        "Department of Sports Sciences",
+        "Institute of Social Cultural Studies",
+        "Pakistan Study Centre",
+        "School of Economics"
+      ],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=1"
+    },
+    {
+      "faculty_name": "Faculty of Commerce Banking & Business Administration",
+      "description": null,
+      "departments": [
+        "Department of Commerce",
+        "Institute of Banking and Finance"
+      ],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=3"
+    },
+    {
+      "faculty_name": "Faculty of Engineering & Technology",
+      "description": null,
+      "departments": [
+        "Department of Civil Engineering"
+      ],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=4"
+    },
+    {
+      "faculty_name": "Faculty of Islamic Studies & Languages",
+      "description": null,
+      "departments": [
+        "Department of Arabic",
+        "Department of English"
+      ],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=5"
+    },
+    {
+      "faculty_name": "Faculty of Pharmacy",
+      "description": null,
+      "departments": [
+        "Department of Pharmaceutical Chemistry",
+        "Department of Pharmacy Practice"
+      ],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=6"
+    },
+    {
+      "faculty_name": "Faculty of Science",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=7"
+    },
+    {
+      "faculty_name": "Faculty of Agricultural Sciences and Technology",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=8"
+    },
+    {
+      "faculty_name": "Faculty of Veterinary Sciences",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=9"
+    },
+    {
+      "faculty_name": "Faculty of Food Science and Nutrition",
+      "description": null,
+      "departments": [
+        "Center for Research in Food Safety Applied Nutrition",
+        "Department of Human Nutrition"
+      ],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=10"
+    },
+    {
+      "faculty_name": "Faculty of Law",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=11"
+    },
+    {
+      "faculty_name": "B. Z. University Sub-Campus Vehari",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=12"
+    },
+    {
+      "faculty_name": "B. Z. University Sub-Campus Lodhran",
+      "description": null,
+      "departments": [],
+      "faculty_website": "https://bzu.edu.pk/faculty.php?id=13"
+    }
+  ],
+  "contact": {
+    "official_email": "registrar@bzu.edu.pk",
+    "phone_numbers": [
+      "(+92) 61 9210071",
+      "(+92) 61 9210069"
+    ],
+    "physical_address": "Bahauddin Zakariya University, Bosan Road, Multan, Punjab, Pakistan",
+    "admissions_office_location": null,
+    "sub_campuses_contact": []
+  },
+  "programs_possibly_truncated": false
+}

@@ -1,0 +1,102 @@
+{
+  "universities": {
+    "Pakistan": [
+      {
+        "name": "Information Technology University",
+        "url": "https://itu.edu.pk"
+      },
+      {
+        "name": "National University of Sciences and Technology",
+        "url": "https://nust.edu.pk"
+      },
+      {
+        "name": "Lahore University of Management Sciences",
+        "url": "https://lums.edu.pk"
+      },
+      {
+        "name": "AGA Khan University",
+        "url": "http://www.aku.edu/"
+      },
+      {
+        "name": "Allama Iqbal Open University",
+        "url": "http://www.aiou.edu.pk"
+      },
+      {
+        "name": "Bahauddin Zakaeiya University (BZU), Multan",
+        "url": "https://bzu.edu.pk/"
+      },
+      {
+        "name": "Bahria University",
+        "url": "http://www.bahria.edu.pk/"
+      },
+      {
+        "name": "Beaconhouse National University",
+        "url": "http://www.bnu.edu.pk/"
+      },
+      {
+        "name": "Comsats University, Islamabad",
+        "url": "https://www.comsats.edu.pk/"
+      },
+      {
+        "name": "Government College University, Lahore",
+        "url": "http://www.gcu.edu.pk/"
+      },
+      {
+        "name": "Minhaj University",
+        "url": "https://www.mul.edu.pk/en/"
+      }
+    ],
+    "Germany": [
+      {
+        "name": "Ludwig-Maximilians-Universität München",
+        "url": "https://www.lmu.de/en/"
+      },
+      {
+        "name": "Technical University of Munich",
+        "url": "https://www.tum.de/en/"
+      },
+      {
+        "name": "Humboldt-Universität zu Berlin",
+        "url": "http://www.hu-berlin.de/?set_language=en"
+      },
+      {
+        "name": "Heidelberg University",
+        "url": "https://www.uni-heidelberg.de/en"
+      },
+      {
+        "name": "Technical University of Munich",
+        "url": "http://www.tum.de/en/homepage/"
+      }
+    ],
+    "America": [
+      {
+        "name": "Massachusetts Institute of Technology",
+        "url": "https://www.mit.edu"
+      },
+      {
+        "name": "Harvard University",
+        "url": "https://www.harvard.edu"
+      },
+      {
+        "name": "Stanford University",
+        "url": "http://www.stanford.edu/"
+      },
+      {
+        "name": "University of Califronia--Berkeley",
+        "url": "http://berkeley.edu/"
+      },
+      {
+        "name": "Yale University",
+        "url": "http://www.yale.edu/"
+      }
+    ]
+  },
+  "pipeline_settings": {
+    "max_links": 80,
+    "exclude_keywords": "news|events",
+    "uptodate": true,
+    "sync_qdrant": true,
+    "force_rerun_all": false,
+    "clean_logging": true
+  }
+}
