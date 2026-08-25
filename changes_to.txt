@@ -1,0 +1,73 @@
+- Added a new dir under /unicrawling/data/outputs called "all_uni_outputs" which now contains universities_crawling_data.json 
+- /unicrawling/loggings -> remove gitkeep file and track logs in json format instead of jsonl.
+- /unicrawling/loggings -> added two directories. one /single_logs to track logs of single and partial runs.
+  another /complete_logs to track logs of complete runs. make sure to update code and add a feature to assign ids to both of logs.
+  s_{id} for single_logs and c_{id} for complete_logs. add a feature to point to a single log by id and have the pipeline run from there.
+
+
+- Proposed a moduler architecture for /src where it will be divided into /utils, /extraction, /ingestion and /inspection.
+  -> /utilities will contain utility functions: states_management, json_io, logging_system 
+  -> /extractor will contain extraction functions: /linkers, /crawlers, /normalizers
+      - /linkers: crawling, filteration, deduplication, semantic scoring, running.
+      - /crawlers: notebook quering, exa enriching, json repairing, running.
+      - /normalizers: currency and tuition normalizing, eligibility and requirement consolidating, running.
+  -> /ingestor will contain ingestion functions: provision and deletion of notebooks, source and quota management, rediness polling.
+  -> /inspector will contain inspection functions: dashboard, audition, analytics, syncing.
+  -> /logger will contain functions for debugging, detail loggings etc
+  -> and a main file in /src named as orchestrator.py which will orchestrate the whole pipeline. 
+  -> config.py will contain config functions.
+
+
+- src
+  -> it will have orchestrator.py, config.py, /utilities, /extractor, /ingestor, /inspector, and /logger.
+  -> remove _load_dotenv function from config.py and add it to src/utilities/loaders.py and rename it as load_dotenv().
+  -> change the dataclass Config in the config.py to be modular. organize all paths and variables so it is easy to understand and modify. 
+    like group variables under headings like paths, limits, thresholds, etc.
+  -> orchestrator.py will import all the necessary variables from config.py and functions from modules like src/utilities, src/extractor, src/ingestor, src/inspector, src/logger.
+  -> orchestrator.py will blend all things to run the pipeline. It would be the largest file but structured well so every part is seperate and easy to debug.
+  
+
+- src/utilities
+  -> move all the functions of json_io.py to src/utilities/json_io_utils.py and remove all the functions fro jsonl as we are moving towards only json system.
+NOTE : AT THIS TIME, I GAVE JSONL A SECOND THOUGHT AND I DECIDED TO KEEP IT. IT IS USEFUL FOR US.
+
+  -> every utility function that is present in current codebase would be in src/utilities and not under one file but different files to keep things modular and easy to understand and debug.
+  
+- src/extractor
+  -> it will contain all the extraction related functions like how crawl4ai will work, how links would be found, all the parts that results to good links extraction that enhances the quality of what we can get from notebooklm rag.
+  -> it should also contain all the function for notebooklm quering and how it will get answers and how it would arrange the final answer etc.
+  -> it is not directory for a phase but directory where code is present for that specific purpose of extraction in all phases of pipeline.
+
+- src/ingestor
+  -> it will contain all the ingestion related functions like how notebooklm will be created and managed, how the notebook will be deleted, how sources would be managed and ingested, quota and limit management. how to check if a notebook is ready for query etc.  
+  -> it is also responsible for all payloads and all the query sent to notebooklm and all related things.
+
+- src/inspector
+  -> it will contain all the inspection related functions like dashboard, audition, analytics, syncing.
+  -> it will be tool for what happened, what is state of codebase, where is error happening and how pipeline ran.
+  -> this and logging system will work closely.  
+
+- src/logger
+  -> it will contain function for logging system  and notebook logger which is present in src/logging_system.py.
+  
+
+Notes:
+1. We will not be using Qdrant. Remove that.
+2. We will be using json for logging systems to better query and search (i know it will be slower but it would make it easier to query and search).
+3. We will connect the database to supabase. All the data will first collected in local database and then after all correct inspection, validation and correction of the data, it will be pushed to supabase.
+4. Our priority is full data and quality over everything. 
+5. Mainly, we want to get much information about programs rather than general information of universities. Of course general information is necessary but programs are our main priority.
+6. The data should be standardised and normalized. 
+7. Seperate Bachelors, Masters, PhD, Diploma, and Post-doctoral etc. 
+    - Bachelors  
+    - Masters  
+    - PhD  
+    - Diploma  
+    - Post-doctoral etc.  
+    And put every university programs in one of these categories.  
+8. We want university admission citeria, requirements, application fee, deadlines etc. 
+9. ALl information that would help us better match our student to universities and programs. 
+10. Reliable, Modular, and Efficient pipeline is our upmost priority.
+11. Pipeline can have errors and the links would not be accepted by notebooklm, we need to handle that by either solving the problem either skipping it or finding an alternative way to get the data from there. Either way, if it does not work, do not send other links and waste time. First check if notebooklm is extracting something or not.
+
+  

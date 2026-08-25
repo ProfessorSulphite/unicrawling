@@ -1,0 +1,384 @@
+# Unicrawling Refactor — Engineering Analysis & Commit-by-Commit To-Do
+
+Companion to [refactoring_plan.md](./refactoring_plan.md). That document is the *what*.
+This document is the *how*, in the order it must actually happen, with a test gate on every commit.
+
+**Status: PLAN ONLY — nothing here has been implemented.**
+
+---
+
+## Part A — Analysis of the Current State
+
+### A.0 BLOCKER: the repository does not import right now
+
+`src/config.py` was edited in the working tree: the field `uni_outputs_dir` was renamed to
+`outputs_uni_outputs_dir`, but `ensure_directories()` (line 175) still references the old name.
+Because `config.py` ends with a module-level `config.ensure_directories()`, **every import of
+`src.config` raises at import time**:
+
+```
+AttributeError: 'Config' object has no attribute 'uni_outputs_dir'
+```
+
+Every module in `src/` imports `src.config`. So `cli.py`, the whole pipeline, and the entire test
+suite are dead right now. `refactoring_plan.md` §2 correctly identifies this bug but schedules the
+fix at step 2 of 14 — it has to be step 0, before anything is committed or measured. There is no
+usable baseline until this is fixed.
+
+### A.1 What the plan gets right
+
+No argument with these; they are the correct calls and the to-do list below implements them as written:
+
+- Domain packages over the current 13 flat files (`extract_links.py` alone is 61 KB / 1350 lines).
+- `orchestrator.py` as a single thin entrypoint replacing the `pipeline.py` + `cli.py` split.
+- Dropping Qdrant.
+- Keeping JSONL alongside JSON.
+- Structured `single_logs/` + `complete_logs/` with resumable IDs.
+- Programs as the primary data target.
+- Pre-flight health sampling before spending quota on a notebook.
+- One commit per step, so any step can be rolled back.
+
+### A.2 Gaps and contradictions found in the codebase that the plan does not cover
+
+These are the ones that will bite mid-refactor if they are not decided up front.
+
+| # | Finding | Evidence | Consequence |
+|---|---------|----------|-------------|
+| 1 | **`schema.py` cannot be a "direct move".** The plan's §7 migration table calls it a direct move, but §5 mandates a schema change. | `src/schema.py:16` `DegreeLevel` enum and `ProgramCategoryBlock` use `undergraduate` / `graduate` / `postgraduate_and_phd`. The plan requires `Bachelors` / `Masters` / `PhD` / `Diploma`. **Diploma does not exist anywhere in the current system.** | Taxonomy change touches schema, prompts, normalizers, inspector aggregation, `university_payload_schema.json`, and all existing output files. Needs its own commit, not a `git mv`. |
+| 2 | **The NotebookLM prompts must change, and the plan never mentions them.** | `src/extract_data.py:350-460`. `QUERY_SUITE` is 5 queries. `_PROGRAM_STRUCTURE` has no `admission_requirements`, and has `summary_3_lines` where §5 requires a full descriptive paragraph. | §5's "per-program required fields" is unachievable by refactoring alone — the data is never requested from NotebookLM. Prompt work is a *feature* commit, kept separate from *move* commits. |
+| 3 | **Adding Diploma breaks the query-budget arithmetic.** | `config.queries_per_university = 5`, `daily_query_budget = 500`; §6.5 of the plan says "reserve the full 5-query budget". | A 6th query per university is +20% quota per uni. `queries_per_university`, the budget, and the §6.5 reservation wording all need updating together, or `reserve_queries()` under-reserves and runs die mid-extraction. |
+| 4 | **Deleting `rankings_pk.json` breaks live code and 3 tests.** | `extract_data.py:290-341` (`load_rankings_registry`, `lookup_registry`, `apply_registry_facts`) reads `config.rankings_json_path` → `resources/rankings_pk.json`. `tests/test_pipeline.py:685-687` asserts `lookup_registry("nust.edu.pk") is not None`. | Cannot just `rm`. Either merge the PK entries into the already-existing `resources/rankings_global.json` (which `universal_normalizer.py:42` already uses) and repoint `rankings_json_path`, or drop registry enrichment entirely. **Recommend: merge into `rankings_global.json`** — one global registry, zero behaviour lost. |
+| 5 | **Qdrant is not confined to the two files the plan lists.** | ~230 lines of `inspect_cli.export_dataset()` (`src/inspect_cli.py:491-720`) interleave the `csv` / `qdrant` / `pinecone` / `json` export paths; `pipeline.py:443` calls `export_dataset(sync=settings["sync_qdrant"])`; `qdrant-client` is in `requirements.txt`; `QDRANT_URL`/`QDRANT_API_KEY` are in `.env.example`. | Removing the Config fields *before* untangling `export_dataset` leaves the tree broken. Qdrant excision must be one atomic commit spanning config + inspector + config.json + requirements + .env.example. Note Pinecone shares the embedding/chunking code path — do not delete it by accident. |
+| 6 | **There is a circular import between the two modules being rewritten.** | `src/pipeline.py` imports `src.inspect_cli` (3 function-local imports: `iter_all_records`, `export_dataset`, `audit_analytics`); `src/inspect_cli.py:` imports `from src.pipeline import run_master_pipeline`. It only works today because the imports are inside functions. | The refactor must declare a direction. **Recommend: `inspector/` never imports `orchestrator` at module level; `orchestrator` may import `inspector`.** The `retry` command in `inspect_cli.py:437` keeps a lazy import. Decide this before writing `orchestrator.py`, not during. |
+| 7 | **The normalizer fabricates data, which contradicts §5's quality rules.** | `universal_normalizer.py:88-140` writes `"Standard University Application Fee"`, `"Refer to Official Tuition Portal"`, `"Intermediate / HSSC (60% Minimum)"`, `"Matric (10%) + HSSC (40%) + Entry Test (50%)"` into empty fields. | These are Pakistan-specific invented values in a system the plan says now targets universities worldwide, and they make the §5 "empty/NaN fields audited by inspector" rule impossible — every empty field is pre-filled with a plausible lie. **Recommend: strip the fabrication, leave nulls, let the auditor report them.** Needs a user decision (see D2). |
+| 8 | **Currency: the plan and the code actually agree — keep it that way.** | `resolve_universal_currency()` only *labels* currency, it never converts. §5 says keep original currency. | `normalizers/currency_tuition.py` must stay a labeller. Flagging because the filename invites someone to add conversion later. |
+| 9 | **`tests/test_pipeline.py` has a name collision with the plan.** | The existing 33 KB `tests/test_pipeline.py` is a unit-test grab-bag over `extract_links`, `extract_data`, `ingest`, `state`, `schema`. The plan wants `tests/test_pipeline.py` to be the *end-to-end orchestration* suite. | Its contents must be split out into `test_extractor/`, `test_ingestor/`, `test_utilities/` first, and the root name freed, before the new e2e suite is written. |
+| 10 | **Unlisted files that still need decisions.** | `cli.py` (root entrypoint), `pytest.ini`, `tests/conftest.py` (`sys.path` shim), `.gitignore`, `requirements.txt`, `.env.example`, `README.md` (14 KB), `COMMANDS.md` (23 KB, ~10 `config.json` references), `CHANGELOG.md`, `loggings/notebook_audit.jsonl` (1.3 MB to migrate), `src_summary.md` (40 KB, will be stale). | The plan's step 13 says only "update `AGENTS.md`". Docs are a real commit's worth of work, and `COMMANDS.md` documents every command that is about to be renamed. |
+| 11 | **Log-based resume overlaps with existing SQLite resume.** | `state.py:34` already has `STATUS_SEQUENCE = (pending, crawled, ingested, extracted, completed)` plus `get_completed_slugs()`, and `pipeline.py` already skips completed universities. | `--resume s_42` must be defined *relative to* `state.sqlite`, not as a second source of truth. **Recommend: the log stores the run manifest (which universities, which settings, where it stopped); state.sqlite remains authoritative for per-university progress.** Needs a user decision (see D3). |
+| 12 | **`config.py` carries dead path fields from an abandoned naming pass.** | `src_utils_dir`, `src_extraction_dir`, `extraction_linkers_dir`, `extraction_payloaders_dir`, `extraction_normalizers_dir`, `src_ingestion_dir`, `src_inspection_dir` — these use the *old* `extraction`/`ingestion`/`inspection` names the plan §1.3 explicitly rejected, and nothing reads them. | Delete them all. Source directories do not belong in a runtime config; only *data* paths do. |
+| 13 | **`config.output_jsonl_path` points at a file that was just deleted.** | Field points to `data/outputs/university_counseling_data.jsonl`; that file is deleted in the working tree, and the aggregate now lives at `data/outputs/all_uni_outputs/universities_crawling_data.json`. | Repoint during the config commit or the first real run writes the aggregate back to the old location. |
+
+### A.3 Methodology recommendation: strangler shims, not big-bang moves
+
+The plan's execution order (move everything in steps 4–11, *then* "update imports" at step 12,
+*then* "run tests" at step 14) leaves the repository non-importable for ten consecutive commits.
+That defeats the stated purpose of committing each step for rollback — you cannot roll back to a
+green commit if none of them are green.
+
+**Every commit below leaves the tree importable and the test suite passing.** The mechanism:
+
+1. Move the real code to its new home.
+2. Leave the old flat file as a 2-line re-export shim: `from src.utilities.json_io import *  # noqa`.
+3. Existing callers and tests keep working, untouched.
+4. Update call sites gradually, in later commits.
+5. Delete all shims in **one** late commit (C24), once nothing imports them.
+
+This makes the refactor bisectable and abortable at any point.
+
+---
+
+## Part B — Decisions Needed Before Starting
+
+Do not start C1 until these are answered; each one changes what gets committed.
+
+- **D1 — Commit the data outputs?** `data/outputs/uni_outputs/*.json` and `data/links/*.jsonl` are
+  currently tracked, and the working tree deletes two large output files. Since the plan declares a
+  clean slate with no backward compatibility, the cleaner choice is to git-ignore
+  `data/outputs/` and `data/links/` and commit the deletions. *Recommendation: ignore them; keep the
+  repo to code.* Affects C1.
+- **D2 — Strip the normalizer's fabricated defaults?** (Finding 7.) *Recommendation: yes, strip; nulls
+  are honest and auditable.* Affects C19.
+- **D3 — What does `--resume s_42` actually resume?** (Finding 11.) *Recommendation: log = run manifest,
+  `state.sqlite` = per-university truth.* Affects C9 and C22.
+- **D4 — Root entrypoint after `cli.py` dies.** `python -m src.orchestrator`, or keep a 5-line root
+  `run.py`? *Recommendation: keep a thin root shim — every doc example and muscle-memory command
+  starts with `python3 cli.py`.* Affects C22 and C28.
+- **D5 — Supabase table schema.** Nothing Supabase-related exists in the codebase yet (no client, no
+  credentials, no DDL). `inspector/sync.py` is fully greenfield and depends on the final program
+  schema. *Recommendation: defer to the last commit (C29) and design the tables after the schema
+  changes in C17–C18 settle.* Affects C29.
+- **D6 — `rankings_pk.json`: merge into `rankings_global.json` or drop registry enrichment?**
+  (Finding 4.) *Recommendation: merge.* Affects C25.
+
+---
+
+## Part C — The Commit-by-Commit To-Do List
+
+Legend: **Gate** = what must be green before the commit is made. Every commit runs the full suite
+(`python -m pytest -q`) at minimum; the Gate names the *additional* specific check.
+
+### Phase 0 — Stabilize and baseline (do not skip)
+
+- [ ] **C0 — Fix the import-time crash.**
+  `src/config.py` `ensure_directories()`: `self.uni_outputs_dir` → `self.outputs_uni_outputs_dir`;
+  add `outputs_all_uni_outputs_dir`, `loggings_single_logs_dir`, `loggings_complete_logs_dir`.
+  Nothing else in this commit.
+  **Gate:** `python -c "import src.config"` exits 0; `python -m pytest -q` runs to completion.
+  **Record the baseline pass/fail count in the commit body** — it is the reference for every commit after this.
+  `fix(config): repair ensure_directories AttributeError blocking all imports`
+
+- [ ] **C1 — Commit the current working state.**
+  Apply D1. Stage `src/config.py` path fields, `data/outputs/all_uni_outputs/`, the two file
+  deletions, `changes_to.txt`, `src_summary.md`, `resources/refactoring_plan.md`, this file.
+  **Gate:** `git status` clean; suite still at baseline.
+  `chore: checkpoint pre-refactor state and refactoring plan`
+
+- [ ] **C2 — Mark the rollback point.**
+  `git tag pre-refactor`, branch `refactor/modular-src`. All following work lands on that branch.
+  **Gate:** `git tag -l` shows the tag.
+
+### Phase 1 — Scaffolding
+
+- [ ] **C3 — Create empty packages.**
+  `src/{utilities,extractor,extractor/linkers,extractor/crawlers,extractor/normalizers,ingestor,inspector,logger}/__init__.py`,
+  `tests/{test_utilities,test_extractor,test_ingestor,test_inspector,test_logger}/`,
+  `loggings/{single_logs,complete_logs}/`, `resources/{plans,analysis}/`.
+  No logic moves. `.gitignore`: ignore `loggings/*/*.json`, keep the directories.
+  **Gate:** `python -c "import src.utilities, src.extractor, src.ingestor, src.inspector, src.logger"`.
+  `refactor(structure): scaffold modular package directories`
+
+### Phase 2 — Utilities (leaf modules, zero internal dependencies — safest first)
+
+- [ ] **C4 — `utilities/loaders.py`.** Move `_load_dotenv()` out of `config.py`, rename `load_dotenv()`;
+  `config.py` imports and calls it. New `tests/test_utilities/test_loaders.py`: existing env vars win,
+  missing file is a no-op, quoted values are stripped, malformed lines are skipped.
+  **Gate:** new test file passes.
+  `refactor(utilities): extract load_dotenv from config`
+
+- [ ] **C5 — `utilities/json_io.py`.** Move all 7 functions (**JSON *and* JSONL — both are kept**).
+  `src/json_io.py` becomes a re-export shim. Move `tests/test_json_io.py` →
+  `tests/test_utilities/test_json_io.py`, repointed at the new path.
+  **Gate:** all existing json_io tests pass at the new import path.
+  `refactor(utilities): move json_io, keep JSON+JSONL helpers`
+
+- [ ] **C6 — `utilities/state_management.py`.** Move `StateManager`, `InvalidStatusError`,
+  `QuotaExceededError`, `STATUS_SEQUENCE`, `VALID_STATUSES`. Shim `src/state.py`. Extract the state
+  tests out of `tests/test_pipeline.py` into `tests/test_utilities/test_state_management.py`.
+  **Gate:** state tests pass at the new path; a real `state.sqlite` still opens.
+  `refactor(utilities): move StateManager to utilities/state_management`
+
+- [ ] **C7 — `utilities/schema.py`.** Pure move, **no field changes yet** (those are C17/C18).
+  Shim `src/schema.py`. Schema tests → `tests/test_utilities/test_schema.py`.
+  **Gate:** pydantic models still validate the existing `data/outputs/uni_outputs/*.json` fixtures.
+  `refactor(utilities): move schema models to utilities/schema`
+
+### Phase 3 — Logger
+
+- [ ] **C8 — `logger/notebook_logger.py`.** Pure move. Shim `src/notebook_logger.py`.
+  `tests/test_notebook_logger.py` → `tests/test_logger/`.
+  **Gate:** existing notebook-logger tests pass.
+  `refactor(logger): move notebook_logger into logger package`
+
+- [ ] **C9 — `logger/pipeline_logger.py` (new).** Structured JSON run logs per plan §4:
+  `s_{id}.json` / `c_{id}.json`, monotonic ID allocation (scan directory, take max+1, **allocate under
+  a lock or an O_EXCL create** — two concurrent runs must not claim the same ID), atomic writes via
+  `utilities.json_io.atomic_write_json`, and a reader that resolves a token like `s_42` back to a run
+  manifest. Implements D3. **Not wired into the pipeline yet** — that is C22.
+  New `tests/test_logger/test_pipeline_logger.py`: ID increments, ID collision under concurrency,
+  malformed log file is skipped not fatal, `--resume` token parsing rejects garbage.
+  **Gate:** new tests pass; no existing behaviour touched.
+  `feat(logger): structured JSON pipeline run logs with resumable IDs`
+
+### Phase 4 — Config
+
+- [ ] **C10 — Reorganize `Config`.** Group into PATHS / CRAWLING LIMITS & THRESHOLDS / BROWSER POOL /
+  HTTP POOL / INGESTION / QUERY & EXTRACTION / EXTERNAL APIS / LOGGING, **with an inline comment on
+  every single field** (plan §2, non-negotiable). Delete the 7 dead `src_*_dir` fields (Finding 12).
+  Repoint `output_jsonl_path` at `all_uni_outputs/` (Finding 13). Add the health-check knobs C13 will
+  need (`health_check_sample_ratio = 0.10`, `health_check_min_sample = 5`). **Leave the Qdrant fields
+  alone — they die in C11.**
+  **Gate:** `tests/test_utilities/test_config.py` (new) asserts every dataclass field has a
+  trailing comment in the source and that `ensure_directories()` creates all 8 directories.
+  `refactor(config): regroup Config by domain with per-field documentation`
+
+### Phase 5 — Qdrant excision (one atomic commit — Finding 5)
+
+- [ ] **C11 — Remove Qdrant everywhere at once.**
+  Delete `query_qdrant.py`, `src/qdrant_validator.py`. Strip the qdrant branch from
+  `inspect_cli.export_dataset()` **while preserving the csv / pinecone / json paths and the shared
+  chunking+embedding code**. Remove `sync_qdrant` from `config.json` and from the `pipeline.py:443`
+  call site. Remove the 4 Qdrant `Config` fields, the `QDRANT_*` lines in `.env.example`, and
+  `qdrant-client` from `requirements.txt`.
+  **Gate:** `grep -ri qdrant src/ tests/ *.py *.json *.txt` returns nothing; `export --format json`
+  and `--format csv` both still produce their files.
+  `refactor: remove Qdrant integration end to end`
+
+### Phase 6 — Ingestor
+
+- [ ] **C12 — Split `ingest.py` (20 KB) into `ingestor/`.**
+  `notebook_lifecycle.py` (`_find_or_create_notebook`, deletion) · `source_management.py`
+  (`sanitize_url`, `check_url_accessible`, `fetch_and_extract_text`, `IngestedSource`, `IngestResult`,
+  `ingest_university_sources`) · `quota_management.py` (budget reservation) ·
+  `readiness_polling.py` (`wait_for_sources_adaptive`, the jittered backoff) · shared HTTP client
+  helpers. Shim `src/ingest.py`. `tests/test_ingest_resilience.py` → `tests/test_ingestor/`.
+  **Gate:** existing ingest-resilience tests pass unchanged at the new import paths.
+  `refactor(ingestor): split ingest.py into lifecycle/sources/quota/readiness`
+
+- [ ] **C13 — Pre-flight link health sampling (new, plan §6).**
+  Before committing a full source batch: sample `max(health_check_min_sample,
+  ceil(ratio * len(links)))` links at random; if the majority fail acceptance/extraction, skip the
+  university and log the failure rather than burning the batch. Isolate individual failures without
+  discarding successes; never exceed `max_query_retries`; reserve the full per-university query
+  budget before any query runs.
+  New `tests/test_ingestor/test_health_sampling.py`: majority-fail → skip + logged; majority-pass →
+  full batch proceeds; sample floor honoured on tiny link sets; a single mid-batch failure does not
+  discard the successful sources.
+  **Gate:** new tests pass; quota accounting verified against `StateManager.reserve_queries`.
+  `feat(ingestor): pre-flight link health sampling before quota spend`
+
+### Phase 7 — Extractor (largest phase; moves first, behaviour changes after)
+
+- [ ] **C14 — Split `extract_links.py` (61 KB / 26 functions) into `extractor/linkers/`.**
+  `crawling.py` (`build_browser_config`, `get_shared_crawler`, `close_shared_crawler`, `browser_pool`,
+  `crawl_site_links`, `CrawlFailure`) · `filteration.py` (`is_excluded_path`, `sanitize_url`,
+  `normalize_url`, `preprocess_and_filter_links`, `compute_year_decay_factor`) ·
+  `deduplication.py` (`dedupe_key`, `deduplicate_canonical_degree_links`) ·
+  `semantic_scoring.py` (`_get_embedding_model`, `classify_and_score_links`,
+  `allocate_proportional_tier_quotas`, `get_discipline_tokens`) · `runner.py` (`run_pipeline`,
+  `export_dual_outputs`, `export_partitioned_links`, `load_partitioned_links`, `slugify_university`).
+  Shim `src/extract_links.py`. Split the P1 tests out of `tests/test_pipeline.py` into
+  `tests/test_extractor/test_linkers_*.py`.
+  **Gate:** every P1 test passes; one live-ish crawl smoke test produces the same link count as before.
+  `refactor(extractor): split extract_links into linkers subpackage`
+
+- [ ] **C15 — Split `extract_data.py` (27 KB) into `extractor/crawlers/`.**
+  `notebook_querying.py` (`QuerySpec`, `QUERY_SUITE`, `_ask`, `run_query`, `ExtractionReport`) ·
+  `exa_enriching.py` (`exa_find_application_portal`) · `json_repairing.py`
+  (`strip_citation_markers`, `_balanced_span`, `extract_json_str`, `repair_and_validate_json`,
+  adapters) · `runner.py` (`extract_university_payload`, registry facts, notebook deletion).
+  Shim `src/extract_data.py`. Tests → `tests/test_extractor/test_crawlers_*.py`.
+  **Gate:** the JSON-repair test battery (the highest-value tests in the suite) passes unchanged.
+  `refactor(extractor): split extract_data into crawlers subpackage`
+
+- [ ] **C16 — Split `universal_normalizer.py` into `extractor/normalizers/`.**
+  `currency_tuition.py` (`resolve_universal_currency`, tuition handling — **labels currency, never
+  converts**, Finding 8) · `eligibility.py` (eligibility/requirement consolidation) ·
+  `degree_names.py` (**new, empty scaffold** — filled in C17) · `runner.py`
+  (`normalize_universal_payload`, `load_global_registry`).
+  Shim `src/universal_normalizer.py`.
+  **Gate:** normalizing an existing `uni_outputs/*.json` file produces byte-identical output to
+  pre-commit (capture a golden file first).
+  `refactor(extractor): split universal_normalizer into normalizers subpackage`
+
+- [ ] **C17 — Degree taxonomy: 4 levels (behaviour change, Findings 1 + 3).**
+  `DegreeLevel` → `bachelors` / `masters` / `phd` / `diploma`; `ProgramCategoryBlock` keys renamed;
+  **add a 6th `diploma` query** to `QUERY_SUITE` and rewrite the three existing program prompts to the
+  new level names; bump `queries_per_university` 5 → 6 and re-derive `daily_query_budget`; update the
+  plan §6.5 "5-query budget" wording. Implement `normalizers/degree_names.py`: map every observed
+  degree string (BS/BSc/BA/BBA/BE/B.Ed/MBBS/LLB/PharmD → bachelors; MS/MSc/MA/MBA/MPhil/M.Ed/LLM →
+  masters; PhD/Doctorate → phd; PGD/Diploma/Certificate → diploma) to exactly one canonical level.
+  **Post-doctoral is excluded entirely** (plan §1 note 5).
+  New `tests/test_extractor/test_degree_names.py` with a table of real degree strings from the existing
+  outputs; assert every program maps to exactly one of the 4 and that nothing lands in a fallback bucket.
+  **Gate:** new taxonomy tests pass; `university_payload_schema.json` regenerated and validating.
+  `feat(schema): replace 3-tier degree levels with Bachelors/Masters/PhD/Diploma`
+
+- [ ] **C18 — Per-program required fields (behaviour change, Finding 2).**
+  Add to `ProgramItem`: full-paragraph `description` (focus areas, learning outcomes, career
+  prospects, distinctive features — replacing/superseding `summary_3_lines`), `admission_requirements`,
+  and deadline handling. Rewrite `_PROGRAM_STRUCTURE` and the program prompts to request all of §5's
+  required fields. Regenerate `university_payload_schema.json`.
+  **Gate:** schema round-trips; one real NotebookLM query (or a recorded fixture) returns a payload
+  that validates against the new model.
+  `feat(extractor): request and model full per-program field set`
+
+- [ ] **C19 — Strip fabricated normalizer defaults** *(only if D2 = yes; Finding 7).*
+  Remove the invented `"Standard University Application Fee"` / `"Refer to Official Tuition Portal"` /
+  HSSC-aggregate fallbacks; leave nulls for the auditor to report.
+  **Gate:** a test asserts a program with no published fee normalizes to `None`, not to prose.
+  `fix(normalizers): stop fabricating values for missing fields`
+
+### Phase 8 — Inspector
+
+- [ ] **C20 — Split `inspect_cli.py` (52 KB) into `inspector/`.**
+  `dashboard.py` (`inspect_university`, `compare_universities`, `search_programs`,
+  `interactive_menu`, `inspect_state`, `inspect_schema`, `inspect_notebooks`) · `auditor.py`
+  (empty/NaN field audits, coverage) · `analytics.py` (`audit_analytics`, `iter_all_records`,
+  `load_all_records`, `find_university_record`, distributions) · export/`sync.py` seam.
+  **Break the `pipeline` ↔ `inspect_cli` cycle here per Finding 6** — `retry_pipeline` keeps a lazy
+  import of the orchestrator; nothing in `inspector/` imports it at module level.
+  Shim `src/inspect_cli.py`. `tests/test_cli_interactive.py` → `tests/test_inspector/`.
+  **Gate:** `python -c "import src.inspector"` with no circular-import error; CLI interactive tests pass.
+  `refactor(inspector): split inspect_cli into dashboard/auditor/analytics/sync`
+
+- [ ] **C21 — Auditor rules for the new schema.**
+  Empty/NaN reporting across the §5 required per-program fields; degree-level distribution counts;
+  a hard "not ready for Supabase" verdict when coverage is below threshold.
+  **Gate:** auditing a deliberately gappy fixture reports exactly the missing fields.
+  `feat(inspector): audit per-program required-field coverage`
+
+### Phase 9 — Orchestrator
+
+- [ ] **C22 — Write `src/orchestrator.py`, retire `pipeline.py`.**
+  Thin orchestration only — **if it starts accumulating logic, that logic belongs back in a module**
+  (plan §1 note 4). Absorbs `run_master_pipeline`, `run_batch_pipeline`, `compile_master_json`,
+  `derive_uni_info`, `backup_existing_outputs`, `generate_result_analytics`. Wires `pipeline_logger`
+  (C9) and implements `--resume s_42` / `--resume c_7` per D3. Applies D4 for the entrypoint.
+  `src/pipeline.py` becomes a shim.
+  **Gate:** a dry-run batch over 2 universities completes and writes a `c_{id}.json`; `--resume`
+  against that log resumes at the right university.
+  `refactor(orchestrator): replace pipeline.py with thin orchestration entrypoint`
+
+- [ ] **C23 — `config.json` → `run_settings.json`.**
+  Rename the file; update the defaults in the orchestrator arg parser and the inspector `batch`
+  subcommand; `sync_qdrant` is already gone from C11.
+  **Gate:** `grep -rn "config\.json" src/ tests/` returns nothing.
+  `refactor: rename config.json to run_settings.json`
+
+### Phase 10 — Cleanup and cutover
+
+- [ ] **C24 — Delete every shim; rewrite every import.**
+  The one deliberately large commit. Remove `src/{extract_links,extract_data,ingest,inspect_cli,json_io,state,schema,notebook_logger,universal_normalizer,pipeline}.py`
+  and `cli.py` (per D4). Every remaining import points at the real module.
+  **Gate:** `grep -rn "^from src\.\(extract\|ingest\|inspect_cli\|json_io\|state\|schema\|notebook_logger\|universal_normalizer\|pipeline\) " src/ tests/` empty; full suite green.
+  `refactor: remove compatibility shims and flat modules`
+
+- [ ] **C25 — Registry consolidation** *(per D6; Finding 4).*
+  Merge `rankings_pk.json` entries into `rankings_global.json`, repoint `config.rankings_json_path`,
+  delete `rankings_pk.json`, fix the `test_pipeline.py:685-687` assertions.
+  **Gate:** `lookup_registry("nust.edu.pk")` still resolves after the merge.
+  `refactor(resources): consolidate rankings registries into rankings_global.json`
+
+- [ ] **C26 — Migrate `notebook_audit.jsonl` (1.3 MB) into the new logging structure.**
+  Convert to the JSON log format under `logger/notebook_logger.py`; delete `loggings/.gitkeep`.
+  **Gate:** the migration is idempotent; no audit record is lost (count before == count after).
+  `refactor(logger): migrate notebook audit trail to structured JSON logs`
+
+- [ ] **C27 — Finalize the test tree.**
+  Confirm the mirror is complete (`test_utilities/`, `test_extractor/`, `test_ingestor/`,
+  `test_inspector/`, `test_logger/`), then write the **new** `tests/test_pipeline.py` as a genuine
+  end-to-end orchestration suite (Finding 9) — full run over a stubbed NotebookLM, resume from log,
+  health-check skip path, Supabase gate blocked by a failing audit. Update `conftest.py` / `pytest.ini`.
+  **Gate:** the e2e suite passes; total test count ≥ the C0 baseline.
+  `test: mirror module structure and add end-to-end pipeline suite`
+
+- [ ] **C28 — Documentation.**
+  `AGENTS.md` (new structure), `README.md` (tree + quick start), `COMMANDS.md` (~10 `config.json`
+  references and every renamed command), `CHANGELOG.md` (the refactor entry), regenerate or delete
+  the now-stale `src_summary.md`, refresh `.env.example`.
+  **Gate:** every command shown in `COMMANDS.md` actually runs.
+  `docs: update all documentation for modular architecture`
+
+- [ ] **C29 — `inspector/sync.py`: Supabase** *(per D5 — last, greenfield).*
+  Design the tables against the final C17/C18 schema, add the client + credentials, and gate the push
+  behind a passing C21 audit — local DB → inspect → validate → **only then** push.
+  **Gate:** a dry-run sync against a Supabase branch; the push refuses to run when the audit fails.
+  `feat(inspector): Supabase sync gated on passing data audit`
+
+---
+
+## Part D — Sequencing Notes
+
+- **C0 is not optional and not deferrable.** There is no baseline until it lands.
+- **Phases 2–3 are pure leaf moves** and can be done fast with high confidence.
+- **C11 (Qdrant), C17 (taxonomy), and C24 (shim removal) are the three risky commits.** Each deserves
+  its own review pass. Everything else is mechanical.
+- **Behaviour changes are quarantined from moves.** C13, C17, C18, C19, C21, C29 change what the
+  system *does*; every other commit only changes where code *lives*. Never mix the two in one commit —
+  it makes a bisect useless.
+- **The three most valuable existing test groups** — JSON repair (`extract_data`), state transitions
+  (`state.py`), and ingest resilience — are the regression net for this entire refactor. Never let a
+  commit land with any of them red.
+- **`orchestrator.py` staying thin is a real risk.** The plan itself flags it (§1 note 4) while
+  `changes_to.txt` predicts it "would be the largest file". Set a soft ceiling (~300 lines); if it
+  exceeds that, logic has leaked out of a module and belongs back inside one.
