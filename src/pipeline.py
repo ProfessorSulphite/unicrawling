@@ -59,7 +59,7 @@ def compile_master_json() -> Path:
 
     Streamed and atomic: called once per run rather than once per university.
     """
-    master_path = config.output_jsonl_path.parent / "university_counseling_data.json"
+    master_path = config.output_master_json_path
     count = stream_compile_master_json(config.output_jsonl_path, master_path)
     print(f"  └─ Master : {master_path} ({count} records)")
     return master_path
