@@ -354,9 +354,9 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   Suite 187 → **202** (→ **206** with `d7cf157`).
   `feat(ingestor): pre-flight link health sampling before quota spend`
 
-### Phase 7 — Extractor (largest phase; moves first, behaviour changes after)  ← **NEXT**
+### Phase 7 — Extractor (largest phase; moves first, behaviour changes after)
 
-- [ ] **C14 — Split `extract_links.py` (61 KB / 26 functions) into `extractor/linkers/`.**
+- [x] **C14 — Split `extract_links.py` (61 KB / 26 functions) into `extractor/linkers/`.** — `99402d1`, `5cc574a`, `1135804`
   `crawling.py` (`build_browser_config`, `get_shared_crawler`, `close_shared_crawler`, `browser_pool`,
   `crawl_site_links`, `CrawlFailure`) · `filteration.py` (`is_excluded_path`, `sanitize_url`,
   `normalize_url`, `preprocess_and_filter_links`, `compute_year_decay_factor`) ·
@@ -369,10 +369,46 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   **Carried over from C11b:** wire `semantic_scoring.py` to read `config.embedding_model_name` and
   `config.embedding_batch_size` instead of hardcoding them, so the pinning test becomes a real
   contract rather than a drift guard.
-  **Gate:** every P1 test passes; one live-ish crawl smoke test produces the same link count as before.
+  **Gate met:** all 60 P1 tests pass at the new import paths, and a differential probe of 8
+  function families (normalize_url, is_excluded_path, dedupe_key, compute_year_decay_factor,
+  get_discipline_tokens, slugify_university, preprocess_and_filter_links,
+  allocate_proportional_tier_quotas) produces **byte-identical JSON** against a `pre-refactor`
+  worktree. Split across **three commits** so a bisect can separate the move from the behaviour
+  change — the lesson from C12.
+
+  **`99402d1` — the pure move.** 1412 lines / 61 definitions → six modules, verified by AST diff
+  (all 61 present exactly once, byte-identical bodies). Only intentional difference: `BASE_DIR`
+  moved three directories deeper, `parent.parent` → `parents[3]`, asserted to resolve identically.
+  - **The plan's module assignment does not import.** It filed `dedupe_key` under `deduplication`
+    and `get_discipline_tokens` under `semantic_scoring`, producing
+    `filteration → deduplication → semantic_scoring → filteration`. Following actual callers fixes
+    it: `dedupe_key` is used only by `preprocess_and_filter_links`, `get_discipline_tokens` only by
+    `deduplicate_canonical_degree_links`. Package is now a strict DAG:
+    `constants ← filteration ← deduplication ← semantic_scoring ← runner`, `constants ← crawling ← runner`.
+  - **Added a 6th module, `constants.py`** (the plan named five) — ~25 shared constants and regexes
+    would otherwise have to be duplicated or create cycles. It also carries the `logging.basicConfig`
+    import-time side effect verbatim; every module imports constants so it still fires once at the
+    same point. **That belongs in a real logging setup — worth folding into C21/C28.**
+  - Shim omits `_SHARED_CRAWLER`, `_SHARED_CRAWLER_LOOP`, `_EMBEDDING_MODEL` (rebindable globals —
+    the C8 `_logger_instance` rule) and keeps a `__main__` guard so `python -m src.extract_links`
+    still runs.
+
+  **`5cc574a` — the C11b obligation, discharged.** `_get_embedding_model` and
+  `classify_and_score_links` now read `config.embedding_model_name` / `embedding_batch_size`.
+  The C11b pinning test only compared *source text*; replaced by
+  `tests/test_extractor/test_linkers_semantic_scoring.py`, which observes what the scorer actually
+  asks for through a fake model and asserts that **changing** either config value changes the call.
+  No real model is loaded, so the suite stays ~7s. Also covered: single load per process, and the
+  bge query prefix on the keyword side only.
+
+  **`1135804` — tests moved** out of the `test_pipeline.py` grab-bag into
+  `test_linkers_{filteration,deduplication,quotas,runner}.py`, importing the real modules instead of
+  the shim. `test_pipeline.py` 677 → 337 lines; nine dead imports removed.
+
+  Suite 206 → **212**.
   `refactor(extractor): split extract_links into linkers subpackage`
 
-- [ ] **C15 — Split `extract_data.py` (27 KB) into `extractor/crawlers/`.**
+- [ ] **C15 — Split `extract_data.py` (27 KB) into `extractor/crawlers/`.**  ← **NEXT**
   `notebook_querying.py` (`QuerySpec`, `QUERY_SUITE`, `_ask`, `run_query`, `ExtractionReport`) ·
   `exa_enriching.py` (`exa_find_application_portal`) · `json_repairing.py`
   (`strip_citation_markers`, `_balanced_span`, `extract_json_str`, `repair_and_validate_json`,
