@@ -142,9 +142,14 @@ again at the commit it affects.
 
 ### Open items not yet owned by a commit
 
-- **PENDING DECISION:** add a test asserting no test patches a module-level name on a shimmed
-  module, so the C12 silent-no-op class is caught automatically during the remaining big splits
-  (C14, C15, C20). Proposed before C13; awaiting go-ahead.
+- ~~Add a test asserting no test patches a module-level name on a shimmed module.~~ **Done** —
+  `d7cf157`. `tests/test_shim_hygiene.py` AST-walks `tests/` for string targets of
+  `monkeypatch.setattr` / `mock.patch`, splits each at the longest importable module prefix and
+  fails on a one-component remainder against a shim. Attribute reads *through* a shim
+  (`src.state.config.state_db_path` → the shared singleton) stay allowed. Shims are discovered
+  from docstrings, so C14/C15/C20 are covered automatically and the guard self-skips after C24.
+- Decisions **D2, D4, D5, D6** are still unanswered; each is due at the commit that needs it
+  (D2 → C19, D4 → C21, D5 → C29, D6 → C26).
 
 ---
 
@@ -289,18 +294,30 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   model on every run.
   Suite 186 → **187**.
 
-### Phase 6 — Ingestor  ← **NEXT**
+### Phase 6 — Ingestor — ✅ COMPLETE
 
-- [ ] **C12 — Split `ingest.py` (20 KB) into `ingestor/`.**
+- [x] **C12 — Split `ingest.py` (20 KB) into `ingestor/`.** — `2c5502e`
   `notebook_lifecycle.py` (`_find_or_create_notebook`, deletion) · `source_management.py`
   (`sanitize_url`, `check_url_accessible`, `fetch_and_extract_text`, `IngestedSource`, `IngestResult`,
   `ingest_university_sources`) · `quota_management.py` (budget reservation) ·
   `readiness_polling.py` (`wait_for_sources_adaptive`, the jittered backoff) · shared HTTP client
   helpers. Shim `src/ingest.py`. `tests/test_ingest_resilience.py` → `tests/test_ingestor/`.
-  **Gate:** existing ingest-resilience tests pass unchanged at the new import paths.
+  **Gate met:** the four ingest-resilience tests pass at the new import paths. Five modules:
+  `http_client.py` (105) · `notebook_lifecycle.py` (47) · `source_management.py` (309) ·
+  `quota_management.py` (30) · `readiness_polling.py` (102). **Deviation:** the plan named four
+  modules; the shared HTTP/2 pool became a fifth rather than being duplicated.
+  **Two bugs I introduced and had to fix — both from retyping instead of moving:**
+  (1) I hand-wrote `_extract_id` in `readiness_polling.py`, dropping its `isinstance(obj, str)`
+  branch and changing the attribute list. Bare-string SDK returns became upload failures —
+  4 tests red. Restored verbatim from `git show HEAD:src/ingest.py`. **This is where the
+  "move code, never retype it" rule in Part B2 comes from.**
+  (2) `test_ingest_resilience.py` patched `src.ingest.check_url_accessible` — the *shim* — which
+  rebinds the shim's global while the caller resolves its own. The pre-flight test silently
+  stopped testing pre-flight **while still passing**. Repointed at
+  `src.ingestor.source_management.*`; now caught automatically by `d7cf157`.
   `refactor(ingestor): split ingest.py into lifecycle/sources/quota/readiness`
 
-- [ ] **C13 — Pre-flight link health sampling (new, plan §6).**
+- [x] **C13 — Pre-flight link health sampling (new, plan §6).** — `f46f51c`
   Before committing a full source batch: sample `max(health_check_min_sample,
   ceil(ratio * len(links)))` links at random; if the majority fail acceptance/extraction, skip the
   university and log the failure rather than burning the batch. Isolate individual failures without
@@ -309,10 +326,35 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   New `tests/test_ingestor/test_health_sampling.py`: majority-fail → skip + logged; majority-pass →
   full batch proceeds; sample floor honoured on tiny link sets; a single mid-batch failure does not
   discard the successful sources.
-  **Gate:** new tests pass; quota accounting verified against `StateManager.reserve_queries`.
+  **Gate met:** 15 new tests in `tests/test_ingestor/test_health_sampling.py`; quota accounting
+  verified against `StateManager.reserve_queries` (a refused reservation is not partially applied).
+  New `src/ingestor/health_sampling.py`.
+  **Design notes worth keeping:**
+  - The probe is **injected**, not imported — `source_management` both owns the real probe and
+    consumes this module, so importing would be circular. It also lets the unit tests pass a plain
+    function rather than monkeypatching a module attribute (the C12 hazard).
+  - Sampling is **random, not head-of-list**: link lists arrive tier-ordered, so the head is
+    systematically healthier than the batch and would clear a university with a dead tail.
+  - `run_health_check` returns a verdict rather than raising, so the caller keeps one return path.
+    A probe that raises counts as one dead link, not a failed check.
+  - Sample size is `ceil(ratio · n)` floored at the minimum and **clamped to the population**, so a
+    3-link university gets 3 probes, not an impossible request for 5.
+  **Scope grew (all justified by the plan's intent):**
+  - `ingest_university_sources` reordered to normalise → health check → **create notebook**. It
+    previously provisioned the notebook first, which would have orphaned one per skipped university.
+  - `IngestResult` gained `skipped` / `skip_reason` / `health`; `notebook_id` now defaults to `""`.
+  - The empty-link-set early return became a skip — it used to provision a notebook and return zero
+    sources.
+  - Sampled verdicts carry over into the full pre-flight pass, so the sample costs no extra fetches.
+  - `pipeline.py` branches on the verdict instead of writing an `ingested` status with an empty
+    `notebook_id`.
+  **Rest of plan §6 audited, not changed:** failure isolation (now pinned by a test), notebook-level
+  failure → skip + log (`pipeline.py:279`), the `max_query_retries` cap (`extract_data.py:513`), and
+  the up-front `queries_per_university` reservation, which already ran before any query.
+  Suite 187 → **202** (→ **206** with `d7cf157`).
   `feat(ingestor): pre-flight link health sampling before quota spend`
 
-### Phase 7 — Extractor (largest phase; moves first, behaviour changes after)
+### Phase 7 — Extractor (largest phase; moves first, behaviour changes after)  ← **NEXT**
 
 - [ ] **C14 — Split `extract_links.py` (61 KB / 26 functions) into `extractor/linkers/`.**
   `crawling.py` (`build_browser_config`, `get_shared_crawler`, `close_shared_crawler`, `browser_pool`,
