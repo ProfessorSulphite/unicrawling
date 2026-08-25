@@ -3,9 +3,9 @@
 Companion to [refactoring_plan.md](./refactoring_plan.md). That document is the *what*.
 This document is the *how*, in the order it must actually happen, with a test gate on every commit.
 
-**Status: IN PROGRESS.** Phases 0–3 complete (C0–C9). Work is on branch
+**Status: IN PROGRESS.** Phases 0–5 complete (C0–C11). Work is on branch
 `refactor/modular-src`; `main` remains at `4d531f0` and the tag `pre-refactor` marks that same
-commit. **Baseline: 116 at C0, now 174** (C4 +11 loaders, C9 +47 pipeline logger). Every commit must hold the current count.
+commit. **Baseline: 116 at C0, now 186** (C4 +11 loaders, C9 +47 logger, C10 +10 config, C11 +2 export). Every commit must hold the current count.
 (`/home/huzaifayaqob/miniconda3/envs/ise-env/bin/python -m pytest -q`).
 
 > Note: the project runs on conda env `ise-env` (Python 3.11). The base conda python has no pytest.
@@ -214,31 +214,36 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   in `__init__` so an interrupted run stays resumable, and `__exit__` records the exception rather
   than leaving a run marked `running` forever. Suite 127 → **174**.
 
-### Phase 4 — Config  ← **NEXT**
+### Phase 4 — Config — ✅ COMPLETE
 
-- [ ] **C10 — Reorganize `Config`.** Group into PATHS / CRAWLING LIMITS & THRESHOLDS / BROWSER POOL /
+- [x] **C10 — Reorganize `Config`.** — `1df6109` Group into PATHS / CRAWLING LIMITS & THRESHOLDS / BROWSER POOL /
   HTTP POOL / INGESTION / QUERY & EXTRACTION / EXTERNAL APIS / LOGGING, **with an inline comment on
   every single field** (plan §2, non-negotiable). Delete the 7 dead `src_*_dir` fields (Finding 12).
   Repoint `output_jsonl_path` at `all_uni_outputs/` (Finding 13). Add the health-check knobs C13 will
   need (`health_check_sample_ratio = 0.10`, `health_check_min_sample = 5`). **Leave the Qdrant fields
   alone — they die in C11.**
-  **Gate:** `tests/test_utilities/test_config.py` (new) asserts every dataclass field has a
-  trailing comment in the source and that `ensure_directories()` creates all 8 directories.
-  `refactor(config): regroup Config by domain with per-field documentation`
+  **Gate met:** `test_config.py` walks the source with `ast` to prove all 67 fields carry an
+  inline comment, and rejects placeholder comments under 15 chars. **Extra fix:** `pipeline.py`
+  derived the master JSON filename from `output_jsonl_path.parent`, which after the repoint would
+  have written a wrongly-named file — added an explicit `output_master_json_path` and used it at
+  the call site. `ensure_directories()` now covers 11 directories. Suite 174 → **184**.
 
-### Phase 5 — Qdrant excision (one atomic commit — Finding 5)
+### Phase 5 — Qdrant excision (one atomic commit — Finding 5) — ✅ COMPLETE
 
-- [ ] **C11 — Remove Qdrant everywhere at once.**
+- [x] **C11 — Remove Qdrant everywhere at once.** — `00c1f4e`
   Delete `query_qdrant.py`, `src/qdrant_validator.py`. Strip the qdrant branch from
   `inspect_cli.export_dataset()` **while preserving the csv / pinecone / json paths and the shared
   chunking+embedding code**. Remove `sync_qdrant` from `config.json` and from the `pipeline.py:443`
   call site. Remove the 4 Qdrant `Config` fields, the `QDRANT_*` lines in `.env.example`, and
   `qdrant-client` from `requirements.txt`.
-  **Gate:** `grep -ri qdrant src/ tests/ *.py *.json *.txt` returns nothing; `export --format json`
-  and `--format csv` both still produce their files.
-  `refactor: remove Qdrant integration end to end`
+  **Gate met:** no `qdrant` match outside the planning docs; csv/pinecone/json all export;
+  `cli.py export --help` offers exactly `{csv,pinecone,json}`. 86 lines of export/sync logic and
+  349 lines of standalone files removed. The `sync` parameter went too — its only consumer was the
+  Qdrant branch. **Coverage gap found:** `--format json` is the path `run_batch_pipeline` actually
+  calls in production and had **no test at all**, which made this excision riskier than it looked;
+  now covered, plus a guard that the removed format is gone from the CLI. Suite 184 → **186**.
 
-### Phase 6 — Ingestor
+### Phase 6 — Ingestor  ← **NEXT**
 
 - [ ] **C12 — Split `ingest.py` (20 KB) into `ingestor/`.**
   `notebook_lifecycle.py` (`_find_or_create_notebook`, deletion) · `source_management.py`
