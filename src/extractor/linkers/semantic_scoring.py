@@ -89,8 +89,8 @@ def _get_embedding_model() -> SentenceTransformer:
     """
     global _EMBEDDING_MODEL
     if _EMBEDDING_MODEL is None:
-        logger.info("Loading SentenceTransformer ('BAAI/bge-small-en-v1.5') [once per process]...")
-        _EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-small-en-v1.5")
+        logger.info(f"Loading SentenceTransformer ('{config.embedding_model_name}') [once per process]...")
+        _EMBEDDING_MODEL = SentenceTransformer(config.embedding_model_name)
     return _EMBEDDING_MODEL
 
 
@@ -101,7 +101,7 @@ def classify_and_score_links(
 ) -> List[Dict[str, str]]:
     """
     Computes cosine similarity between clean link text representation and counselor keywords
-    using SentenceTransformer ('BAAI/bge-small-en-v1.5').
+    using the SentenceTransformer named by config.embedding_model_name.
     Applies 2026 recency weighting when uptodate=True (boosts 2025-2027, penalizes 2010-2023).
     Ranks links by Priority Tier and weighted similarity score. RAM-optimized.
     """
@@ -124,7 +124,8 @@ def classify_and_score_links(
     logger.info(f"Encoding {len(ALL_COUNSELOR_KEYWORDS)} keywords and {len(link_texts)} links (uptodate={uptodate})...")
     keyword_embeddings = model.encode(prefixed_keywords, convert_to_tensor=True, normalize_embeddings=True)
     link_embeddings = model.encode(
-        link_texts, convert_to_tensor=True, normalize_embeddings=True, batch_size=64
+        link_texts, convert_to_tensor=True, normalize_embeddings=True,
+        batch_size=config.embedding_batch_size
     )
 
     similarity_matrix = model.similarity(link_embeddings, keyword_embeddings)
