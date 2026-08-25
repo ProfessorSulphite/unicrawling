@@ -180,6 +180,15 @@ async def _run_master_pipeline(
                 links=links_list,
                 client=client
             )
+            # The pre-flight health check can refuse the batch before any
+            # notebook or query budget is spent. That is a skip, not a crash:
+            # record it and move to the next university.
+            if ingest_res.skipped:
+                error_msg = f"Phase 2 skipped: {ingest_res.skip_reason}."
+                state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+                print(f"⏭️  [PHASE 2 SKIPPED] {error_msg}")
+                return
+
             notebook_id = ingest_res.notebook_id
             ingested_count = ingest_res.ingested_count
             print(

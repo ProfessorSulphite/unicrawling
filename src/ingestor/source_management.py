@@ -20,6 +20,7 @@ from src.ingestor.http_client import (
     _WHITESPACE_REGEX,
     get_http_client,
 )
+from src.ingestor.health_sampling import HealthReport, run_health_check
 from src.ingestor.notebook_lifecycle import _find_or_create_notebook
 from src.ingestor.quota_management import resolve_source_cap
 from src.ingestor.readiness_polling import _extract_id, wait_for_sources_adaptive
@@ -133,10 +134,16 @@ class IngestResult:
     returned (notebook_id, count), which destroyed the tier association at the
     Phase 2/Phase 3 boundary and forced every query to run unscoped.
     """
-    notebook_id: str
+    notebook_id: str = ""
     sources: List[IngestedSource] = field(default_factory=list)
     failed_urls: List[str] = field(default_factory=list)
     ready_count: int = 0
+    # Set when the pre-flight health check refused the batch. The notebook is
+    # never created in that case, so notebook_id stays empty and the caller must
+    # branch on `skipped` before recording an "ingested" status.
+    skipped: bool = False
+    skip_reason: str = ""
+    health: Optional[HealthReport] = None
 
     @property
     def ingested_count(self) -> int:
@@ -175,7 +182,10 @@ async def ingest_university_sources(
         max_sources: Override for config.max_sources_per_notebook.
 
     Returns:
-        IngestResult carrying the notebook id and the full tier mapping.
+        IngestResult carrying the notebook id and the full tier mapping. If the
+        pre-flight health check rejects the link set, `skipped` is True, no
+        notebook was created, and `notebook_id` is empty -- the caller must not
+        record an "ingested" status for that university.
     """
     if client is None:
         raise ValueError(
@@ -185,9 +195,7 @@ async def ingest_university_sources(
         )
 
     cap = resolve_source_cap(max_sources)
-    title = f"{uni_name}_Counseling_DB"
-    notebook_id = await _find_or_create_notebook(client, title, uni_slug=uni_slug)
-    result = IngestResult(notebook_id=notebook_id)
+    result = IngestResult()
 
     # Normalise input records, sanitize URLs, and apply the per-notebook cap.
     normalised: List[Dict[str, Any]] = []
@@ -200,16 +208,39 @@ async def ingest_university_sources(
             normalised.append({"url": clean_u, "tier": int(item.get("tier", 1))})
 
     if not normalised:
-        logger.warning(f"{uni_slug}: no ingestable links supplied.")
+        result.skipped = True
+        result.skip_reason = "no ingestable links supplied"
+        logger.warning(f"{uni_slug}: {result.skip_reason}.")
         return result
 
-    # Pre-flight HTTP accessibility check to filter out dead/403 links before sending to NotebookLM
+    # Pre-flight health sampling (plan section 6.1). Runs BEFORE the notebook is
+    # created: provisioning first and sampling second would leave an orphaned
+    # notebook behind for every university we then decide to skip.
+    result.health = await run_health_check(
+        normalised, probe=check_url_accessible, label=uni_slug
+    )
+    if not result.health.healthy:
+        result.skipped = True
+        result.skip_reason = f"link health check failed -- {result.health.reason}"
+        result.failed_urls.extend(result.health.failed)
+        return result
+
+    title = f"{uni_name}_Counseling_DB"
+    notebook_id = await _find_or_create_notebook(client, title, uni_slug=uni_slug)
+    result.notebook_id = notebook_id
+
+    # Pre-flight HTTP accessibility check to filter out dead/403 links before sending to NotebookLM.
+    # Links already probed by the health sample carry their verdict over rather
+    # than being fetched a second time.
     if getattr(config, "preflight_http_check", True) and normalised:
         accessible_links = []
         inaccessible_urls = []
         check_sem = asyncio.Semaphore(config.preflight_concurrency)
+        known = result.health.results
 
         async def _check(rec):
+            if rec["url"] in known:
+                return rec, known[rec["url"]]
             async with check_sem:
                 is_ok = await check_url_accessible(rec["url"])
                 return rec, is_ok
@@ -230,7 +261,9 @@ async def ingest_university_sources(
         normalised = accessible_links
 
     if not normalised:
-        logger.warning(f"{uni_slug}: zero accessible links survived pre-flight HTTP check.")
+        result.skipped = True
+        result.skip_reason = "zero accessible links survived pre-flight HTTP check"
+        logger.warning(f"{uni_slug}: {result.skip_reason}.")
         return result
 
     sem = asyncio.Semaphore(config.concurrent_uploads)

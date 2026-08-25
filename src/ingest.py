@@ -5,6 +5,7 @@ DEPRECATED compatibility shim -- ingest.py was split into src/ingestor/ in C12.
   notebook_lifecycle.py  notebook provisioning
   source_management.py   URL hygiene, pre-flight, upload
   quota_management.py    source cap (query budget stays in StateManager)
+  health_sampling.py     pre-flight link health sampling (C13)
   readiness_polling.py   jittered backoff readiness checks
 
 Kept so existing call sites keep working while the refactor is in flight.
@@ -15,6 +16,11 @@ from src.ingestor.http_client import (  # noqa: F401
     close_http_client,
     get_http_client,
     http_session,
+)
+from src.ingestor.health_sampling import (  # noqa: F401
+    HealthReport,
+    run_health_check,
+    select_health_sample,
 )
 from src.ingestor.notebook_lifecycle import _find_or_create_notebook  # noqa: F401
 from src.ingestor.quota_management import resolve_source_cap  # noqa: F401
