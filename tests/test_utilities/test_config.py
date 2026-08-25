@@ -130,3 +130,34 @@ def test_tier_quotas_sum_to_the_requested_total():
 
 def test_tier_quota_shares_are_a_partition():
     assert pytest.approx(sum(config.tier_quota_shares.values()), abs=1e-9) == 1.0
+
+
+def test_embedding_config_matches_the_scorer():
+    """
+    The embedding fields were only ever read by the vector exporter deleted in C11b,
+    and they disagreed with what the link scorer actually loads: config said
+    bge-*base* (768-dim) and batch 32, while classify_and_score_links hardcodes
+    bge-*small* (384-dim) and batch 64. Pin them together so they cannot drift
+    again before C14 wires the scorer to read config.
+    """
+    import inspect as _inspect
+
+    import src.extract_links as linkers
+
+    scorer_src = _inspect.getsource(linkers._get_embedding_model)
+    assert config.embedding_model_name in scorer_src, (
+        f"config.embedding_model_name ({config.embedding_model_name}) does not match "
+        "the model the scorer actually loads"
+    )
+    encode_src = _inspect.getsource(linkers.classify_and_score_links)
+    assert f"batch_size={config.embedding_batch_size}" in encode_src, (
+        f"config.embedding_batch_size ({config.embedding_batch_size}) does not match "
+        "the batch size the scorer actually uses"
+    )
+
+
+def test_no_vector_store_credentials_remain():
+    """Supabase is the only destination; Qdrant and Pinecone keys are gone."""
+    for dead in ("qdrant_url", "qdrant_api_key", "qdrant_collection_name",
+                 "qdrant_upsert_batch_size", "pinecone_api_key", "pinecone_index_name"):
+        assert dead not in Config.__dataclass_fields__, f"{dead} should have been removed"

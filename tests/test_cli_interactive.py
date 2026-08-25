@@ -176,25 +176,6 @@ def test_export_csv(mock_master_data):
         assert "BBA Honors" in prog_names
 
 
-def test_export_pinecone_payload(mock_master_data):
-    tmp_path, _ = mock_master_data
-    pinecone_out = tmp_path / "pinecone_export.json"
-
-    export_dataset(format_type="pinecone", output_path=pinecone_out)
-
-    assert pinecone_out.exists()
-    with open(pinecone_out, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-        assert "vectors" in payload
-        vectors = payload["vectors"]
-        assert len(vectors) == 3
-        v0 = vectors[0]
-        assert "id" in v0
-        assert "values" in v0
-        assert "metadata" in v0
-        assert v0["metadata"]["uni_name"] == "Information Technology University"
-
-
 def test_export_json_is_country_grouped(mock_master_data):
     """
     The production path: run_batch_pipeline calls export_dataset(format_type="json").
@@ -216,12 +197,16 @@ def test_export_json_is_country_grouped(mock_master_data):
     assert per_country.exists(), "per-country directory output was not written"
 
 
-def test_export_rejects_the_removed_qdrant_format():
-    """C11 removed Qdrant; the format must be gone from the CLI's accepted choices."""
+def test_export_offers_only_the_surviving_formats():
+    """
+    C11 removed Qdrant and C11b removed Pinecone. Supabase is the only destination
+    now, so the vector-store export formats must be gone from the CLI.
+    """
     import argparse
 
     import src.inspect_cli as cli
 
     parser_src = inspect.getsource(cli.main)
     assert "qdrant" not in parser_src.lower()
-    assert '"csv", "pinecone", "json"' in parser_src
+    assert "pinecone" not in parser_src.lower()
+    assert '"csv", "json"' in parser_src

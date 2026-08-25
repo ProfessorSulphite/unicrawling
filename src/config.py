@@ -162,14 +162,19 @@ class Config:
     # EXTERNAL API KEYS
     # ═══════════════════════════════════════════════════════════════════════
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
-    pinecone_api_key: str = field(default_factory=lambda: os.getenv("PINECONE_API_KEY", ""))                    # Pinecone key; only needed for `export --format pinecone`
-    pinecone_index_name: str = field(default_factory=lambda: os.getenv("PINECONE_INDEX_NAME", "education-counselor"))  # Target Pinecone index name
 
     # ═══════════════════════════════════════════════════════════════════════
-    # EMBEDDING & VECTOR EXPORT
+    # EMBEDDING (Phase 1 semantic link scoring)
+    #
+    # These mirror the values classify_and_score_links() currently hardcodes.
+    # Until C14 wires the scorer to read them they are documentation, not a knob --
+    # test_embedding_config_matches_the_scorer pins them so the two cannot drift
+    # apart silently. Note the model is bge-*small* (384-dim): the *base* value
+    # previously sitting here was only ever read by the deleted vector exporter,
+    # and never matched what the scorer actually loaded.
     # ═══════════════════════════════════════════════════════════════════════
-    embedding_model_name: str = "BAAI/bge-base-en-v1.5"   # Sentence-transformer used for link scoring and vector export; changing it changes the vector dimension
-    embedding_batch_size: int = 32                        # Texts per embedding forward pass; raise for throughput, costs GPU/CPU memory
+    embedding_model_name: str = "BAAI/bge-small-en-v1.5"  # Sentence-transformer used to score link relevance; changing it changes vector dimension and invalidates semantic_threshold
+    embedding_batch_size: int = 64                        # Links per embedding forward pass; raise for throughput, costs GPU/CPU memory
 
     def ensure_directories(self) -> None:
         """Create every workspace directory the pipeline writes into."""

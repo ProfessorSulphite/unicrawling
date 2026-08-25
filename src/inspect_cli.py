@@ -485,11 +485,11 @@ def retry_pipeline(target: str = "failed"):
 
 
 # ------------------------------------------------------------------------------
-# 5. DATASET EXPORTER COMMAND (export [--format csv|pinecone|json])
+# 5. DATASET EXPORTER COMMAND (export [--format csv|json])
 # ------------------------------------------------------------------------------
 
 def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None):
-    """Exports structured outputs to CSV, a Pinecone vector payload, or Country-Grouped JSON."""
+    """Exports structured outputs to CSV or Country-Grouped JSON."""
     records = load_all_records()
     if not records:
         console.print(f"[bold red]Error:[/bold red] No data records found to export in [yellow]{config.output_jsonl_path}[/yellow].")
@@ -561,182 +561,43 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None)
 
         console.print(Panel(f"[bold green]✓ CSV Export Completed Successfully![/bold green]\nSaved {len(rows)} degree program rows to:\n[cyan]{out_file}[/cyan]"))
 
-    elif fmt in ("pinecone", "json"):
-        # Build document chunks for vector indexing
-        raw_items = []
-        chunk_idx = 0
+    elif fmt == "json":
+        country_grouped: Dict[str, List[Dict[str, Any]]] = {}
         for rec in records:
-            main = rec.get("main_info", {})
-            uni_name = main.get("name", "Unknown Uni")
-            uni_slug = main.get("abbreviation", uni_name.replace(" ", "_")).lower()
-            country_str = main.get("country", "Pakistan")
-            city_str = main.get("city", "Main Campus")
-            portal_url = main.get("key_links", {}).get("application_portal_url", "")
-            progs = rec.get("programs", {})
+            c_name = rec.get("main_info", {}).get("country") or "Pakistan"
+            country_grouped.setdefault(c_name, []).append(rec)
 
-            for cat_key in ["undergraduate", "graduate", "postgraduate_and_phd"]:
-                for p in progs.get(cat_key, []):
-                    chunk_idx += 1
-                    intakes = ", ".join(p.get("intake_terms", ["Fall"]))
-                    mode = p.get("delivery_mode", "On-Campus")
-                    app_fee = p.get("application_fee", "N/A")
-                    
-                    text_chunk = (
-                        f"University: {uni_name} ({city_str}, {country_str})\n"
-                        f"Program: {p.get('name')} | Level: {cat_key}\n"
-                        f"Department: {p.get('department', 'N/A')}\n"
-                        f"Intake Terms: {intakes} | Delivery: {mode}\n"
-                        f"Tuition Fee: {p.get('tuition_fee', 'N/A')} ({p.get('currency', 'PKR')}) | Application Fee: {app_fee}\n"
-                        f"Summary: {p.get('summary_3_lines', '')}\n"
-                        f"Application Portal: {portal_url}"
-                    )
-                    raw_items.append({
-                        "id": f"{uni_slug}_prog_{chunk_idx}",
-                        "text": text_chunk,
-                        "metadata": {
-                            "uni_name": uni_name,
-                            "uni_slug": uni_slug,
-                            "country": country_str,
-                            "city": city_str,
-                            "degree_level": cat_key,
-                            "program_name": p.get("name", ""),
-                            "department": p.get("department", ""),
-                            "tuition_fee": p.get("tuition_fee", ""),
-                            "currency": p.get("currency", "PKR"),
-                            "intake_terms": intakes,
-                            "delivery_mode": mode,
-                            "portal_url": portal_url,
-                            "text_chunk": text_chunk,
-                        }
-                    })
+        out_file = output_path or (config.data_outputs_dir / "university_counseling_data.json")
+        with open(out_file, "w", encoding="utf-8") as f:
+            json.dump(country_grouped, f, indent=2, ensure_ascii=False)
 
-        vectors = []
-        if fmt == "pinecone":
-            try:
-                from sentence_transformers import SentenceTransformer
-                model_name = getattr(config, "embedding_model_name", "BAAI/bge-base-en-v1.5")
-                try:
-                    model = SentenceTransformer(model_name)
-                except Exception:
-                    model = SentenceTransformer("all-MiniLM-L6-v2")
-                texts = [item["text"] for item in raw_items]
-                embeddings = model.encode(
-                    texts,
-                    batch_size=getattr(config, "embedding_batch_size", 32),
-                    show_progress_bar=False,
-                    normalize_embeddings=True,
-                )
-                vectors = [emb.tolist() for emb in embeddings]
-            except Exception as e:
-                console.print(f"[yellow]SentenceTransformer model loading warning: {e}. Using zero-vectors.[/yellow]")
-                vectors = [[0.0] * 768 for _ in raw_items]
+        country_outputs_dir = config.data_outputs_dir / "country_outputs"
+        country_outputs_dir.mkdir(parents=True, exist_ok=True)
 
-        chunks = []
-        for idx, item in enumerate(raw_items):
-            vec = vectors[idx] if idx < len(vectors) else [0.0] * 768
-            chunks.append({
-                "id": item["id"],
-                "values": vec,
-                "metadata": item["metadata"]
-            })
+        country_slug_map = {
+            "Pakistan": "pak",
+            "Germany": "german",
+            "United States": "usa",
+            "United Kingdom": "uk",
+            "Switzerland": "swiss",
+        }
 
-        if fmt == "pinecone":
-            out_file = output_path or (config.data_outputs_dir / "pinecone_export.json")
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump({"vectors": chunks}, f, indent=2, ensure_ascii=False)
+        written_countries = []
+        for country_name, uni_list in country_grouped.items():
+            c_slug = country_slug_map.get(country_name, country_name.lower().replace(" ", "_"))
+            c_dir = country_outputs_dir / f"{c_slug}_output"
+            c_dir.mkdir(parents=True, exist_ok=True)
+            c_file = c_dir / f"{country_name.lower().replace(' ', '_')}_universities.json"
+            with open(c_file, "w", encoding="utf-8") as f:
+                json.dump({country_name: uni_list}, f, indent=2, ensure_ascii=False)
+            written_countries.append(f"  - [bold yellow]{country_name}[/bold yellow] ({len(uni_list)} unis) ➔ [cyan]{c_file}[/cyan]")
 
-            console.print(f"[bold green]✓ Pinecone Export Payload generated ({len(chunks)} vectors saved to {out_file}).[/bold green]")
-
-            # Check Pinecone API Key
-            pinecone_key = config.pinecone_api_key or os.getenv("PINECONE_API_KEY", "")
-            index_name = config.pinecone_index_name or os.getenv("PINECONE_INDEX_NAME", "education-counselor")
-
-            if pinecone_key:
-                console.print(f"[bold cyan]Syncing live vectors to Pinecone Index '{index_name}'...[/bold cyan]")
-                try:
-                    import pinecone
-                    pc = pinecone.Pinecone(api_key=pinecone_key)
-
-                    # Create index if not existing
-                    active_indexes = [idx.name for idx in pc.list_indexes()]
-                    if index_name not in active_indexes:
-                        console.print(f"[yellow]Creating Pinecone index '{index_name}' (384 dimensions, cosine metric)...[/yellow]")
-                        pc.create_index(
-                            name=index_name,
-                            dimension=384,
-                            metric="cosine",
-                            spec=pinecone.ServerlessSpec(cloud="aws", region="us-east-1"),
-                        )
-
-                    index = pc.Index(index_name)
-                    # Upsert in batches of 100
-                    batch_size = 100
-                    for i in range(0, len(chunks), batch_size):
-                        batch = chunks[i : i + batch_size]
-                        vectors_to_upsert = [
-                            (item["id"], item["values"], item["metadata"]) for item in batch
-                        ]
-                        index.upsert(vectors=vectors_to_upsert)
-
-                    console.print(
-                        Panel(
-                            f"[bold green]🎉 SUCCESSFULLY UPSERTED {len(chunks)} VECTORS TO PINECONE![/bold green]\n"
-                            f"Index Name: [yellow]{index_name}[/yellow]\n"
-                            f"Vector Dimension: [yellow]384[/yellow]",
-                            title="☁️ Pinecone Vector Database Sync",
-                        )
-                    )
-                except Exception as e:
-                    console.print(f"[bold red]Pinecone API Connection / Sync Error:[/bold red] {e}")
-                    console.print(f"[dim]The vector payload has been preserved in [cyan]{out_file}[/cyan]. Add valid PINECONE_API_KEY to .env to retry.[/dim]")
-            else:
-                console.print(
-                    Panel(
-                        f"[bold yellow]⚠️ PINECONE_API_KEY not found in .env / environment.[/bold yellow]\n"
-                        f"The Pinecone vector export payload was saved locally to:\n[cyan]{out_file}[/cyan]\n\n"
-                        f"Once you set [bold green]PINECONE_API_KEY[/bold green] in your .env file, re-run:\n"
-                        f"[bold magenta]python3 cli.py export --format pinecone[/bold magenta]",
-                        title="Pinecone API Key Missing",
-                    )
-                )
-
-        elif fmt == "json":
-            country_grouped: Dict[str, List[Dict[str, Any]]] = {}
-            for rec in records:
-                c_name = rec.get("main_info", {}).get("country") or "Pakistan"
-                country_grouped.setdefault(c_name, []).append(rec)
-
-            out_file = output_path or (config.data_outputs_dir / "university_counseling_data.json")
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump(country_grouped, f, indent=2, ensure_ascii=False)
-
-            country_outputs_dir = config.data_outputs_dir / "country_outputs"
-            country_outputs_dir.mkdir(parents=True, exist_ok=True)
-
-            country_slug_map = {
-                "Pakistan": "pak",
-                "Germany": "german",
-                "United States": "usa",
-                "United Kingdom": "uk",
-                "Switzerland": "swiss",
-            }
-
-            written_countries = []
-            for country_name, uni_list in country_grouped.items():
-                c_slug = country_slug_map.get(country_name, country_name.lower().replace(" ", "_"))
-                c_dir = country_outputs_dir / f"{c_slug}_output"
-                c_dir.mkdir(parents=True, exist_ok=True)
-                c_file = c_dir / f"{country_name.lower().replace(' ', '_')}_universities.json"
-                with open(c_file, "w", encoding="utf-8") as f:
-                    json.dump({country_name: uni_list}, f, indent=2, ensure_ascii=False)
-                written_countries.append(f"  - [bold yellow]{country_name}[/bold yellow] ({len(uni_list)} unis) ➔ [cyan]{c_file}[/cyan]")
-
-            summary_msg = (
-                f"[bold green]✓ Country-Grouped Master JSON Export Completed![/bold green]\n"
-                f"Saved master country-keyed JSON to:\n[cyan]{out_file}[/cyan]\n\n"
-                f"[bold cyan]Country Directory Outputs:[/bold cyan]\n" + "\n".join(written_countries)
-            )
-            console.print(Panel(summary_msg, title="🌐 Hierarchical Country JSON Exporter"))
+        summary_msg = (
+            f"[bold green]✓ Country-Grouped Master JSON Export Completed![/bold green]\n"
+            f"Saved master country-keyed JSON to:\n[cyan]{out_file}[/cyan]\n\n"
+            f"[bold cyan]Country Directory Outputs:[/bold cyan]\n" + "\n".join(written_countries)
+        )
+        console.print(Panel(summary_msg, title="🌐 Hierarchical Country JSON Exporter"))
 
 
 # ------------------------------------------------------------------------------
@@ -930,7 +791,7 @@ def interactive_menu():
         console.print("6. 🗄️ Inspect SQLite State Manifest")
         console.print("7. 📜 Display Master JSON Schema")
         console.print("8. ☁️ List Active NotebookLM Notebooks")
-        console.print("9. 📤 Export Dataset (CSV / Pinecone / JSON)")
+        console.print("9. 📤 Export Dataset (CSV / JSON)")
         console.print("0. 🚪 Exit")
         console.print("=" * 55, style="cyan")
 
@@ -967,7 +828,7 @@ def interactive_menu():
         elif choice == "8":
             inspect_notebooks()
         elif choice == "9":
-            fmt = Prompt.ask("Select export format", choices=["csv", "pinecone", "json"], default="pinecone")
+            fmt = Prompt.ask("Select export format", choices=["csv", "json"], default="json")
             export_dataset(fmt)
 
 
@@ -999,8 +860,8 @@ def main():
     retry_parser.add_argument("target", type=str, nargs="?", default="failed", help="Target slug or status ('failed', 'pending', 'all')")
 
     # Command: export
-    export_parser = subparsers.add_parser("export", help="Export dataset into CSV, Pinecone, or Country-Grouped JSON format")
-    export_parser.add_argument("--format", type=str, default="csv", choices=["csv", "pinecone", "json"], help="Export format")
+    export_parser = subparsers.add_parser("export", help="Export dataset into CSV or Country-Grouped JSON format")
+    export_parser.add_argument("--format", type=str, default="csv", choices=["csv", "json"], help="Export format")
     export_parser.add_argument("--output", type=Path, default=None, help="Custom output file path")
 
     # Command: analytics
