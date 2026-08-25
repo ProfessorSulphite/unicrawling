@@ -3,329 +3,35 @@ Production test suite for the Education Counselor RAG pipeline.
 
 Every test here is a regression test for a defect that was actually present in the
 shipped code, not a smoke test. Each one is annotated with the failure it locks out.
+
+Phase 1 link-extraction tests moved to tests/test_extractor/test_linkers_*.py in
+C14. What remains -- JSON repair, ingestion, extraction, the rankings registry --
+leaves for tests/test_extractor/ and tests/test_ingestor/ in C15, and this file is
+rebuilt as an orchestrator test in C27.
 """
 import json
-import sqlite3
-import tempfile
-from pathlib import Path
 from typing import List
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src import extract_links as P1
-from src.config import Config
 from src.schema import (
     UniversityPayload, MainInfo, KeyLinks, ContactInfo, ProgramItem,
-    FacultyItem, DegreeLevel, ApplicationStatus, UniversityType,
+    DegreeLevel, ApplicationStatus, UniversityType,
 )
 from src.extract_data import (
-    repair_and_validate_json, extract_json_str, strip_citation_markers,
-    ExtractionError, QUERY_SUITE, run_query, ExtractionReport,
+    repair_and_validate_json, strip_citation_markers,
+    ExtractionError, QUERY_SUITE,
     extract_university_payload, apply_registry_facts, lookup_registry,
 )
-from src.ingest import ingest_university_sources, IngestResult
+from src.ingest import ingest_university_sources
 
 
-# =============================================================================
-# B5.1 -- Tokenized path exclusion
-# =============================================================================
 
-@pytest.mark.parametrize("url", [
-    "https://nust.edu.pk/programs/bs-business-administration",
-    "https://nust.edu.pk/programs/mba-executive",
-    "https://lums.edu.pk/programs/bba",
-    "https://nust.edu.pk/programs/bs-accounting-and-auditing",
-    "https://nust.edu.pk/admissions/apply-online-portal",
-    "https://portal.nust.edu.pk/apply",
-    "https://nust.edu.pk/admissions/undergraduate-admission-portal",
-    "https://nust.edu.pk/newsletter-for-prospective-students",
-])
-def test_tokenized_exclusion_keeps_academic_urls(url):
-    """
-    Substring matching deleted the pipeline's own deliverables:
-    'admin' killed every business-administration/MBA URL, 'audit' killed auditing
-    programmes, and 'portal' killed application_portal_url -- the field the data
-    model marks PRIMARY FOCUS. A NUST crawl returned 0 hits for
-    'administration|auditing' and 0 for 'portal' as a direct result.
-    """
-    assert P1.is_excluded_path(url) is False, f"{url} must survive filtering"
 
 
-@pytest.mark.parametrize("url", [
-    "https://nust.edu.pk/wp-admin/edit.php",
-    "https://nust.edu.pk/wp-login.php",
-    "https://nust.edu.pk/news/2026/spring-convocation",
-    "https://nust.edu.pk/events/",
-    "https://nust.edu.pk/admin/",
-    "https://lms.nust.edu.pk/course/view",
-    "https://nust.edu.pk/student-portal/login",
-    "https://nust.edu.pk/careers/vacancies",
-    "https://nust.edu.pk/tenders/procurement-notice",
-    "https://nust.edu.pk/privacy-policy",
-])
-def test_tokenized_exclusion_still_removes_noise(url):
-    """Tokenisation must not weaken the Zero Garbage Policy it replaces."""
-    assert P1.is_excluded_path(url) is True, f"{url} must be excluded"
 
 
-def test_exclude_keywords_are_token_matched_not_substring():
-    """
-    --exclude-keywords "news" must remove /news/ but not words that merely contain
-    'news' as a substring. ('newsletter-signup' is deliberately NOT used as the
-    control here -- it tokenises to {newsletter, signup} and is correctly dropped
-    by the signup rule, which would make this assertion prove nothing.)
-    """
-    links = [
-        {"href": "https://x.edu.pk/news/item-1", "text": "News"},
-        {"href": "https://x.edu.pk/newsletter-for-prospective-students", "text": "Newsletter"},
-        {"href": "https://x.edu.pk/events/gala", "text": "Events"},
-        {"href": "https://x.edu.pk/programs/bs-cs", "text": "BS CS"},
-    ]
-    out = P1.preprocess_and_filter_links(links, base_url="https://x.edu.pk",
-                                         exclude_keywords="news|events")
-    urls = [l["href"] for l in out]
-    assert not any("/news/" in u for u in urls)
-    assert not any("/events/" in u for u in urls)
-    assert any("newsletter" in u for u in urls)
-    assert any("bs-cs" in u for u in urls)
-
-
-# =============================================================================
-# B5.2 -- URL sanitisation
-# =============================================================================
-
-def test_url_sanitization_unescapes_html_entities():
-    """'&amp;' appeared verbatim in committed output, producing unfetchable URLs."""
-    got = P1.normalize_url("https://nust.edu.pk/x?p=959&amp;post_type=scholarship")
-    assert "&amp;" not in got
-    assert "post_type=scholarship" in got
-
-
-def test_url_sanitization_strips_zero_width_characters():
-    """A U+200B inside an MBBS slug made that source unfetchable by NotebookLM."""
-    got = P1.normalize_url("https://nust.edu.pk/mbbs-​bachelor-of-medicine")
-    assert "​" not in got
-    assert got.endswith("/mbbs-bachelor-of-medicine")
-
-
-def test_url_sanitization_collapses_double_slashes():
-    got = P1.normalize_url("https://sines.nust.edu.pk//program//bs-cs/")
-    assert got == "https://sines.nust.edu.pk/program/bs-cs"
-
-
-def test_url_sanitization_removes_tracking_params_and_fragment():
-    got = P1.normalize_url("https://nust.edu.pk/apply?utm_source=fb&fbclid=abc&id=7#section")
-    assert "utm_source" not in got and "fbclid" not in got and "#" not in got
-    assert "id=7" in got
-
-
-def test_url_sanitization_rejects_unfetchable_schemes():
-    for bad in ["mailto:x@y.pk", "tel:+92515", "javascript:void(0)"]:
-        assert P1.normalize_url(bad) is None
-
-
-def test_dedupe_key_unifies_www_and_scheme_variants():
-    """Otherwise one page consumes two of the 60 per-notebook source slots."""
-    a = P1.dedupe_key(P1.normalize_url("https://www.nust.edu.pk/apply"))
-    b = P1.dedupe_key(P1.normalize_url("http://nust.edu.pk/apply"))
-    assert a == b
-
-
-# =============================================================================
-# B5.3 -- Dynamic year decay
-# =============================================================================
-
-def test_year_decay_boosts_current_and_future():
-    assert P1.compute_year_decay_factor("admissions-2026", now_year=2026)[0] > 1.0
-    assert P1.compute_year_decay_factor("admissions-2027", now_year=2026)[0] > 1.0
-
-
-def test_year_decay_penalises_past_years_monotonically():
-    """
-    The old regexes classified 2024 as 'current' (202[4-7]) while the 'outdated'
-    window stopped at 2023, so a fall-2024 link scored 1.15x and ranked #1 of 287
-    during a 2026 run. Decay must now be strictly decreasing into the past.
-    """
-    f2025 = P1.compute_year_decay_factor("intake-2025", now_year=2026)[0]
-    f2024 = P1.compute_year_decay_factor("intake-2024", now_year=2026)[0]
-    f2023 = P1.compute_year_decay_factor("intake-2023", now_year=2026)[0]
-    assert 1.0 > f2025 > f2024 > f2023
-    assert f2023 >= 0.25
-
-
-def test_year_decay_ranks_2024_below_2026():
-    """The exact inversion observed in the committed detailed report."""
-    old = P1.compute_year_decay_factor("bs-software-engineering-for-fall-2024", now_year=2026)[0]
-    new = P1.compute_year_decay_factor("bs-software-engineering-for-fall-2026", now_year=2026)[0]
-    assert new > old
-
-
-def test_year_decay_uses_latest_year_in_range():
-    assert P1.compute_year_decay_factor("session-2025-2026", now_year=2026)[0] > 1.0
-
-
-def test_year_decay_treats_onward_ranges_as_current():
-    """'fall-2025-onward' names the policy in force, not a historical intake."""
-    assert P1.compute_year_decay_factor("fall-2025-onward", now_year=2026)[0] > 1.0
-
-
-def test_year_decay_bounds_the_onward_rescue():
-    """
-    A live NUST crawl surfaced 'for-fall-2023-onwards' and a 2022 variant. Granting
-    those the full current-year boost would rank a four-year-old scheme above this
-    year's, so the rescue is bounded: neutral beyond the grace window, never boosted.
-    """
-    stale = P1.compute_year_decay_factor("bpa-for-fall-2022-onwards", now_year=2026)[0]
-    fresh = P1.compute_year_decay_factor("bba-for-2025-onwards", now_year=2026)[0]
-    assert fresh > 1.0
-    assert stale == 1.0
-    # Still better than a bare historical year, which is what it actually is.
-    assert stale > P1.compute_year_decay_factor("bpa-for-fall-2022", now_year=2026)[0]
-
-
-def test_semantic_threshold_is_calibrated_for_prefixed_bge():
-    """
-    The inherited 0.45 was a dead knob: with the BGE query prefix and L2-normalised
-    embeddings, a live 473-link crawl scored min 0.639, so every link cleared it and
-    the threshold filtered nothing.
-    """
-    from src.config import Config
-    assert Config().semantic_threshold > 0.60
-
-
-def test_year_decay_neutral_without_years():
-    assert P1.compute_year_decay_factor("programs/bs-computer-science")[0] == 1.0
-
-
-def test_year_decay_is_not_hardcoded_to_2026():
-    """Regression against re-introducing a fixed year window."""
-    assert P1.compute_year_decay_factor("intake-2030", now_year=2030)[0] > 1.0
-    assert P1.compute_year_decay_factor("intake-2026", now_year=2030)[0] < 1.0
-
-
-# =============================================================================
-# B5.4 -- Structured discipline-token deduplication
-# =============================================================================
-
-def test_electrical_and_electronic_engineering_stay_separate():
-    """
-    SequenceMatcher at ratio > 0.88 merged these two distinct degrees
-    (they score ~0.90 on slug similarity), silently deleting one programme.
-    """
-    a = P1.get_discipline_tokens("https://nust.edu.pk/bs-electrical-engineering")
-    b = P1.get_discipline_tokens("https://nust.edu.pk/bs-electronic-engineering")
-    assert a != b
-
-
-def test_multi_campus_mirrors_merge():
-    """Same programme on different campus subdomains is one source, not three."""
-    keys = {
-        P1.get_discipline_tokens("https://seecs.nust.edu.pk/programs/bs-computer-science"),
-        P1.get_discipline_tokens("https://mcs.nust.edu.pk/programs/bs-computer-science"),
-        P1.get_discipline_tokens("https://ceme.nust.edu.pk/programs/bs-computer-science"),
-    }
-    assert len(keys) == 1
-
-
-def test_intake_year_variants_merge():
-    a = P1.get_discipline_tokens("https://nust.edu.pk/programs/bs-cs-for-fall-2024")
-    b = P1.get_discipline_tokens("https://nust.edu.pk/programs/bs-cs-fall-2025-onward")
-    assert a == b
-
-
-def test_same_discipline_different_level_stays_separate():
-    ug = P1.get_discipline_tokens("https://nust.edu.pk/bs-computer-science")
-    gr = P1.get_discipline_tokens("https://nust.edu.pk/ms-computer-science")
-    assert ug != gr
-
-
-def test_path_prefix_does_not_split_identical_programmes():
-    """Keying on the last path segment alone split /programs/bs-cs from /admissions/bs-cs."""
-    a = P1.get_discipline_tokens("https://nust.edu.pk/programs/bs-computer-science")
-    b = P1.get_discipline_tokens("https://nust.edu.pk/admissions/bs-computer-science")
-    assert a == b
-
-
-def test_deduplicate_keeps_highest_scoring_variant():
-    items = [
-        {"href": "https://a.nust.edu.pk/bs-cs-fall-2024", "text": "BS CS",
-         "priority_tier_num": 1, "weighted_score": 0.60, "category": "Tier 1"},
-        {"href": "https://b.nust.edu.pk/bs-cs-fall-2026", "text": "BS CS",
-         "priority_tier_num": 1, "weighted_score": 0.95, "category": "Tier 1"},
-    ]
-    out = P1.deduplicate_canonical_degree_links(items)
-    assert len(out) == 1
-    assert "2026" in out[0]["href"]
-
-
-# =============================================================================
-# Proportional tier quotas
-# =============================================================================
-
-def _mk(tier, score):
-    return {"priority_tier_num": tier, "weighted_score": score,
-            "href": f"https://x/{tier}-{score}", "category": f"Tier {tier}"}
-
-
-def test_tier_quotas_guarantee_faculty_and_contact_sources():
-    """
-    scored[:max_links] after a tier-major sort let Tier 1 consume the whole budget,
-    so the faculties (Q5) and contact (Q1) queries ran against a notebook that
-    contained no faculty or contact pages at all.
-    """
-    links = ([_mk(1, 0.9 - i * 0.001) for i in range(200)]
-             + [_mk(2, 0.8 - i * 0.001) for i in range(100)]
-             + [_mk(3, 0.7 - i * 0.001) for i in range(50)]
-             + [_mk(4, 0.6 - i * 0.001) for i in range(50)])
-    selected = P1.allocate_proportional_tier_quotas(links, total_cap=60)
-    tiers = [i["priority_tier_num"] for i in selected]
-    assert len(selected) == 60
-    for t in (1, 2, 3, 4):
-        assert tiers.count(t) > 0, f"tier {t} was starved"
-    assert tiers.count(1) == 27 and tiers.count(2) == 18
-    assert tiers.count(3) == 9 and tiers.count(4) == 6
-
-
-def test_tier_quotas_redistribute_unfilled_budget():
-    """A small site must still fill its budget rather than under-ingesting."""
-    links = [_mk(1, 0.9 - i * 0.001) for i in range(100)] + [_mk(3, 0.5)]
-    selected = P1.allocate_proportional_tier_quotas(links, total_cap=60)
-    assert len(selected) == 60
-
-
-def test_tier_reserve_prevents_threshold_starving_a_tier():
-    """
-    A global threshold tuned for the dense programme tier starved the sparse
-    faculties tier on a live NUST run (4 sources against a quota of 9), degrading
-    the faculties query. A tier fills its quota from its own sub-threshold reserve
-    before any cross-tier redistribution.
-    """
-    links = [dict(_mk(1, 0.9 - i * 0.001), passed_threshold=True) for i in range(200)]
-    links += [dict(_mk(2, 0.85 - i * 0.001), passed_threshold=True) for i in range(60)]
-    links += [dict(_mk(3, 0.80), passed_threshold=True) for _ in range(4)]
-    links += [dict(_mk(3, 0.62 - i * 0.001), passed_threshold=False) for i in range(20)]
-    links += [dict(_mk(4, 0.75), passed_threshold=True) for _ in range(10)]
-
-    selected = P1.allocate_proportional_tier_quotas(links, total_cap=60)
-    tiers = [i["priority_tier_num"] for i in selected]
-    assert tiers.count(3) == 9, "tier 3 must backfill from its own reserve"
-    # The 4 above-threshold tier-3 links must all be chosen ahead of the reserve.
-    t3 = [i for i in selected if i["priority_tier_num"] == 3]
-    assert sum(1 for i in t3 if i["passed_threshold"]) == 4
-
-
-def test_tier_quotas_prefer_passing_links_over_reserve():
-    links = [dict(_mk(1, 0.70), passed_threshold=False) for _ in range(50)]
-    links += [dict(_mk(1, 0.69), passed_threshold=True) for _ in range(50)]
-    selected = P1.allocate_proportional_tier_quotas(links, total_cap=20)
-    assert all(i["passed_threshold"] for i in selected), \
-        "an above-threshold link must outrank a higher-scoring reserve link"
-
-
-def test_tier_quotas_handle_undersized_input():
-    selected = P1.allocate_proportional_tier_quotas([_mk(1, 0.9), _mk(2, 0.8)], total_cap=60)
-    assert len(selected) == 2
 
 
 # =============================================================================
@@ -631,36 +337,6 @@ def test_registry_lookup_misses_are_non_fatal():
     assert out.domain_verified is False
 
 
-# =============================================================================
-# Phase 1 <-> Phase 2 file contract
-# =============================================================================
-
-def test_partitioned_export_round_trip(tmp_path, monkeypatch):
-    """
-    HEC batch mode wrote one undifferentiated extracted_links.txt (287 links:
-    ~284 NUST, ~10 LUMS, 0 ITU) with no record of which university a URL belonged
-    to, making Phase 2's per-university contract unsatisfiable.
-    """
-    monkeypatch.setattr(P1.config, "data_links_dir", tmp_path)
-    items = [
-        {"href": "https://nust.edu.pk/bs-cs", "text": "BS CS", "priority_tier_num": 1,
-         "category": "Tier 1", "weighted_score": 0.9, "raw_similarity_score": 0.8,
-         "matched_keyword": "k", "year_tag": "t"},
-        {"href": "https://nust.edu.pk/contact", "text": "Contact", "priority_tier_num": 4,
-         "category": "Tier 4", "weighted_score": 0.5, "raw_similarity_score": 0.5,
-         "matched_keyword": "k", "year_tag": "t"},
-    ]
-    P1.export_partitioned_links(items, "nust", "NUST", "https://nust.edu.pk")
-    loaded = P1.load_partitioned_links("nust")
-    assert len(loaded) == 2
-    assert {r["tier"] for r in loaded} == {1, 4}
-    assert all(r["university_slug"] == "nust" for r in loaded)
-    assert loaded[0]["url"] == "https://nust.edu.pk/bs-cs"
-
-
-def test_slugify_is_stable_across_url_forms():
-    assert (P1.slugify_university("NUST", "https://www.nust.edu.pk/")
-            == P1.slugify_university("NUST", "http://nust.edu.pk"))
 
 
 def test_sub_campuses_contact_coercion():
