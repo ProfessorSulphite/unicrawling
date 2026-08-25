@@ -14,7 +14,7 @@ commit. **Baseline: 116 at C0, now 127** (C4 added 11 loader tests). Every commi
 
 ## Part A — Analysis of the Current State
 
-### A.0 BLOCKER: the repository does not import right now — ✅ RESOLVED in C0 (`7d571f8`)
+### A.0 BLOCKER: the repository does not import right now — ✅ RESOLVED in C0 (`81c8dcc`)
 
 `src/config.py` was edited in the working tree: the field `uni_outputs_dir` was renamed to
 `outputs_uni_outputs_dir`, but `ensure_directories()` (line 175) still references the old name.
@@ -120,14 +120,14 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
 
 ### Phase 0 — Stabilize and baseline (do not skip) — ✅ COMPLETE
 
-- [x] **C0 — Fix the import-time crash.** — `7d571f8`
+- [x] **C0 — Fix the import-time crash.** — `81c8dcc`
   Fixed `ensure_directories()` and added `outputs_all_uni_outputs_dir`,
   `loggings_single_logs_dir`, `loggings_complete_logs_dir`. **Scope grew:** also renamed 11 stale
   `config.uni_outputs_dir` call sites in `src/pipeline.py`, `src/inspect_cli.py` and
   `tests/test_cli_interactive.py`, which the plan had not identified.
   **Gate met:** import clean, all 5 new directories materialise, **116 passed / 0 errors**.
 
-- [x] **C1 — Commit the current working state.** — `22cf60c`
+- [x] **C1 — Commit the current working state.** — `e72210d`
   Applied D1: removed all 21 data files from git and disk, ignored `data/` wholesale (the tree is
   rebuilt by `ensure_directories()` at import, so no `.gitkeep` needed). Also untracked
   `loggings/notebook_audit.jsonl` — 1.3 MB of append-only log that the test run rewrites on every
@@ -142,7 +142,7 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
 
 ### Phase 1 — Scaffolding — ✅ COMPLETE
 
-- [x] **C3 — Create empty packages.** — `89dec5e`
+- [x] **C3 — Create empty packages.** — `7a0bbde`
   `src/{utilities,extractor,extractor/linkers,extractor/crawlers,extractor/normalizers,ingestor,inspector,logger}/__init__.py`,
   `tests/{test_utilities,test_extractor,test_ingestor,test_inspector,test_logger}/`,
   `loggings/{single_logs,complete_logs}/`, `resources/{plans,analysis}/`.
@@ -156,28 +156,28 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
 
 ### Phase 2 — Utilities (leaf modules, zero internal dependencies — safest first) — ✅ COMPLETE
 
-- [x] **C4 — `utilities/loaders.py`.** — `4de3a36`
+- [x] **C4 — `utilities/loaders.py`.** — `46d3bc6`
   `loaders.py` derives the project root from its own path rather than importing `config`, which
   would be circular (config calls `load_dotenv()` at module scope). The call now sits directly
   after `BASE_DIR` so `os.environ` is populated before any field `default_factory` reads a key.
   **Gate met:** 11 new tests covering behaviour that previously had none, incl. a guard that the
   loader does not creep back into `config.py`. Suite 116 → **127**.
 
-- [x] **C5 — `utilities/json_io.py`.** — `c01e445`
+- [x] **C5 — `utilities/json_io.py`.** — `0c3bda4`
   `git mv` so blame survives. Shim re-exports the private `_fsync_dir` / `_default_record_key`
   alongside `__all__` — a shim that silently narrows the namespace is a trap for future
   monkeypatching. `pipeline.py` deliberately left importing through the shim: it is rewritten
   wholesale in C22, so repointing it now is churn on code about to be deleted.
   **Gate met:** all json_io tests pass at the new path. Suite 127.
 
-- [x] **C6 — `utilities/state_management.py`.** — `840335d`
+- [x] **C6 — `utilities/state_management.py`.** — `bd905c1`
   Shim re-exports `config` and `logger` explicitly: `tests/test_notebook_logger.py` monkeypatches
   the *string* target `"src.state.config.state_db_path"`, which only resolves if the shim exposes
   that attribute path. Extracted the 8 "B5.6 SQLite state machine" tests; those symbols appeared
   nowhere else in `test_pipeline.py`, so its dead import was dropped.
   **Gate met:** 8 state tests green at the new path; a real `state.sqlite` opens. Suite 127.
 
-- [x] **C7 — `utilities/schema.py`.** — `137b07d`
+- [x] **C7 — `utilities/schema.py`.** — `43cacac`
   Pure move; taxonomy and field changes held for C17/C18. Unlike C6, the schema symbols are still
   used by the JSON-repair, extraction and rankings sections of `test_pipeline.py`, so that import
   block stays until C14/C15.
