@@ -117,6 +117,37 @@ again at the commit it affects.
 
 ---
 
+## Part B2 — Working Conventions (agreed in session; recorded so they survive a context compact)
+
+- **Interpreter:** `/home/huzaifayaqob/miniconda3/envs/ise-env/bin/python`. The base conda python
+  has no pytest.
+- **Branch:** all refactor work lands on `refactor/modular-src`. `main` stays at `4d531f0`, which
+  is also tagged `pre-refactor` — two independent ways back. Nothing has been pushed.
+- **Commit trailers:** `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` only. The
+  `Claude-Session:` trailer was deliberately dropped and stripped from the first 9 commits — it was
+  redundant with commit bodies that carry their own rationale, and it would have written a permanent
+  identifier into the history of a repo with a public-capable GitHub remote.
+- **Every commit must leave the suite green.** Current count is recorded in the status banner above.
+- **Move code, never retype it.** C12 introduced a real bug by hand-writing `_extract_id` during a
+  split. Every split commit is now verified by AST comparison against the pre-split file: all
+  top-level definitions must be present with byte-identical bodies, and any delta must be
+  intentional and named in the commit message.
+- **Two monkeypatch patterns, only one of which survives a shim:**
+  - `setattr("mod.config.field", ...)` — patches an attribute on the shared `config` singleton.
+    Safe through any import path, because it is one object.
+  - `setattr("mod.some_function", ...)` — rebinds a module-level name. **Becomes a silent no-op
+    through a shim**, because the caller resolves the name in its own module globals. This bit in
+    C12: a pre-flight test stopped testing pre-flight while still passing. Audited clean as of C12;
+    re-audit after C14, C15 and C20.
+
+### Open items not yet owned by a commit
+
+- **PENDING DECISION:** add a test asserting no test patches a module-level name on a shimmed
+  module, so the C12 silent-no-op class is caught automatically during the remaining big splits
+  (C14, C15, C20). Proposed before C13; awaiting go-ahead.
+
+---
+
 ## Part C — The Commit-by-Commit To-Do List
 
 Legend: **Gate** = what must be green before the commit is made. Every commit runs the full suite
