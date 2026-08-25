@@ -3,9 +3,9 @@
 Companion to [refactoring_plan.md](./refactoring_plan.md). That document is the *what*.
 This document is the *how*, in the order it must actually happen, with a test gate on every commit.
 
-**Status: IN PROGRESS.** Phases 0–5 complete (C0–C11). Work is on branch
+**Status: IN PROGRESS.** Phases 0–5 complete (C0–C11, plus C11b). Work is on branch
 `refactor/modular-src`; `main` remains at `4d531f0` and the tag `pre-refactor` marks that same
-commit. **Baseline: 116 at C0, now 186** (C4 +11 loaders, C9 +47 logger, C10 +10 config, C11 +2 export). Every commit must hold the current count.
+commit. **Baseline: 116 at C0, now 187** (C4 +11 loaders, C9 +47 logger, C10 +10 config, C11 +2 export). Every commit must hold the current count.
 (`/home/huzaifayaqob/miniconda3/envs/ise-env/bin/python -m pytest -q`).
 
 > Note: the project runs on conda env `ise-env` (Python 3.11). The base conda python has no pytest.
@@ -243,6 +243,21 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   calls in production and had **no test at all**, which made this excision riskier than it looked;
   now covered, plus a guard that the removed format is gone from the CLI. Suite 184 → **186**.
 
+- [x] **C11b — Remove Pinecone too** *(added mid-refactor at user request)* — `bf5ae3b`
+  Supabase is the only destination, so a second vector store earns nothing. Deletes the whole
+  vector-export path — 138 lines of chunk building, SentenceTransformer encoding and upsert — plus
+  both Config credentials and the `pinecone-client` dependency. `inspect_cli.py` 1060 → 921 lines;
+  `export` now offers `{csv, json}`.
+  **Finding — config lied about the scorer.** Nothing in Phase 1 read the embedding fields:
+  `classify_and_score_links` hardcodes `bge-small-en-v1.5` / `batch_size=64`, while Config declared
+  `bge-**base**-en-v1.5` / `32` — a different model with a different vector dimension (768 vs 384).
+  They were read only by the deleted exporter, so the C10 comment claiming they drive link scoring
+  was wrong. Corrected to match reality and pinned by `test_embedding_config_matches_the_scorer`;
+  **C14 must wire the scorer to read them.**
+  **Side effect:** suite runtime 14s → 6s — the deleted Pinecone test loaded a sentence-transformer
+  model on every run.
+  Suite 186 → **187**.
+
 ### Phase 6 — Ingestor  ← **NEXT**
 
 - [ ] **C12 — Split `ingest.py` (20 KB) into `ingestor/`.**
@@ -278,6 +293,9 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   `export_dual_outputs`, `export_partitioned_links`, `load_partitioned_links`, `slugify_university`).
   Shim `src/extract_links.py`. Split the P1 tests out of `tests/test_pipeline.py` into
   `tests/test_extractor/test_linkers_*.py`.
+  **Carried over from C11b:** wire `semantic_scoring.py` to read `config.embedding_model_name` and
+  `config.embedding_batch_size` instead of hardcoding them, so the pinning test becomes a real
+  contract rather than a drift guard.
   **Gate:** every P1 test passes; one live-ish crawl smoke test produces the same link count as before.
   `refactor(extractor): split extract_links into linkers subpackage`
 
@@ -394,7 +412,8 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
 
 - [ ] **C28 — Documentation.**
   `AGENTS.md` (new structure), `README.md` (tree + quick start), `COMMANDS.md` (~10 `config.json`
-  references and every renamed command), `CHANGELOG.md` (the refactor entry), regenerate or delete
+  references, every renamed command, **and the `qdrant`/`pinecone` export formats removed in
+  C11/C11b that it still documents**), `CHANGELOG.md` (the refactor entry), regenerate or delete
   the now-stale `src_summary.md`, refresh `.env.example`.
   **Gate:** every command shown in `COMMANDS.md` actually runs.
   `docs: update all documentation for modular architecture`
