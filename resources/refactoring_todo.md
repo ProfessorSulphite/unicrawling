@@ -3,13 +3,18 @@
 Companion to [refactoring_plan.md](./refactoring_plan.md). That document is the *what*.
 This document is the *how*, in the order it must actually happen, with a test gate on every commit.
 
-**Status: PLAN ONLY — nothing here has been implemented.**
+**Status: IN PROGRESS.** Phase 0 complete (C0–C2). Work is on branch
+`refactor/modular-src`; `main` remains at `4d531f0` and the tag `pre-refactor` marks that same
+commit. **Baseline to hold on every commit: 116 passed, 0 errors**
+(`/home/huzaifayaqob/miniconda3/envs/ise-env/bin/python -m pytest -q`).
+
+> Note: the project runs on conda env `ise-env` (Python 3.11). The base conda python has no pytest.
 
 ---
 
 ## Part A — Analysis of the Current State
 
-### A.0 BLOCKER: the repository does not import right now
+### A.0 BLOCKER: the repository does not import right now — ✅ RESOLVED in C0 (`7d571f8`)
 
 `src/config.py` was edited in the working tree: the field `uni_outputs_dir` was renamed to
 `outputs_uni_outputs_dir`, but `ensure_directories()` (line 175) still references the old name.
@@ -24,6 +29,12 @@ Every module in `src/` imports `src.config`. So `cli.py`, the whole pipeline, an
 suite are dead right now. `refactoring_plan.md` §2 correctly identifies this bug but schedules the
 fix at step 2 of 14 — it has to be step 0, before anything is committed or measured. There is no
 usable baseline until this is fixed.
+
+**Outcome — worse than diagnosed.** The rename was not confined to `config.py`: 11 call sites across
+`src/pipeline.py`, `src/inspect_cli.py` and `tests/test_cli_interactive.py` still used the old name.
+Fixing only the line the plan named yielded **111 passed / 5 errors**; completing the rename yielded
+**116 passed / 0 errors**. Anyone applying `refactoring_plan.md` §2 literally would have shipped a
+still-broken tree.
 
 ### A.1 What the plan gets right
 
@@ -79,13 +90,13 @@ This makes the refactor bisectable and abortable at any point.
 
 ## Part B — Decisions Needed Before Starting
 
-Do not start C1 until these are answered; each one changes what gets committed.
+D1 is answered. D2–D6 remain open, and none of them gate work before Phase 7 — each is surfaced
+again at the commit it affects.
 
-- **D1 — Commit the data outputs?** `data/outputs/uni_outputs/*.json` and `data/links/*.jsonl` are
-  currently tracked, and the working tree deletes two large output files. Since the plan declares a
-  clean slate with no backward compatibility, the cleaner choice is to git-ignore
-  `data/outputs/` and `data/links/` and commit the deletions. *Recommendation: ignore them; keep the
-  repo to code.* Affects C1.
+- ~~**D1 — Commit the data outputs?**~~ ✅ **ANSWERED: remove them.** User confirmed an external
+  backup. All 21 data files were deleted from git and disk in C1, and `data/` is now ignored
+  wholesale. Recoverable from tag `pre-refactor`. `state.sqlite` was verified empty (0 universities)
+  before removal, so no stale "completed" state survives pointing at deleted outputs.
 - **D2 — Strip the normalizer's fabricated defaults?** (Finding 7.) *Recommendation: yes, strip; nulls
   are honest and auditable.* Affects C19.
 - **D3 — What does `--resume s_42` actually resume?** (Finding 11.) *Recommendation: log = run manifest,
@@ -107,27 +118,29 @@ Do not start C1 until these are answered; each one changes what gets committed.
 Legend: **Gate** = what must be green before the commit is made. Every commit runs the full suite
 (`python -m pytest -q`) at minimum; the Gate names the *additional* specific check.
 
-### Phase 0 — Stabilize and baseline (do not skip)
+### Phase 0 — Stabilize and baseline (do not skip) — ✅ COMPLETE
 
-- [ ] **C0 — Fix the import-time crash.**
-  `src/config.py` `ensure_directories()`: `self.uni_outputs_dir` → `self.outputs_uni_outputs_dir`;
-  add `outputs_all_uni_outputs_dir`, `loggings_single_logs_dir`, `loggings_complete_logs_dir`.
-  Nothing else in this commit.
-  **Gate:** `python -c "import src.config"` exits 0; `python -m pytest -q` runs to completion.
-  **Record the baseline pass/fail count in the commit body** — it is the reference for every commit after this.
-  `fix(config): repair ensure_directories AttributeError blocking all imports`
+- [x] **C0 — Fix the import-time crash.** — `7d571f8`
+  Fixed `ensure_directories()` and added `outputs_all_uni_outputs_dir`,
+  `loggings_single_logs_dir`, `loggings_complete_logs_dir`. **Scope grew:** also renamed 11 stale
+  `config.uni_outputs_dir` call sites in `src/pipeline.py`, `src/inspect_cli.py` and
+  `tests/test_cli_interactive.py`, which the plan had not identified.
+  **Gate met:** import clean, all 5 new directories materialise, **116 passed / 0 errors**.
 
-- [ ] **C1 — Commit the current working state.**
-  Apply D1. Stage `src/config.py` path fields, `data/outputs/all_uni_outputs/`, the two file
-  deletions, `changes_to.txt`, `src_summary.md`, `resources/refactoring_plan.md`, this file.
-  **Gate:** `git status` clean; suite still at baseline.
-  `chore: checkpoint pre-refactor state and refactoring plan`
+- [x] **C1 — Commit the current working state.** — `22cf60c`
+  Applied D1: removed all 21 data files from git and disk, ignored `data/` wholesale (the tree is
+  rebuilt by `ensure_directories()` at import, so no `.gitkeep` needed). Also untracked
+  `loggings/notebook_audit.jsonl` — 1.3 MB of append-only log that the test run rewrites on every
+  invocation, dirtying every diff; **the file stays on disk for the C26 migration**. Committed the
+  planning docs and `src_summary.md`.
+  **Gate met:** `git status` clean; suite held at 116 — no test depended on the removed data.
 
-- [ ] **C2 — Mark the rollback point.**
-  `git tag pre-refactor`, branch `refactor/modular-src`. All following work lands on that branch.
-  **Gate:** `git tag -l` shows the tag.
+- [x] **C2 — Mark the rollback point.**
+  Tagged `pre-refactor` at `4d531f0` (the true pre-refactor state) and branched
+  `refactor/modular-src` before any commit landed, so `main` is untouched.
+  **Gate met:** `git tag -l` shows `pre-refactor`; `git branch --show-current` is `refactor/modular-src`.
 
-### Phase 1 — Scaffolding
+### Phase 1 — Scaffolding  ← **NEXT**
 
 - [ ] **C3 — Create empty packages.**
   `src/{utilities,extractor,extractor/linkers,extractor/crawlers,extractor/normalizers,ingestor,inspector,logger}/__init__.py`,
