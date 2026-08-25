@@ -237,8 +237,8 @@ async def _run_master_pipeline(
             append_jsonl(output_file, payload.model_dump_json())
 
             # 2. Output per-university pretty-printed JSON file in uni_outputs/ folder
-            config.uni_outputs_dir.mkdir(parents=True, exist_ok=True)
-            uni_json_path = config.uni_outputs_dir / f"{uni_slug}.json"
+            config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+            uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
             atomic_write_json(uni_json_path, payload.model_dump())
 
             # 3. The master JSON array is NOT rebuilt here. Re-reading and
@@ -324,7 +324,7 @@ def backup_existing_outputs():
 
     # Recreate outputs directory hierarchy
     config.data_outputs_dir.mkdir(parents=True, exist_ok=True)
-    config.uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+    config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
     (config.data_outputs_dir / "country_outputs").mkdir(parents=True, exist_ok=True)
 
 

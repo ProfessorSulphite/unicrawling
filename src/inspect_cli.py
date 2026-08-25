@@ -71,8 +71,8 @@ def iter_all_records() -> Iterator[Dict[str, Any]]:
                     yield normalize_universal_payload(data)
 
     # 2. Check per-slug JSON files in uni_outputs directory
-    if config.uni_outputs_dir.exists():
-        for f in config.uni_outputs_dir.glob("*.json"):
+    if config.outputs_uni_outputs_dir.exists():
+        for f in config.outputs_uni_outputs_dir.glob("*.json"):
             try:
                 with open(f, "r", encoding="utf-8") as file_obj:
                     data = json.load(file_obj)
@@ -94,8 +94,8 @@ def find_university_record(query: str) -> Optional[Dict[str, Any]]:
     query_clean = query.lower().strip()
 
     # Check uni_outputs first
-    if config.uni_outputs_dir.exists():
-        for f in config.uni_outputs_dir.glob("*.json"):
+    if config.outputs_uni_outputs_dir.exists():
+        for f in config.outputs_uni_outputs_dir.glob("*.json"):
             if query_clean in f.stem.lower():
                 try:
                     with open(f, "r", encoding="utf-8") as file_obj:
@@ -145,9 +145,9 @@ def inspect_university(query: str):
         console.print(
             f"[bold red]Error:[/bold red] No matching university payload found for '[bold yellow]{query}[/bold yellow]'."
         )
-        console.print(f"Available files in [cyan]{config.uni_outputs_dir}[/cyan]:")
-        if config.uni_outputs_dir.exists():
-            for f in config.uni_outputs_dir.glob("*.json"):
+        console.print(f"Available files in [cyan]{config.outputs_uni_outputs_dir}[/cyan]:")
+        if config.outputs_uni_outputs_dir.exists():
+            for f in config.outputs_uni_outputs_dir.glob("*.json"):
                 console.print(f" - [green]{f.stem}[/green] ({f.stat().st_size // 1024} KB)")
         return
 

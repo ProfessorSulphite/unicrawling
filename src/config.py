@@ -39,15 +39,37 @@ _load_dotenv()
 class Config:
     """Central configuration for paths, limits, and external service credentials."""
 
-    # ---- File Paths ----
-    base_dir: Path = BASE_DIR
-    data_links_dir: Path = BASE_DIR / "data" / "links"
-    data_outputs_dir: Path = BASE_DIR / "data" / "outputs"
-    uni_outputs_dir: Path = BASE_DIR / "data" / "outputs" / "uni_outputs"
-    resources_dir: Path = BASE_DIR / "resources"
-    loggings_dir: Path = BASE_DIR / "loggings"
-    tests_dir: Path = BASE_DIR / "tests"
-    state_db_path: Path = BASE_DIR / "data" / "state.sqlite"
+    # ----- File Paths -----
+    base_dir: Path = BASE_DIR   # Base directory -> /unicrawling
+    
+    data_dir: Path = BASE_DIR / "data" # Directory for data -> /unicrawling/data -> contains all data
+    data_links_dir: Path = BASE_DIR / "data" / "links" # Directory for links -> /unicrawling/data/links -> contain jsonl files having crawled links of each university
+    data_outputs_dir: Path = BASE_DIR / "data" / "outputs" # Directory for outputs -> /unicrawling/data/outputs -> contain /uni_outputs (contain processed json files for each university) and /all_uni_outputs (contain processed json and jsonl files of all universities)
+    outputs_uni_outputs_dir: Path = BASE_DIR / "data" / "outputs" / "uni_outputs" # Directory for uni outputs -> /unicrawling/data/outputs/uni_outputs -> contain processed json files for each university
+    outputs_all_uni_outputs_dir: Path = BASE_DIR / "data" / "outputs" / "all_uni_outputs" # Directory for all uni outputs -> /unicrawling/data/outputs/all_uni_outputs.json -> contain processed json and jsonl files of all universities
+    
+    loggings_dir: Path = BASE_DIR / "loggings" # Directory for loggings -> /unicrawling/loggings -> contain log files
+    loggings_single_logs_dir: Path = BASE_DIR / "loggings" / "single_logs" # Directory for single logs -> /unicrawling/loggings/single_logs -> contain log files of single and partial runs
+    loggings_complete_logs_dir: Path = BASE_DIR / "loggings" / "complete_logs" # Directory for complete logs -> /unicrawling/loggings/complete_logs -> contain log files of complete runs
+    
+    resources_dir: Path = BASE_DIR / "resources" # Directory for resources -> /unicrawling/resources -> contain resources
+    resources_plans_dir: Path = BASE_DIR / "resources" / "plans" # Directory for plans -> /unicrawling/resources/plans -> contain plans of crawling and other operations
+    resources_analysis_dir: Path = BASE_DIR / "resources" / "analysis" # Directory for analysis -> /unicrawling/resources/analysis -> contain analysis of code, prompt, configurations
+    
+    src_dir: Path = BASE_DIR / "src" # Directory for source code -> /unicrawling/src -> contain source code
+    src_utils_dir: Path = BASE_DIR / "src" / "utils"
+    src_extraction_dir: Path = BASE_DIR / "src" / "extraction"
+    extraction_linkers_dir: Path = BASE_DIR / "src" / "extraction" / "linkers"
+    extraction_payloaders_dir: Path = BASE_DIR / "src" / "extraction" / "crawlers"
+    extraction_normalizers_dir: Path = BASE_DIR / "src" / "extraction" / "normalizers"
+    src_ingestion_dir: Path = BASE_DIR / "src" / "ingestion"
+    src_inspection_dir: Path = BASE_DIR / "src" / "inspection"
+    
+
+
+
+    tests_dir: Path = BASE_DIR / "tests" # Directory for tests -> /unicrawling/tests -> contain test files
+    state_db_path: Path = BASE_DIR / "data" / "state.sqlite" # Database for state -> /unicrawling/data/state.sqlite -> contains state of the system
     output_jsonl_path: Path = BASE_DIR / "data" / "outputs" / "university_counseling_data.jsonl"
     rankings_json_path: Path = BASE_DIR / "resources" / "rankings_pk.json"
     notebook_lifecycle_log_path: Path = BASE_DIR / "loggings" / "notebook_lifecycle.log"
@@ -150,12 +172,14 @@ class Config:
         for path in [
             self.data_links_dir,
             self.data_outputs_dir,
-            self.uni_outputs_dir,
+            self.outputs_uni_outputs_dir,
+            self.outputs_all_uni_outputs_dir,
             self.resources_dir,
             self.loggings_dir,
+            self.loggings_single_logs_dir,
+            self.loggings_complete_logs_dir,
             self.tests_dir,
         ]:
-
             path.mkdir(parents=True, exist_ok=True)
 
     def tier_quotas(self, total: int) -> Dict[int, int]:

@@ -121,7 +121,7 @@ def mock_master_data(monkeypatch, tmp_path):
             json.dump(r, f)
 
     monkeypatch.setattr("src.inspect_cli.config.output_jsonl_path", output_jsonl)
-    monkeypatch.setattr("src.inspect_cli.config.uni_outputs_dir", uni_outputs)
+    monkeypatch.setattr("src.inspect_cli.config.outputs_uni_outputs_dir", uni_outputs)
     monkeypatch.setattr("src.inspect_cli.config.data_outputs_dir", tmp_path)
 
     return tmp_path, records
