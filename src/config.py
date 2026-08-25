@@ -6,33 +6,13 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict
 
+from src.utilities.loaders import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Populate os.environ before any field default_factory reads a key.
+load_dotenv()
 
-def _load_dotenv(path: Path = BASE_DIR / ".env") -> None:
-    """
-    Minimal .env loader (no python-dotenv dependency).
-
-    Existing environment variables win, so an explicitly exported key is never
-    silently overridden by a stale file.
-    """
-    if not path.exists():
-        return
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip("'\"")
-            if key and key not in os.environ:
-                os.environ[key] = value
-    except OSError:
-        pass
-
-
-_load_dotenv()
 
 
 @dataclass
