@@ -3,9 +3,9 @@
 Companion to [refactoring_plan.md](./refactoring_plan.md). That document is the *what*.
 This document is the *how*, in the order it must actually happen, with a test gate on every commit.
 
-**Status: IN PROGRESS.** Phase 0 complete (C0–C2). Work is on branch
+**Status: IN PROGRESS.** Phases 0–2 complete (C0–C7). Work is on branch
 `refactor/modular-src`; `main` remains at `4d531f0` and the tag `pre-refactor` marks that same
-commit. **Baseline to hold on every commit: 116 passed, 0 errors**
+commit. **Baseline: 116 at C0, now 127** (C4 added 11 loader tests). Every commit must hold the current count.
 (`/home/huzaifayaqob/miniconda3/envs/ise-env/bin/python -m pytest -q`).
 
 > Note: the project runs on conda env `ise-env` (Python 3.11). The base conda python has no pytest.
@@ -140,42 +140,52 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   `refactor/modular-src` before any commit landed, so `main` is untouched.
   **Gate met:** `git tag -l` shows `pre-refactor`; `git branch --show-current` is `refactor/modular-src`.
 
-### Phase 1 — Scaffolding  ← **NEXT**
+### Phase 1 — Scaffolding — ✅ COMPLETE
 
-- [ ] **C3 — Create empty packages.**
+- [x] **C3 — Create empty packages.** — `89dec5e`
   `src/{utilities,extractor,extractor/linkers,extractor/crawlers,extractor/normalizers,ingestor,inspector,logger}/__init__.py`,
   `tests/{test_utilities,test_extractor,test_ingestor,test_inspector,test_logger}/`,
   `loggings/{single_logs,complete_logs}/`, `resources/{plans,analysis}/`.
-  No logic moves. `.gitignore`: ignore `loggings/*/*.json`, keep the directories.
-  **Gate:** `python -c "import src.utilities, src.extractor, src.ingestor, src.inspector, src.logger"`.
-  `refactor(structure): scaffold modular package directories`
+  Each `__init__.py` carries a purpose docstring encoding the two dependency rules:
+  `utilities/` imports nothing from sibling packages, and `inspector/` must not import
+  `orchestrator` at module scope (Finding 6). **Deviation:** added `__init__.py` to the `tests/`
+  subpackages too — without them pytest requires globally unique test basenames, and four packages
+  will each contribute a `test_runner.py`. Relocating existing docs into `resources/plans|analysis/`
+  deferred to C28 so in-flight `resources/*.md` references keep resolving.
+  **Gate met:** all 8 packages import; suite 116.
 
-### Phase 2 — Utilities (leaf modules, zero internal dependencies — safest first)
+### Phase 2 — Utilities (leaf modules, zero internal dependencies — safest first) — ✅ COMPLETE
 
-- [ ] **C4 — `utilities/loaders.py`.** Move `_load_dotenv()` out of `config.py`, rename `load_dotenv()`;
-  `config.py` imports and calls it. New `tests/test_utilities/test_loaders.py`: existing env vars win,
-  missing file is a no-op, quoted values are stripped, malformed lines are skipped.
-  **Gate:** new test file passes.
-  `refactor(utilities): extract load_dotenv from config`
+- [x] **C4 — `utilities/loaders.py`.** — `4de3a36`
+  `loaders.py` derives the project root from its own path rather than importing `config`, which
+  would be circular (config calls `load_dotenv()` at module scope). The call now sits directly
+  after `BASE_DIR` so `os.environ` is populated before any field `default_factory` reads a key.
+  **Gate met:** 11 new tests covering behaviour that previously had none, incl. a guard that the
+  loader does not creep back into `config.py`. Suite 116 → **127**.
 
-- [ ] **C5 — `utilities/json_io.py`.** Move all 7 functions (**JSON *and* JSONL — both are kept**).
-  `src/json_io.py` becomes a re-export shim. Move `tests/test_json_io.py` →
-  `tests/test_utilities/test_json_io.py`, repointed at the new path.
-  **Gate:** all existing json_io tests pass at the new import path.
-  `refactor(utilities): move json_io, keep JSON+JSONL helpers`
+- [x] **C5 — `utilities/json_io.py`.** — `c01e445`
+  `git mv` so blame survives. Shim re-exports the private `_fsync_dir` / `_default_record_key`
+  alongside `__all__` — a shim that silently narrows the namespace is a trap for future
+  monkeypatching. `pipeline.py` deliberately left importing through the shim: it is rewritten
+  wholesale in C22, so repointing it now is churn on code about to be deleted.
+  **Gate met:** all json_io tests pass at the new path. Suite 127.
 
-- [ ] **C6 — `utilities/state_management.py`.** Move `StateManager`, `InvalidStatusError`,
-  `QuotaExceededError`, `STATUS_SEQUENCE`, `VALID_STATUSES`. Shim `src/state.py`. Extract the state
-  tests out of `tests/test_pipeline.py` into `tests/test_utilities/test_state_management.py`.
-  **Gate:** state tests pass at the new path; a real `state.sqlite` still opens.
-  `refactor(utilities): move StateManager to utilities/state_management`
+- [x] **C6 — `utilities/state_management.py`.** — `840335d`
+  Shim re-exports `config` and `logger` explicitly: `tests/test_notebook_logger.py` monkeypatches
+  the *string* target `"src.state.config.state_db_path"`, which only resolves if the shim exposes
+  that attribute path. Extracted the 8 "B5.6 SQLite state machine" tests; those symbols appeared
+  nowhere else in `test_pipeline.py`, so its dead import was dropped.
+  **Gate met:** 8 state tests green at the new path; a real `state.sqlite` opens. Suite 127.
 
-- [ ] **C7 — `utilities/schema.py`.** Pure move, **no field changes yet** (those are C17/C18).
-  Shim `src/schema.py`. Schema tests → `tests/test_utilities/test_schema.py`.
-  **Gate:** pydantic models still validate the existing `data/outputs/uni_outputs/*.json` fixtures.
-  `refactor(utilities): move schema models to utilities/schema`
+- [x] **C7 — `utilities/schema.py`.** — `137b07d`
+  Pure move; taxonomy and field changes held for C17/C18. Unlike C6, the schema symbols are still
+  used by the JSON-repair, extraction and rankings sections of `test_pipeline.py`, so that import
+  block stays until C14/C15.
+  **Gate met — adapted:** the planned fixtures were deleted in C1, so all 8 real payloads were
+  recovered from tag `pre-refactor` and validated against the moved models. **8/8 pass** — a
+  stronger check than the working-tree fixtures. Suite 127.
 
-### Phase 3 — Logger
+### Phase 3 — Logger  ← **NEXT**
 
 - [ ] **C8 — `logger/notebook_logger.py`.** Pure move. Shim `src/notebook_logger.py`.
   `tests/test_notebook_logger.py` → `tests/test_logger/`.
