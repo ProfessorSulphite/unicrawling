@@ -3,9 +3,9 @@
 Companion to [refactoring_plan.md](./refactoring_plan.md). That document is the *what*.
 This document is the *how*, in the order it must actually happen, with a test gate on every commit.
 
-**Status: IN PROGRESS.** Phases 0–2 complete (C0–C7). Work is on branch
+**Status: IN PROGRESS.** Phases 0–3 complete (C0–C9). Work is on branch
 `refactor/modular-src`; `main` remains at `4d531f0` and the tag `pre-refactor` marks that same
-commit. **Baseline: 116 at C0, now 127** (C4 added 11 loader tests). Every commit must hold the current count.
+commit. **Baseline: 116 at C0, now 174** (C4 +11 loaders, C9 +47 pipeline logger). Every commit must hold the current count.
 (`/home/huzaifayaqob/miniconda3/envs/ise-env/bin/python -m pytest -q`).
 
 > Note: the project runs on conda env `ise-env` (Python 3.11). The base conda python has no pytest.
@@ -99,8 +99,12 @@ again at the commit it affects.
   before removal, so no stale "completed" state survives pointing at deleted outputs.
 - **D2 — Strip the normalizer's fabricated defaults?** (Finding 7.) *Recommendation: yes, strip; nulls
   are honest and auditable.* Affects C19.
-- **D3 — What does `--resume s_42` actually resume?** (Finding 11.) *Recommendation: log = run manifest,
-  `state.sqlite` = per-university truth.* Affects C9 and C22.
+- ~~**D3 — What does `--resume s_42` actually resume?**~~ ✅ **ANSWERED: option A.** The log is a
+  manifest plus audit trail; `state.sqlite` stays the single source of truth for per-university
+  completion. Implemented and pinned by a test in C9. Option C was disqualified on a fact rather
+  than taste: `state.sqlite` also holds the *daily* query ledger (`reserve_queries` /
+  `queries_used_today`), which spans runs and cannot move into a per-run log without breaking
+  quota enforcement across two runs on the same day. Still shapes C22.
 - **D4 — Root entrypoint after `cli.py` dies.** `python -m src.orchestrator`, or keep a 5-line root
   `run.py`? *Recommendation: keep a thin root shim — every doc example and muscle-memory command
   starts with `python3 cli.py`.* Affects C22 and C28.
@@ -185,24 +189,32 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   recovered from tag `pre-refactor` and validated against the moved models. **8/8 pass** — a
   stronger check than the working-tree fixtures. Suite 127.
 
-### Phase 3 — Logger  ← **NEXT**
+### Phase 3 — Logger — ✅ COMPLETE
 
-- [ ] **C8 — `logger/notebook_logger.py`.** Pure move. Shim `src/notebook_logger.py`.
-  `tests/test_notebook_logger.py` → `tests/test_logger/`.
-  **Gate:** existing notebook-logger tests pass.
-  `refactor(logger): move notebook_logger into logger package`
+- [x] **C8 — `logger/notebook_logger.py`.** — `f8e6ccb`
+  **Deviation:** this shim uses explicit imports, not `import *`, and deliberately omits the
+  `_logger_instance` singleton. `from X import name` binds by value, so a shim-level copy would
+  freeze at `None` while the real module populated its own — anything resetting the singleton
+  through the shim would silently fail. Verified `get_notebook_logger()` returns one shared
+  instance through both paths.
+  **Gate met:** notebook-logger tests pass at the new path. Suite 127.
 
-- [ ] **C9 — `logger/pipeline_logger.py` (new).** Structured JSON run logs per plan §4:
+- [x] **C9 — `logger/pipeline_logger.py` (new).** — `094e93e` Structured JSON run logs per plan §4:
   `s_{id}.json` / `c_{id}.json`, monotonic ID allocation (scan directory, take max+1, **allocate under
   a lock or an O_EXCL create** — two concurrent runs must not claim the same ID), atomic writes via
   `utilities.json_io.atomic_write_json`, and a reader that resolves a token like `s_42` back to a run
   manifest. Implements D3. **Not wired into the pipeline yet** — that is C22.
   New `tests/test_logger/test_pipeline_logger.py`: ID increments, ID collision under concurrency,
   malformed log file is skipped not fatal, `--resume` token parsing rejects garbage.
-  **Gate:** new tests pass; no existing behaviour touched.
-  `feat(logger): structured JSON pipeline run logs with resumable IDs`
+  **Gate met — 47 new tests.** Two bugs the tests caught in my own implementation:
+  (a) `\d` matches *any* Unicode decimal digit, so `s_١٢٣` parsed and `int()` folded it onto
+  `123` — two visually distinct tokens addressing one log file; tightened to `[0-9]`.
+  (b) confirmed the deliberate `.strip()` so a shell-quoted or pipe-fed token resolves.
+  ID allocation uses `O_CREAT|O_EXCL`, asserted by a 20-thread collision test; the id is claimed
+  in `__init__` so an interrupted run stays resumable, and `__exit__` records the exception rather
+  than leaving a run marked `running` forever. Suite 127 → **174**.
 
-### Phase 4 — Config
+### Phase 4 — Config  ← **NEXT**
 
 - [ ] **C10 — Reorganize `Config`.** Group into PATHS / CRAWLING LIMITS & THRESHOLDS / BROWSER POOL /
   HTTP POOL / INGESTION / QUERY & EXTRACTION / EXTERNAL APIS / LOGGING, **with an inline comment on
