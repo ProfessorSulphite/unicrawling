@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.ingest import (
+from src.ingestor.source_management import (
     sanitize_url,
     check_url_accessible,
     ingest_university_sources,
@@ -68,7 +68,7 @@ async def test_ingest_preflight_filtering(monkeypatch):
     async def mock_accessible(url, timeout=5.0):
         return "good" in url
 
-    monkeypatch.setattr("src.ingest.check_url_accessible", mock_accessible)
+    monkeypatch.setattr("src.ingestor.source_management.check_url_accessible", mock_accessible)
 
     links = [
         {"url": "https://uni-test.edu.pk/good-link-1", "tier": 1},
@@ -105,13 +105,13 @@ async def test_ingest_text_fallback(monkeypatch):
     mock_client.sources.wait_for_sources = AsyncMock(return_value=["src-text-888"])
 
     # Mock check_url_accessible to return True
-    monkeypatch.setattr("src.ingest.check_url_accessible", AsyncMock(return_value=True))
+    monkeypatch.setattr("src.ingestor.source_management.check_url_accessible", AsyncMock(return_value=True))
 
     # Mock fetch_and_extract_text to return valid (title, text) tuple
     async def mock_extract_text(url, timeout=8.0):
         return "NUST Rankings", "National University of Sciences and Technology (NUST) degree requirements and curriculum program details."
 
-    monkeypatch.setattr("src.ingest.fetch_and_extract_text", mock_extract_text)
+    monkeypatch.setattr("src.ingestor.source_management.fetch_and_extract_text", mock_extract_text)
 
     links = [{"url": "https://nust.edu.pk/about-us/nust-rankings", "tier": 1}]
 
