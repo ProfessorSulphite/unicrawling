@@ -1,5 +1,5 @@
 """
-Unit tests for NotebookLM Lifecycle Audit Logger (src/notebook_logger.py)
+Unit tests for NotebookLM Lifecycle Audit Logger (src/logger/notebook_logger.py)
 Verifies multi-destination event persistence: log, jsonl, and sqlite table.
 """
 import json
@@ -11,7 +11,7 @@ import pytest
 
 from src.config import Config
 from src.state import StateManager
-from src.notebook_logger import NotebookLifecycleLogger
+from src.logger.notebook_logger import NotebookLifecycleLogger
 
 
 @pytest.fixture
@@ -20,9 +20,9 @@ def temp_logger_env(monkeypatch, tmp_path):
     jsonl_file = tmp_path / "notebook_audit.jsonl"
     sqlite_db = tmp_path / "state.sqlite"
 
-    monkeypatch.setattr("src.notebook_logger.config.notebook_lifecycle_log_path", log_file)
-    monkeypatch.setattr("src.notebook_logger.config.notebook_audit_jsonl_path", jsonl_file)
-    monkeypatch.setattr("src.notebook_logger.config.state_db_path", sqlite_db)
+    monkeypatch.setattr("src.logger.notebook_logger.config.notebook_lifecycle_log_path", log_file)
+    monkeypatch.setattr("src.logger.notebook_logger.config.notebook_audit_jsonl_path", jsonl_file)
+    monkeypatch.setattr("src.logger.notebook_logger.config.state_db_path", sqlite_db)
     monkeypatch.setattr("src.state.config.state_db_path", sqlite_db)
 
     logger = NotebookLifecycleLogger()
