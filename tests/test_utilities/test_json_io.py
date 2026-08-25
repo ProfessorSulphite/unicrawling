@@ -4,7 +4,7 @@ Unit tests for JSON I/O primitives: atomic writes, JSONL streaming, and master c
 import json
 import pytest
 
-from src.json_io import (
+from src.utilities.json_io import (
     atomic_write_text,
     atomic_write_json,
     append_jsonl,
