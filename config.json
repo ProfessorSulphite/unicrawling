@@ -95,7 +95,6 @@
     "max_links": 80,
     "exclude_keywords": "news|events",
     "uptodate": true,
-    "sync_qdrant": true,
     "force_rerun_all": false,
     "clean_logging": true
   }

@@ -440,7 +440,7 @@ async def run_batch_pipeline(
     compile_master_json()
 
     console.print("\n[bold cyan]🌐 Performing Master Universal Export & Directory Structuring...[/bold cyan]")
-    export_dataset(format_type="json", sync=settings.get("sync_qdrant", True))
+    export_dataset(format_type="json")
 
     # Generate result.json analytics
     result_analytics_file = generate_result_analytics(config_file_path)

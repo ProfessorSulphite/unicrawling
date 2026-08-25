@@ -164,16 +164,12 @@ class Config:
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
     pinecone_api_key: str = field(default_factory=lambda: os.getenv("PINECONE_API_KEY", ""))                    # Pinecone key; only needed for `export --format pinecone`
     pinecone_index_name: str = field(default_factory=lambda: os.getenv("PINECONE_INDEX_NAME", "education-counselor"))  # Target Pinecone index name
-    qdrant_url: str = field(default_factory=lambda: os.getenv("QDRANT_URL", "http://localhost:6333"))           # REMOVED IN C11 -- Qdrant is being dropped
-    qdrant_api_key: str = field(default_factory=lambda: os.getenv("QDRANT_API_KEY", ""))                        # REMOVED IN C11 -- Qdrant is being dropped
-    qdrant_collection_name: str = field(default_factory=lambda: os.getenv("QDRANT_COLLECTION_NAME", "education_counselor"))  # REMOVED IN C11 -- Qdrant is being dropped
 
     # ═══════════════════════════════════════════════════════════════════════
     # EMBEDDING & VECTOR EXPORT
     # ═══════════════════════════════════════════════════════════════════════
     embedding_model_name: str = "BAAI/bge-base-en-v1.5"   # Sentence-transformer used for link scoring and vector export; changing it changes the vector dimension
     embedding_batch_size: int = 32                        # Texts per embedding forward pass; raise for throughput, costs GPU/CPU memory
-    qdrant_upsert_batch_size: int = 64                    # REMOVED IN C11 -- points per Qdrant upsert request
 
     def ensure_directories(self) -> None:
         """Create every workspace directory the pipeline writes into."""

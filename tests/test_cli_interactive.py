@@ -3,6 +3,7 @@ Unit tests for Interactive CLI Expansion & Vector DB Exporter (src/inspect_cli.p
 """
 import json
 import csv
+import inspect
 from pathlib import Path
 
 import pytest
@@ -192,3 +193,35 @@ def test_export_pinecone_payload(mock_master_data):
         assert "values" in v0
         assert "metadata" in v0
         assert v0["metadata"]["uni_name"] == "Information Technology University"
+
+
+def test_export_json_is_country_grouped(mock_master_data):
+    """
+    The production path: run_batch_pipeline calls export_dataset(format_type="json").
+    It had no test before C11, which made the Qdrant excision riskier than it looked.
+    """
+    tmp_path, records = mock_master_data
+    json_out = tmp_path / "grouped.json"
+
+    export_dataset(format_type="json", output_path=json_out)
+
+    assert json_out.exists()
+    with open(json_out, "r", encoding="utf-8") as f:
+        grouped = json.load(f)
+
+    assert set(grouped) == {"Pakistan"}
+    assert len(grouped["Pakistan"]) == len(records)
+
+    per_country = tmp_path / "country_outputs" / "pak_output" / "pakistan_universities.json"
+    assert per_country.exists(), "per-country directory output was not written"
+
+
+def test_export_rejects_the_removed_qdrant_format():
+    """C11 removed Qdrant; the format must be gone from the CLI's accepted choices."""
+    import argparse
+
+    import src.inspect_cli as cli
+
+    parser_src = inspect.getsource(cli.main)
+    assert "qdrant" not in parser_src.lower()
+    assert '"csv", "pinecone", "json"' in parser_src

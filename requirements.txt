@@ -17,7 +17,6 @@ exa-py==2.16.0
 tenacity==9.1.4
 
 # Phase 4 & Exporters: Vector Database & CLI Analytics
-qdrant-client>=1.7.0
 pinecone-client==6.0.0
 rich>=13.0.0
 

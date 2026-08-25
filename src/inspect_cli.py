@@ -485,11 +485,11 @@ def retry_pipeline(target: str = "failed"):
 
 
 # ------------------------------------------------------------------------------
-# 5. DATASET EXPORTER COMMAND (export [--format csv|qdrant|pinecone|json] [--sync])
+# 5. DATASET EXPORTER COMMAND (export [--format csv|pinecone|json])
 # ------------------------------------------------------------------------------
 
-def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None, sync: bool = False):
-    """Exports structured outputs to CSV, Qdrant vectors, Pinecone Index, or Country-Grouped JSON."""
+def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None):
+    """Exports structured outputs to CSV, a Pinecone vector payload, or Country-Grouped JSON."""
     records = load_all_records()
     if not records:
         console.print(f"[bold red]Error:[/bold red] No data records found to export in [yellow]{config.output_jsonl_path}[/yellow].")
@@ -561,7 +561,7 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None,
 
         console.print(Panel(f"[bold green]✓ CSV Export Completed Successfully![/bold green]\nSaved {len(rows)} degree program rows to:\n[cyan]{out_file}[/cyan]"))
 
-    elif fmt in ("qdrant", "pinecone", "json"):
+    elif fmt in ("pinecone", "json"):
         # Build document chunks for vector indexing
         raw_items = []
         chunk_idx = 0
@@ -611,7 +611,7 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None,
                     })
 
         vectors = []
-        if fmt in ("qdrant", "pinecone"):
+        if fmt == "pinecone":
             try:
                 from sentence_transformers import SentenceTransformer
                 model_name = getattr(config, "embedding_model_name", "BAAI/bge-base-en-v1.5")
@@ -640,93 +640,7 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None,
                 "metadata": item["metadata"]
             })
 
-        if fmt == "qdrant":
-            out_file = output_path or (config.data_outputs_dir / "qdrant_export.json")
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump({"points": chunks}, f, indent=2, ensure_ascii=False)
-            console.print(Panel(f"[bold green]✓ Qdrant Vector Payload Export Completed![/bold green]\nSaved {len(chunks)} vector chunks to:\n[cyan]{out_file}[/cyan]"))
-
-            if not sync:
-                console.print(
-                    Panel(
-                        f"[bold yellow]Qdrant Payload Saved Locally.[/bold yellow]\n"
-                        f"Live Qdrant Cloud syncing is [dim]DISABLED[/dim] by default.\n"
-                        f"To perform live Qdrant sync and run the 10-Query Validation Suite, use:\n"
-                        f"[bold magenta]python3 cli.py export --format qdrant --sync[/bold magenta]",
-                        title="ℹ️ Qdrant Sync Option",
-                    )
-                )
-                return
-
-            qdrant_url = getattr(config, "qdrant_url", "http://localhost:6333") or os.getenv("QDRANT_URL", "http://localhost:6333")
-            qdrant_api_key = getattr(config, "qdrant_api_key", "") or os.getenv("QDRANT_API_KEY", "")
-            collection_name = getattr(config, "qdrant_collection_name", "education_counselor") or os.getenv("QDRANT_COLLECTION_NAME", "education_counselor")
-
-            console.print(f"[bold cyan]Connecting to Qdrant Cloud at '{qdrant_url}' (Collection: '{collection_name}')...[/bold cyan]")
-            try:
-                from qdrant_client import QdrantClient
-                from qdrant_client.models import VectorParams, Distance, PointStruct
-
-                q_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key if qdrant_api_key else None, timeout=8.0)
-                
-                collections = [c.name for c in q_client.get_collections().collections]
-                vector_dim = len(chunks[0]["values"]) if chunks else 768
-                if collection_name in collections:
-                    try:
-                        coll_info = q_client.get_collection(collection_name)
-                        existing_dim = getattr(getattr(coll_info.config.params, "vectors", None), "size", 384)
-                        if existing_dim != vector_dim:
-                            console.print(f"[bold yellow]Recreating collection '{collection_name}' (Upgrading dimension from {existing_dim} ➔ {vector_dim})...[/bold yellow]")
-                            q_client.delete_collection(collection_name)
-                            q_client.create_collection(
-                                collection_name=collection_name,
-                                vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
-                            )
-                    except Exception:
-                        pass
-                else:
-                    console.print(f"[yellow]Creating Qdrant collection '{collection_name}' (dimension={vector_dim}, distance=Cosine)...[/yellow]")
-                    q_client.create_collection(
-                        collection_name=collection_name,
-                        vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
-                    )
-
-                points = [
-                    PointStruct(
-                        id=idx + 1,
-                        vector=item["values"],
-                        payload={**item["metadata"], "point_key": item["id"]}
-                    )
-                    for idx, item in enumerate(chunks)
-                ]
-                batch_size = max(1, getattr(config, "qdrant_upsert_batch_size", 64))
-                for i in range(0, len(points), batch_size):
-                    q_client.upsert(collection_name=collection_name, points=points[i : i + batch_size])
-
-                console.print(
-                    Panel(
-                        f"[bold green]🎉 SUCCESSFULLY UPSERTED {len(points)} DENSE VECTORS TO QDRANT![/bold green]\n"
-                        f"Collection: [yellow]{collection_name}[/yellow]\n"
-                        f"Qdrant Endpoint: [cyan]{qdrant_url}[/cyan]\n"
-                        f"Embedding Dimension: [yellow]{vector_dim}[/yellow] (Top-Tier Normalized Dense Vectors)",
-                        title="⚡ Qdrant Live Vector Database Sync",
-                    )
-                )
-
-                # Run Automated 10-Query Validation Suite
-                try:
-                    from src.qdrant_validator import validate_qdrant_database
-                    is_valid, benchmark_results = validate_qdrant_database(q_client, collection_name)
-                    if not is_valid:
-                        console.print(f"[bold red]⚠️ Qdrant Validation Suite Failed! Preserving local JSON payloads.[/bold red]")
-                except Exception as ve:
-                    console.print(f"[yellow]Could not run validation suite: {ve}[/yellow]")
-
-            except Exception as e:
-                console.print(f"[bold yellow]Qdrant Connection Notice:[/bold yellow] {e}")
-                console.print(f"[dim]The vector payload has been preserved in [cyan]{out_file}[/cyan]. You can load it directly into Qdrant or start a local Qdrant container with:\n[bold magenta]docker run -p 6333:6333 qdrant/qdrant[/bold magenta][/dim]")
-
-        elif fmt == "pinecone":
+        if fmt == "pinecone":
             out_file = output_path or (config.data_outputs_dir / "pinecone_export.json")
             with open(out_file, "w", encoding="utf-8") as f:
                 json.dump({"vectors": chunks}, f, indent=2, ensure_ascii=False)
@@ -1016,7 +930,7 @@ def interactive_menu():
         console.print("6. 🗄️ Inspect SQLite State Manifest")
         console.print("7. 📜 Display Master JSON Schema")
         console.print("8. ☁️ List Active NotebookLM Notebooks")
-        console.print("9. 📤 Export Dataset (CSV / Qdrant / Pinecone / JSON)")
+        console.print("9. 📤 Export Dataset (CSV / Pinecone / JSON)")
         console.print("0. 🚪 Exit")
         console.print("=" * 55, style="cyan")
 
@@ -1053,7 +967,7 @@ def interactive_menu():
         elif choice == "8":
             inspect_notebooks()
         elif choice == "9":
-            fmt = Prompt.ask("Select export format", choices=["csv", "qdrant", "pinecone", "json"], default="pinecone")
+            fmt = Prompt.ask("Select export format", choices=["csv", "pinecone", "json"], default="pinecone")
             export_dataset(fmt)
 
 
@@ -1085,10 +999,9 @@ def main():
     retry_parser.add_argument("target", type=str, nargs="?", default="failed", help="Target slug or status ('failed', 'pending', 'all')")
 
     # Command: export
-    export_parser = subparsers.add_parser("export", help="Export dataset into CSV, Qdrant, Pinecone, or Country-Grouped JSON format")
-    export_parser.add_argument("--format", type=str, default="csv", choices=["csv", "qdrant", "pinecone", "json"], help="Export format")
+    export_parser = subparsers.add_parser("export", help="Export dataset into CSV, Pinecone, or Country-Grouped JSON format")
+    export_parser.add_argument("--format", type=str, default="csv", choices=["csv", "pinecone", "json"], help="Export format")
     export_parser.add_argument("--output", type=Path, default=None, help="Custom output file path")
-    export_parser.add_argument("--sync", action="store_true", help="Perform live Qdrant Cloud sync and run 10-query validation benchmark")
 
     # Command: analytics
     analytics_parser = subparsers.add_parser("analytics", help="Audit dataset health & quality metrics")
@@ -1128,7 +1041,7 @@ def main():
     elif args.command == "retry":
         retry_pipeline(args.target)
     elif args.command == "export":
-        export_dataset(format_type=args.format, output_path=args.output, sync=args.sync)
+        export_dataset(format_type=args.format, output_path=args.output)
     elif args.command == "analytics":
         audit_analytics(args.file)
     elif args.command == "state":
