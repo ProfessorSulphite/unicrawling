@@ -1,0 +1,234 @@
+"""
+The five-query extraction suite and its execution against one notebook.
+
+Each QuerySpec is bound to the source tiers that can answer it, so a query about
+fees is not grounded in faculty pages. ExtractionReport records the per-query
+outcome, so a partially-failed extraction is never reported as clean.
+"""
+
+import asyncio
+import logging
+
+from dataclasses import dataclass, field
+from notebooklm import NotebookLMClient
+from pydantic import BaseModel
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from src.config import config
+from src.logger.notebook_logger import log_query_executed
+from src.utilities.schema import ContactInfo, FacultyItem, MainInfo, ProgramItem
+
+from src.extractor.crawlers.json_repairing import ExtractionError, repair_and_validate_json
+
+# Same registry entry as every other module in this package: logging.getLogger
+# returns one object per name, so this is the logger extract_data.py created.
+logger = logging.getLogger("ExtractData")
+
+
+class Q1Payload(BaseModel):
+    main_info: MainInfo
+    contact: ContactInfo
+
+# ---------------------------------------------------------------------------
+# Query suite
+# ---------------------------------------------------------------------------
+
+@dataclass
+class QuerySpec:
+    """One query in the suite, bound to the source tiers that can answer it."""
+    key: str
+    prompt: str
+    model: Any
+    tiers: Tuple[int, ...]
+
+
+_JSON_CONTRACT = (
+    "Return ONLY a single valid JSON value and nothing else. No prose, no markdown "
+    "fences, no explanation. Use null for unknown scalar fields and [] for unknown "
+    "lists. Never invent a value that is not supported by the provided sources."
+)
+
+Q1_PROMPT = """Extract the university's main information and contact details.
+Match this exact structure:
+{
+  "main_info": {
+    "name": "<University Name>", "abbreviation": "<or null>", "country": "<Country e.g. Pakistan, Germany, USA>",
+    "city": "<City location of main campus, or null>", "established_year": null,
+    "accreditation_body": "<e.g. HEC, ABET, WASC, or null>",
+    "admission_cycles_offered": ["Fall", "Spring"],
+    "primary_instruction_language": "English",
+    "website": "<Website URL>", "type": "public" or "private",
+    "description": "<Concise overview>",
+    "key_links": {
+      "academics_url": "<or null>",
+      "admissions_url": "<or null>",
+      "application_portal_url": "<the page where an applicant actually submits an application, or null>"
+    },
+    "rankings": []
+  },
+  "contact": {
+    "official_email": "<or null>", "phone_numbers": [], "physical_address": "<or null>",
+    "admissions_office_location": "<or null>", "sub_campuses_contact": []
+  }
+}
+Leave "rankings" as an empty array; do not state any numeric rank.
+""" + _JSON_CONTRACT
+
+_PROGRAM_STRUCTURE = """[
+  {
+    "name": "<Program Name>", "program_info_link": "<URL or null>",
+    "department": "<or null>", "degree_level": "%s",
+    "duration": "<e.g. 4 Years>", "tuition_fee": "<or null>", "currency": "PKR",
+    "scholarships_info": "<or null>", "intake_terms": ["Fall"],
+    "delivery_mode": "On-Campus", "application_fee": "<or null>",
+    "career_prospects": "<or null>", "courses_taught": [],
+    "summary_3_lines": "<exactly 3 short lines describing the programme>",
+    "eligibility_requirements": {
+      "minimum_marks_percentage": "<or null>", "entry_tests_accepted": [],
+      "aggregate_formula": "<or null>"
+    },
+    "application_status": "open" | "closed" | "rolling" | "upcoming",
+    "application_deadline": "<or null>"
+  }
+]"""
+
+QUERY_SUITE: List[QuerySpec] = [
+    QuerySpec(
+        key="main_info_contact",
+        prompt=Q1_PROMPT,
+        model=Q1Payload,
+        # Admissions/fees pages (T2) carry portal links; T4 carries contact details.
+        tiers=(1, 2, 3, 4),
+    ),
+    QuerySpec(
+        key="undergraduate",
+        prompt=(
+            "List every UNDERGRADUATE degree programme (BS, BSc, BBA, BA, BE, MBBS, "
+            "LLB, PharmD) offered by this university, as a JSON array matching:\n"
+            + (_PROGRAM_STRUCTURE % "undergraduate") + "\n" + _JSON_CONTRACT
+        ),
+        model=List[ProgramItem],
+        tiers=(1, 2),
+    ),
+    QuerySpec(
+        key="graduate",
+        prompt=(
+            "List every GRADUATE degree programme (MS, MSc, MBA, MPhil, MA, ME, LLM) "
+            "offered by this university, as a JSON array matching:\n"
+            + (_PROGRAM_STRUCTURE % "graduate") + "\n" + _JSON_CONTRACT
+        ),
+        model=List[ProgramItem],
+        tiers=(1, 2),
+    ),
+    QuerySpec(
+        key="postgraduate_phd",
+        prompt=(
+            "List every PhD and doctoral programme offered by this university, as a "
+            "JSON array matching:\n"
+            + (_PROGRAM_STRUCTURE % "postgraduate_phd") + "\n" + _JSON_CONTRACT
+        ),
+        model=List[ProgramItem],
+        tiers=(1, 2),
+    ),
+    QuerySpec(
+        key="faculties",
+        prompt=(
+            "List all faculties, schools, and their constituent departments, as a JSON "
+            "array matching:\n"
+            '[{"faculty_name": "<Name>", "description": "<or null>", '
+            '"departments": [], "faculty_website": "<URL or null>"}]\n' + _JSON_CONTRACT
+        ),
+        model=List[FacultyItem],
+        tiers=(3, 1),
+    ),
+]
+
+
+@dataclass
+class ExtractionReport:
+    """Per-query outcome, so a partially-failed extraction is never silently clean."""
+    succeeded: List[str] = field(default_factory=list)
+    failed: Dict[str, str] = field(default_factory=dict)
+    queries_used: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed
+
+    def merge(self, other: "ExtractionReport") -> None:
+        """Fold a per-query sub-report into this one."""
+        self.succeeded.extend(other.succeeded)
+        self.failed.update(other.failed)
+        self.queries_used += other.queries_used
+
+
+async def _ask(
+    client: NotebookLMClient,
+    notebook_id: str,
+    prompt: str,
+    source_ids: Optional[Sequence[str]] = None,
+    conversation_id: Optional[str] = None,
+) -> str:
+    """Issue one chat.ask and return the answer text."""
+    res = await client.chat.ask(
+        notebook_id=notebook_id,
+        question=prompt,
+        source_ids=list(source_ids) if source_ids else None,
+        conversation_id=conversation_id,
+    )
+    answer = getattr(res, "answer", None)
+    return str(answer) if answer else str(res)
+
+
+async def run_query(
+    client: NotebookLMClient,
+    notebook_id: str,
+    spec: QuerySpec,
+    source_ids: Optional[Sequence[str]],
+    report: ExtractionReport,
+) -> Any:
+    """
+    Execute one query with a bounded repair loop.
+
+    On a parse or validation failure the model is re-asked with its own broken
+    output and the exact error, which recovers the majority of malformed answers.
+    Each attempt is counted against the daily query budget by the caller.
+    """
+    last_error: Optional[Exception] = None
+    raw = ""
+
+    for attempt in range(config.max_query_retries + 1):
+        prompt = spec.prompt
+        if attempt > 0:
+            prompt = (
+                f"Your previous answer could not be parsed.\n"
+                f"Error: {last_error}\n"
+                f"Previous answer (truncated):\n{raw[:1500]}\n\n"
+                f"Re-emit the SAME data as strictly valid JSON only.\n\n{spec.prompt}"
+            )
+        try:
+            t0 = asyncio.get_event_loop().time()
+            raw = await _ask(client, notebook_id, prompt, source_ids)
+            dur = asyncio.get_event_loop().time() - t0
+            report.queries_used += 1
+            log_query_executed(
+                notebook_id=notebook_id,
+                query_index=report.queries_used,
+                query_key=spec.key,
+                prompt_len=len(prompt),
+                response_bytes=len(raw.encode("utf-8")),
+                duration_sec=dur,
+            )
+            value = repair_and_validate_json(raw, spec.model)
+            report.succeeded.append(spec.key)
+            return value
+        except ExtractionError as e:
+            last_error = e
+            logger.warning(f"[{spec.key}] attempt {attempt + 1} failed: {e}")
+        except Exception as e:
+            last_error = e
+            report.queries_used += 1
+            logger.warning(f"[{spec.key}] attempt {attempt + 1} errored: {e}")
+
+    report.failed[spec.key] = str(last_error)
+    return None
