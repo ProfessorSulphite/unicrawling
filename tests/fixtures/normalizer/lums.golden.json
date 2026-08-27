@@ -1,0 +1,70 @@
+{
+  "contact": {
+    "admissions_office_location": null,
+    "official_email": "admissions@lums.edu.pk",
+    "phone_numbers": [
+      "+92 42 3560 8000"
+    ],
+    "physical_address": "Lahore University of Management Sciences (LUMS), Opposite Sector U, DHA, Cantt. 54792, Lahore, Pakistan",
+    "sub_campuses_contact": []
+  },
+  "faculties": [
+    {
+      "departments": [],
+      "description": null,
+      "faculty_name": "Lahore School of Management Sciences",
+      "faculty_website": null
+    },
+    {
+      "departments": [],
+      "description": null,
+      "faculty_name": "Mushtaq Ahmad Gurmani School of Humanities and Social Sciences",
+      "faculty_website": null
+    },
+    {
+      "departments": [],
+      "description": null,
+      "faculty_name": "Syed Babar Ali School of Science and Engineering",
+      "faculty_website": null
+    }
+  ],
+  "main_info": {
+    "abbreviation": "LUMS",
+    "accreditation_body": "Higher Education Commission (HEC) / NBEAC",
+    "admission_cycles_offered": [
+      "Fall"
+    ],
+    "city": "Lahore",
+    "country": "Pakistan",
+    "description": "Pakistan's leading research-intensive university, excelling in teaching and driven by a philosophy of 'Learning Without Borders'.",
+    "domain_verified": true,
+    "established_year": 1984,
+    "exa_enriched": false,
+    "key_links": {
+      "academics_url": null,
+      "admissions_url": "https://admissions.lums.edu.pk/",
+      "application_portal_url": "https://admissions.lums.edu.pk/application/index.php"
+    },
+    "name": "Lahore University of Management Sciences",
+    "primary_instruction_language": "English",
+    "rankings": [
+      {
+        "rank": 540,
+        "scope": "Global",
+        "source": "QS World University Rankings",
+        "source_url": "https://www.topuniversities.com/universities/lahore-university-management-sciences-lums",
+        "subject": "Overall",
+        "year": 2026
+      }
+    ],
+    "type": "private",
+    "verification_note": "Identity fields sourced from resources/rankings_pk.json registry.",
+    "website": "https://lums.edu.pk/"
+  },
+  "programs": {
+    "graduate": [],
+    "postgraduate_and_phd": [],
+    "undergraduate": []
+  },
+  "programs_possibly_truncated": true
+}

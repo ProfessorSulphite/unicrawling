@@ -1,0 +1,52 @@
+{
+  "contact": {
+    "admissions_office_location": "Main Campus, H-12, Islamabad",
+    "official_email": "admissions@nust.edu.pk",
+    "phone_numbers": [
+      "+92-51-111-11-6878"
+    ],
+    "physical_address": "Scholars Ave, H-12, Islamabad, Islamabad Capital Territory, Pakistan",
+    "sub_campuses_contact": []
+  },
+  "faculties": [],
+  "main_info": {
+    "abbreviation": "NUST",
+    "accreditation_body": "HEC",
+    "admission_cycles_offered": [
+      "Fall",
+      "Spring"
+    ],
+    "city": "Islamabad",
+    "country": "Pakistan",
+    "description": "A leading research-led university in Pakistan known for its focus on science, technology, and innovation.",
+    "domain_verified": true,
+    "established_year": 1991,
+    "exa_enriched": false,
+    "key_links": {
+      "academics_url": "https://nust.edu.pk/academics/",
+      "admissions_url": "https://admissions.nust.edu.pk/",
+      "application_portal_url": "https://ugadmissions.nust.edu.pk/"
+    },
+    "name": "National University of Sciences and Technology",
+    "primary_instruction_language": "English",
+    "rankings": [
+      {
+        "rank": 353,
+        "scope": "Global",
+        "source": "QS World University Rankings",
+        "source_url": "https://www.topuniversities.com/universities/national-university-sciences-technology-nust-islamabad",
+        "subject": "Overall",
+        "year": 2026
+      }
+    ],
+    "type": "public",
+    "verification_note": "Identity fields sourced from resources/rankings_pk.json registry.",
+    "website": "https://nust.edu.pk/"
+  },
+  "programs": {
+    "graduate": [],
+    "postgraduate_and_phd": [],
+    "undergraduate": []
+  },
+  "programs_possibly_truncated": false
+}

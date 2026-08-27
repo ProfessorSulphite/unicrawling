@@ -1,0 +1,41 @@
+{
+  "contact": {
+    "admissions_office_location": null,
+    "official_email": null,
+    "phone_numbers": [],
+    "physical_address": null,
+    "sub_campuses_contact": []
+  },
+  "faculties": [],
+  "main_info": {
+    "abbreviation": null,
+    "accreditation_body": "Ministry of Higher Education (Pakistan)",
+    "admission_cycles_offered": [
+      "Fall",
+      "Spring"
+    ],
+    "city": null,
+    "country": "Pakistan",
+    "description": "Identity block for Allama Iqbal Open University; source extraction failed.",
+    "domain_verified": false,
+    "established_year": null,
+    "exa_enriched": true,
+    "key_links": {
+      "academics_url": null,
+      "admissions_url": null,
+      "application_portal_url": "https://www.aiou.edu.pk/oas-fresh-admission"
+    },
+    "name": "Allama Iqbal Open University",
+    "primary_instruction_language": "English",
+    "rankings": [],
+    "type": "public",
+    "verification_note": null,
+    "website": "https://aiou.edu.pk"
+  },
+  "programs": {
+    "graduate": [],
+    "postgraduate_and_phd": [],
+    "undergraduate": []
+  },
+  "programs_possibly_truncated": true
+}
