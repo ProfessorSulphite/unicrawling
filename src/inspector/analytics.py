@@ -7,13 +7,17 @@ scale with the corpus. C21 adds the per-programme required-field audit on top of
 this in auditor.py.
 """
 import json
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from rich.table import Table
 
 from src.config import config
+from src.extractor.normalizers.runner import PROGRAM_BUCKETS
 from src.inspector.formatting import console
+from src.inspector.records import iter_all_records
+from src.utilities.json_io import atomic_write_json
 
 
 # ------------------------------------------------------------------------------
@@ -101,3 +105,55 @@ def audit_analytics(file_path: Optional[Path] = None):
     table.add_row("Malformed / Broken Lines", str(malformed), "[bold green]✓ ZERO CORRUPTION[/bold green]" if malformed == 0 else "[bold red]Corrupted[/bold red]")
 
     console.print(table)
+
+
+def generate_result_analytics(config_path: Optional[Path] = None) -> Path:
+    """
+    Write data/outputs/result.json: the run's dataset-level analytics.
+
+    Lived in pipeline.py until C22. It is analytics, not orchestration -- the
+    orchestrator calls it at the end of a batch the same way it calls any other
+    inspector function, and the direction of the dependency (orchestrator ->
+    inspector, never back) is what keeps Finding 6 closed.
+
+    Streamed: the whole dataset is never resident, only the running counters.
+    """
+    country_counts: Dict[str, int] = {}
+    total_unis = 0
+    per_level = {bucket: 0 for bucket in PROGRAM_BUCKETS}
+    portal_count = 0
+    contact_count = 0
+
+    for rec in iter_all_records():
+        total_unis += 1
+        main = rec.get("main_info") or {}
+        # C19: a record whose country the extractor never found is not Pakistani.
+        # Filing it under "Unknown" keeps the gap visible in the distribution.
+        c_name = main.get("country") or "Unknown"
+        country_counts[c_name] = country_counts.get(c_name, 0) + 1
+
+        if (main.get("key_links") or {}).get("application_portal_url"):
+            portal_count += 1
+        if (rec.get("contact") or {}).get("official_email"):
+            contact_count += 1
+
+        progs = rec.get("programs") or {}
+        for bucket in PROGRAM_BUCKETS:
+            per_level[bucket] += len(progs.get(bucket) or [])
+
+    analytics_payload = {
+        "timestamp": datetime.now().isoformat(),
+        "config_file": str(config_path) if config_path else None,
+        "total_universities": total_unis,
+        "country_distribution": country_counts,
+        "program_counts": {**per_level, "total_programs": sum(per_level.values())},
+        "quality_metrics": {
+            "application_portal_coverage_pct": round((portal_count / max(1, total_unis)) * 100, 1),
+            "admissions_contact_coverage_pct": round((contact_count / max(1, total_unis)) * 100, 1),
+            "malformed_records": 0,
+        },
+    }
+
+    result_file = config.data_outputs_dir / "result.json"
+    atomic_write_json(result_file, analytics_payload)
+    return result_file

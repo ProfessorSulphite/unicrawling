@@ -362,6 +362,23 @@ class StateManager:
                 ).fetchall()
             return [r["source_id"] for r in rows]
 
+    def source_ids_by_tier(self, slug: str) -> Optional[Dict[int, List[str]]]:
+        """
+        {tier: [source_id, ...]} so each Phase 3 query is scoped to the sources
+        that can answer it.
+
+        Returns None -- not an empty dict -- when nothing was recorded, because
+        the query suite reads None as "search every source" and {} as "search
+        nothing". A university whose source map was never written would otherwise
+        be queried against no sources at all and come back empty.
+        """
+        by_tier: Dict[int, List[str]] = {}
+        for tier in (1, 2, 3, 4):
+            ids = self.get_source_ids(slug, tiers=[tier])
+            if ids:
+                by_tier[tier] = ids
+        return by_tier or None
+
     def count_sources_by_tier(self, slug: str) -> Dict[int, int]:
         """Tier histogram of ingested sources; drives programs_possibly_truncated."""
         with self._get_connection() as conn:
