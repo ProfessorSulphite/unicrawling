@@ -199,6 +199,11 @@ class Config:
     # EXTERNAL API KEYS
     # ═══════════════════════════════════════════════════════════════════════
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
+    # Supabase (C29). Absent by default: the push is opt-in, and inspector/sync.py
+    # says exactly what is missing rather than failing obscurely. The SERVICE key
+    # is a write credential -- it belongs in .env, never in run_settings.json.
+    supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))                            # Supabase project URL; the sync is skipped entirely when unset
+    supabase_service_key: str = field(default_factory=lambda: os.getenv("SUPABASE_SERVICE_KEY", ""))            # Supabase service-role key; write access, keep out of version control
 
     # ═══════════════════════════════════════════════════════════════════════
     # EMBEDDING (Phase 1 semantic link scoring)

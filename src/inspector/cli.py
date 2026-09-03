@@ -30,7 +30,7 @@ from src.inspector.dashboard import (
     search_programs,
 )
 from src.inspector.formatting import console
-from src.inspector.sync import export_dataset
+from src.inspector.sync import AuditGateFailed, export_dataset, sync_to_supabase
 
 
 # ------------------------------------------------------------------------------
@@ -211,6 +211,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Audit per-programme required-field coverage and rule on push readiness",
     )
 
+    # Command: sync
+    sync_parser = subparsers.add_parser(
+        "sync", help="Push the corpus to Supabase, gated on a passing audit")
+    sync_parser.add_argument(
+        "--no-dry-run", dest="dry_run", action="store_false", default=True,
+        help="Actually write. Without this the plan is reported and nothing is pushed.")
+    sync_parser.add_argument(
+        "--force", action="store_true",
+        help="Push even though the audit failed. Deliberate override; reported in the result.")
+
     # Command: state
     subparsers.add_parser("state", help="Inspect SQLite pipeline execution state manifest")
 
@@ -256,6 +266,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         export_dataset(format_type=args.format, output_path=args.output)
     elif args.command == "analytics":
         audit_analytics(args.file)
+    elif args.command == "sync":
+        try:
+            sync_to_supabase(dry_run=args.dry_run, force=args.force)
+        except AuditGateFailed as e:
+            console.print(f"[bold red]Push refused:[/bold red] {e}")
+            return 1
+        except Exception as e:
+            console.print(f"[bold red]Sync failed:[/bold red] {e}")
+            return 1
     elif args.command == "audit":
         # The one command whose answer a caller may need to branch on: a
         # non-zero exit is what stops a push script at the gate.

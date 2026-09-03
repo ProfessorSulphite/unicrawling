@@ -25,3 +25,7 @@ pytest-asyncio==1.3.0
 
 # After installing, fetch the browser used by Crawl4AI:
 #     python -m playwright install chromium
+
+# Supabase push (optional; only needed for `cli.py sync --no-dry-run`).
+# Not installed by default -- the pipeline and every other command run without it.
+# supabase>=2.0
