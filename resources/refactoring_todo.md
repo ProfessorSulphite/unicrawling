@@ -616,18 +616,72 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   Suite 374 → **401**.
   `fix(normalizers): stop fabricating values for missing fields`
 
-- [ ] **C20 — Split `inspect_cli.py` (52 KB) into `inspector/`.**  ← **NEXT**
-  `dashboard.py` (`inspect_university`, `compare_universities`, `search_programs`,
-  `interactive_menu`, `inspect_state`, `inspect_schema`, `inspect_notebooks`) · `auditor.py`
-  (empty/NaN field audits, coverage) · `analytics.py` (`audit_analytics`, `iter_all_records`,
-  `load_all_records`, `find_university_record`, distributions) · export/`sync.py` seam.
-  **Break the `pipeline` ↔ `inspect_cli` cycle here per Finding 6** — `retry_pipeline` keeps a lazy
-  import of the orchestrator; nothing in `inspector/` imports it at module level.
-  Shim `src/inspect_cli.py`. `tests/test_cli_interactive.py` → `tests/test_inspector/`.
-  **Gate:** `python -c "import src.inspector"` with no circular-import error; CLI interactive tests pass.
-  `refactor(inspector): split inspect_cli into dashboard/auditor/analytics/sync`
+- [x] **C20 — Split `inspect_cli.py` (967 lines) into `inspector/`.**
+  `edf7ba6` · `64d6d50` · `a60e7c2`
 
-- [ ] **C21 — Auditor rules for the new schema.**
+  **The split itself (`edf7ba6`) is a pure move** — all 17 function bodies byte-identical to their
+  pre-split source, verified by an AST diff of the extracted segments, so the commit that moves the
+  code changes none of it. Six modules: `formatting.py` (the one shared Rich `console`,
+  `format_deadlines`, `extract_numeric_fee`) · `records.py` (the read layer) · `dashboard.py`
+  (`inspect_university`, `compare_universities`, `search_programs`, `inspect_state`,
+  `inspect_schema`, `inspect_notebooks`) · `analytics.py` (`audit_analytics`) · `sync.py`
+  (`export_dataset`) · `cli.py` (argparse table, TUI menu, `retry_pipeline`). Plus `__main__.py`,
+  so `python -m src.inspector` runs without runpy's double-import warning.
+
+  **Finding 6 is closed.** No module under `src/inspector/` imports the orchestrator at module
+  scope; the four remaining `src.pipeline` imports are function-local and confined to `cli.py`
+  (`retry_pipeline` and the `batch` command). Checked by walking each module's top-level AST body,
+  not by grep. `pipeline.py`'s three lazy imports now point at the defining modules, not the shim.
+
+  **Three deviations from the plan above, all deliberate:**
+  1. The record loaders went to their own `records.py` rather than into `analytics.py`. A dashboard
+     importing "analytics" to find `find_university_record` describes the wrong dependency; the
+     loaders are a read layer, and every command sits on top of them.
+  2. `interactive_menu` went to `cli.py`, not `dashboard.py`. It offers "retry", so whichever module
+     holds it inherits the orchestrator dependency the split exists to contain.
+  3. **`auditor.py` was not created.** C20 had nothing to put in it — the empty/NaN per-programme
+     rules it is named for are C21's content. An empty module named for work not yet done is worse
+     than no module. C21 creates it.
+
+  **Two real defects surfaced by smoke-testing the split against actual payloads**, each fixed in
+  its own commit rather than folded into the move:
+
+  - `64d6d50` — **the read layer disagreed with itself.** `find_university_record` returned the file
+    verbatim when the query matched a filename, and fell through to the normalized
+    `load_all_records()` scan otherwise. So one stored file read two different ways depending on how
+    it was found. Symptom: `inspect itu` reported **0 programmes** for a record whose programmes
+    `search` and `export` both listed — the file was pre-C17, its programmes still under the retired
+    `undergraduate` / `graduate` / `postgraduate_and_phd` names, which the streaming path migrates
+    and the fast path did not. Both routes now go through one `_normalized()` step. Same fix covers
+    the pre-C18 singular `application_deadline`.
+  - `a60e7c2` — **C19 left the display layer holding nulls it had never had to render.** Once the
+    normalizer stopped inventing, `main.get('type', 'public').upper()` raises `AttributeError` on a
+    key that is present and null, which is what the extractor now writes when it cannot read the
+    type; Rich raises on a `None` cell for the same reason. `inspect` and `diff` crashed outright on
+    a record the pipeline produces routinely. One `show()` helper now renders missing as missing.
+    Three assumptions went with the crash: the header printed `Country: Pakistan` for an unknown
+    country (the same defaulting C19 removed from the normalizer, still live in the one place a
+    person actually reads); four fee columns were headed **"Tuition Fee (PKR)"** and the comparison
+    formatted its range `PKR {min} - {max}` regardless of record — the range is now labelled only
+    when every programme in the record agrees on one currency; and `retry` guessed
+    `https://{slug}.edu.pk` silently, where it now prefers the state row's URL and announces the
+    fallback. Also fixed: `diff` computed `dip1`/`dip2` and showed neither, so diploma programmes
+    were missing from the comparison and its "Total Degree Offerings" — a C17 miss.
+
+  **Carried, not fixed:** `--max-fee` compares the first number in a fee string across currencies,
+  which is meaningless on a worldwide corpus. The help text now says so instead of reading "in PKR".
+  Real fix belongs with C21's auditor rules.
+
+  **Gates, all met:** `import src.inspector` clean · all six entry points import · 11 CLI
+  subcommands still parse · `python src/inspect_cli.py` and `python -m src.inspector` both run ·
+  `inspect` / `diff` / `search` / `analytics` / `export` exercised end-to-end against real payloads ·
+  shim re-exports all 18 public names, checked against the pre-split module's surface.
+
+  `src/inspect_cli.py` 967 → **58** lines. Suite 401 → **410**.
+  `refactor(inspector): split inspect_cli into dashboard/analytics/sync/cli`
+
+- [ ] **C21 — Auditor rules for the new schema.**  ← **NEXT**
+  Creates `inspector/auditor.py`, deferred from C20.
   Empty/NaN reporting across the §5 required per-program fields; degree-level distribution counts;
   a hard "not ready for Supabase" verdict when coverage is below threshold.
   **Gate:** auditing a deliberately gappy fixture reports exactly the missing fields.
