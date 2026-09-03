@@ -454,20 +454,61 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   "itu" inherits ITU Lahore's 2012). That set of assertions is C19's checklist.
   `refactor(extractor): split universal_normalizer into normalizers subpackage`
 
-- [ ] **C17 — Degree taxonomy: 4 levels (behaviour change, Findings 1 + 3).**  ← **NEXT**
-  `DegreeLevel` → `bachelors` / `masters` / `phd` / `diploma`; `ProgramCategoryBlock` keys renamed;
-  **add a 6th `diploma` query** to `QUERY_SUITE` and rewrite the three existing program prompts to the
-  new level names; bump `queries_per_university` 5 → 6 and re-derive `daily_query_budget`; update the
-  plan §6.5 "5-query budget" wording. Implement `normalizers/degree_names.py`: map every observed
-  degree string (BS/BSc/BA/BBA/BE/B.Ed/MBBS/LLB/PharmD → bachelors; MS/MSc/MA/MBA/MPhil/M.Ed/LLM →
-  masters; PhD/Doctorate → phd; PGD/Diploma/Certificate → diploma) to exactly one canonical level.
-  **Post-doctoral is excluded entirely** (plan §1 note 5).
-  New `tests/test_extractor/test_degree_names.py` with a table of real degree strings from the existing
-  outputs; assert every program maps to exactly one of the 4 and that nothing lands in a fallback bucket.
-  **Gate:** new taxonomy tests pass; `university_payload_schema.json` regenerated and validating.
+- [x] **C17 — Degree taxonomy: 4 levels (behaviour change, Findings 1 + 3).** — `ad689b4`
+  `DegreeLevel` and `ProgramCategoryBlock` now carry the **same four strings** —
+  `bachelors` / `masters` / `phd` / `diploma` — so a bucket name *is* its level and nothing has
+  to be translated. Pre-C17 the enum value (`postgraduate_phd`) did not even match its own bucket
+  name (`postgraduate_and_phd`).
+
+  `QUERY_SUITE` 5 → 6 (diploma query added, three programme prompts rewritten);
+  `queries_per_university` 5 → 6, pinned to `len(QUERY_SUITE)` by test because `reserve_queries()`
+  claims that number up front and a suite that outgrew it would silently overrun the 500/day cap.
+
+  **Budget re-derived, and it no longer clears:** 6 × 83 = 498 against a 500 cap — no retry
+  headroom at all (the 5-query suite had 85). `config.py` records that **batch sizing** is what has
+  to give; `daily_query_budget` is a real external quota, not a knob. **A full 83-university batch
+  no longer fits in one day.**
+
+  `normalizers/degree_names.py` is the deterministic mapper. It tokenises rather than
+  substring-matches — the same lesson the link filter learned — because of two real strings:
+  `"Post-RN Bachelor of Science in Nursing"` (starts with "Post", is a bachelors) and
+  `"Doctor of Physical Therapy (DPT)"` (says "Doctor", is a bachelors). Entry-level professional
+  doctorates resolve before the PhD rule, but an explicit `phd` marker vetoes that, or
+  `"PhD in Pharmacy Practice"` comes out a bachelors. An unreadable name returns `None` rather than
+  defaulting — guessing a level fabricates a fact a student could act on.
+
+  **Two call sites, chosen to keep the DAG honest.** The normalizer runs `apply_degree_level` over
+  every programme, where the **name outranks the declared level**. The schema coerces retired
+  *values* only, with its own self-contained table: `utilities` is the leaf layer and must not
+  import upward, even lazily.
+
+  **Backward compatibility mattered more than expected:** `inspect_cli` re-normalizes every record
+  it reads, so retired bucket names are folded into the canonical four (merged, not assigned) and
+  retired enum values coerce. Without that, every university extracted before this commit would
+  report **zero programmes** through the inspector's audits, search and CSV export.
+
+  **Deviation (beyond the planned scope):** the rename reached further than the plan listed —
+  `inspect_cli` (tables, comparison, search, CSV export, analytics), the pipeline run summary, and
+  linkers' `DEGREE_LEVEL_TOKENS`, where `"pgd"` moved out of the masters set into its own diploma
+  level. That last one was a live bug: a "PGD in Data Science" link was deduping against an
+  "MS in Data Science" link and one was being dropped.
+
+  **Gates, all met:** 40 real degree strings from the 8 `pre-refactor` payloads each map to exactly
+  one level, none falling through · all 263 programmes in those payloads classify, 0 unresolved ·
+  full 8-payload normalizer diff pre-C17 vs post-C17 shows no change to `main_info`, `contact`,
+  `faculties` or the truncation flag, no count or order drift, and no field change other than
+  `degree_level` — 260 the straight rename, 3 real corrections (`Doctorate of Physical Therapy`;
+  `PHD Electrical Engineering` and `PHD Computer Science`, both filed as masters by the extractor) ·
+  `university_payload_schema.json` regenerated and asserted against.
+
+  Note the committed schema JSON was **stale by more than this change** — it predated
+  `established_year`, `accreditation_body`, `admission_cycles_offered` and several other `MainInfo`
+  fields. The regeneration picks those up too.
+
+  Suite 277 → **338**.
   `feat(schema): replace 3-tier degree levels with Bachelors/Masters/PhD/Diploma`
 
-- [ ] **C18 — Per-program required fields (behaviour change, Finding 2).**
+- [ ] **C18 — Per-program required fields (behaviour change, Finding 2).**  ← **NEXT**
   Add to `ProgramItem`: full-paragraph `description` (focus areas, learning outcomes, career
   prospects, distinctive features — replacing/superseding `summary_3_lines`), `admission_requirements`,
   and deadline handling. Rewrite `_PROGRAM_STRUCTURE` and the program prompts to request all of §5's
