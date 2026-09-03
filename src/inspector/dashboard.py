@@ -24,6 +24,8 @@ from src.inspector.formatting import (
     show,
 )
 from src.inspector.records import find_university_record, load_all_records
+from src.utilities.schema import UniversityPayload
+from src.utilities.state_management import StateManager
 
 
 # ------------------------------------------------------------------------------
@@ -384,11 +386,6 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
 def inspect_state():
     """Audits SQLite pipeline execution state."""
     try:
-        try:
-            from src.state import StateManager
-        except ImportError:
-            from state import StateManager
-
         sm = StateManager()
         records = sm.list_all()
 
@@ -425,11 +422,6 @@ def inspect_state():
 def inspect_schema():
     """Outputs colorized Master JSON Schema definition."""
     try:
-        try:
-            from src.schema import UniversityPayload
-        except ImportError:
-            from schema import UniversityPayload
-
         schema_json = json.dumps(UniversityPayload.model_json_schema(), indent=2)
         syntax = Syntax(schema_json, "json", theme="monokai", line_numbers=True)
         console.print(Panel(syntax, title="📜 Master UniversityPayload JSON Schema"))

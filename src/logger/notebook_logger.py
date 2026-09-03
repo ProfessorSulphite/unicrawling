@@ -13,7 +13,6 @@ Persists structured events to three destinations:
   2. loggings/notebook_audit.jsonl (machine-readable JSONL stream)
   3. data/state.sqlite (notebook_audit table via StateManager)
 """
-import sys
 import json
 import logging
 import threading
@@ -21,15 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-# Ensure project root is in sys.path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-try:
-    from src.config import config
-    from src.state import StateManager
-except ImportError:
-    from config import config
-    from state import StateManager
+from src.config import config
+from src.utilities.state_management import StateManager
 
 _lock = threading.Lock()
 

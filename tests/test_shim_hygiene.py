@@ -104,19 +104,25 @@ def test_no_test_patches_a_module_level_name_on_a_shim():
 
 # ------------------------------------------------- the guard guards itself --
 
+# C24 deleted every shim, so the classifier's self-tests can no longer use a real
+# one. They run against a synthetic shim set instead: the rule under test is
+# "how many components remain after the module prefix", which never depended on
+# the module actually existing. Written this way the guard stays exercised, and
+# stays ready if a future refactor introduces another shim.
+_SYNTHETIC_SHIMS = {"src.config"}
+
+
 def test_classifier_flags_a_module_global_rebind_on_a_shim():
-    shims = discover_shim_modules()
-    assert "src.ingest" in shims, "src/ingest.py should still be a declared shim"
-    assert classify_patch_target("src.ingest.check_url_accessible", shims) == "src.ingest"
+    assert classify_patch_target("src.config.load_dotenv", _SYNTHETIC_SHIMS) == "src.config"
 
 
 def test_classifier_allows_attributes_reached_through_a_shim():
-    shims = discover_shim_modules()
     # The Config singleton is one object; reaching it via a shim patches the real one.
-    assert classify_patch_target("src.state.config.state_db_path", shims) is None
+    assert classify_patch_target("src.config.config.state_db_path", _SYNTHETIC_SHIMS) is None
 
 
 def test_classifier_ignores_non_shim_modules():
-    shims = discover_shim_modules()
-    assert classify_patch_target("src.ingestor.source_management.check_url_accessible", shims) is None
-    assert classify_patch_target("httpx.AsyncClient", shims) is None
+    assert classify_patch_target(
+        "src.ingestor.source_management.check_url_accessible", _SYNTHETIC_SHIMS
+    ) is None
+    assert classify_patch_target("httpx.AsyncClient", _SYNTHETIC_SHIMS) is None

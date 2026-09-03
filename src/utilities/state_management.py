@@ -10,7 +10,6 @@ Three responsibilities:
      the 500/day Pro ceiling is enforced by the pipeline rather than discovered
      when the API starts refusing halfway through a run.
 """
-import sys
 import json
 import sqlite3
 import logging
@@ -21,13 +20,7 @@ from typing import List, Optional, Dict, Any, Iterable, Tuple
 
 logger = logging.getLogger("State")
 
-# Ensure project root is in sys.path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-try:
-    from src.config import config
-except ImportError:
-    from config import config
+from src.config import config
 
 
 # Ordered lifecycle. Index in this tuple defines forward progress.

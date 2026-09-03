@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from src.config import Config
-from src.state import StateManager
+from src.utilities.state_management import StateManager
 from src.logger.notebook_logger import NotebookLifecycleLogger
 
 
@@ -22,8 +22,9 @@ def temp_logger_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr("src.logger.notebook_logger.config.notebook_lifecycle_log_path", log_file)
     monkeypatch.setattr("src.logger.notebook_logger.config.notebook_audit_jsonl_path", jsonl_file)
-    monkeypatch.setattr("src.logger.notebook_logger.config.state_db_path", sqlite_db)
-    monkeypatch.setattr("src.state.config.state_db_path", sqlite_db)
+    # One line, not two: config is a singleton, so reaching it through the logger
+    # module and through src.config patches the same object.
+    monkeypatch.setattr("src.config.config.state_db_path", sqlite_db)
 
     logger = NotebookLifecycleLogger()
     return logger, log_file, jsonl_file, sqlite_db

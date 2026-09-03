@@ -39,12 +39,10 @@ from src.inspector.sync import export_dataset
 
 def retry_pipeline(target: str = "failed"):
     """Connects to SQLite state database and re-runs pipeline for failed/pending runs."""
-    try:
-        from src.orchestrator import run_master_pipeline
-        from src.utilities.state_management import StateManager
-    except ImportError:
-        from orchestrator import run_master_pipeline
-        from utilities.state_management import StateManager
+    # Lazy on purpose: nothing under inspector/ may import the orchestrator at
+    # module scope (Finding 6). This is the whole of the exception.
+    from src.orchestrator import run_master_pipeline
+    from src.utilities.state_management import StateManager
 
     sm = StateManager()
     all_states = sm.list_all()
@@ -244,10 +242,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.command == "batch":
-        try:
-            from src.orchestrator import run_batch_pipeline
-        except ImportError:
-            from orchestrator import run_batch_pipeline
+        from src.orchestrator import run_batch_pipeline  # lazy: see retry_pipeline
         asyncio.run(run_batch_pipeline(config_file_path=args.config, force_rerun_all=args.rerun_all))
     elif args.command == "inspect":
         inspect_university(args.query)
