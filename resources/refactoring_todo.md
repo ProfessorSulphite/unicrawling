@@ -761,6 +761,29 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   a module that had none.** Suite 448 → **466**.
   `refactor(orchestrator): replace pipeline.py with thin orchestration entrypoint`
 
+  **Follow-up `158d47e` — two live bugs on the Phase 1 → Phase 2 handoff**, found by writing tests
+  for the two pieces C22 had changed. Both date to the original release (`4d531f0`), not to the
+  refactor; both were invisible to a green suite and to `--dry-run`.
+
+  1. The reader tested `item.get("href")`. `export_partitioned_links` is the only writer of
+     `data/links/<slug>.jsonl` and writes **`"url"`**. So the per-slug branch appended nothing,
+     **ever**, and every run silently fell through to the shared `extracted_links.txt` — non-atomic,
+     and in `--hec` mode undifferentiated across universities, which is the exact problem the
+     partition was written to solve.
+  2. The flat file yields bare URL strings, and `ingest_university_sources` normalises a bare string
+     to **tier 1**. So every source in every notebook was tier 1, and **Phase 3's per-query source
+     scoping — the entire reason a tier is recorded — was a no-op scoping every query to everything.**
+
+  The second is the one that cost real extraction quality, and it is the instructive one:
+  `IngestResult`'s own docstring already says a bare count "destroyed the tier association at the
+  Phase 2/Phase 3 boundary and forced every query to run unscoped". The **ingestor** side was fixed;
+  the caller kept handing it tier-less strings, so that fix had been inert ever since. A fix is only
+  as live as its caller.
+
+  13 new tests (7 on the reader — 5 fail against the old one — 5 on `source_ids_by_tier`, and one
+  driving `_run_master_pipeline` with a stubbed Phase 2 to assert what actually crosses the
+  boundary). Suite 468 → **481**.
+
 - [x] **C23 — `config.json` → `run_settings.json`.**  `4aae59e`
   The old name collided with `src/config.py`: one file is the run's university list and per-run
   settings, the other is the application's own configuration, and "the config" meant either one
@@ -781,7 +804,28 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
 
 ### Phase 10 — Cleanup and cutover
 
-- [ ] **C24 — Delete every shim; rewrite every import.**  ← **NEXT**
+- [ ] **C24 — Delete every shim; rewrite every import.**  ← **BLOCKED — see below**
+
+  > **HOLD: nothing has ever executed a pipeline phase.** `--dry-run` proves the queue, the run log
+  > and `--resume`; it executes no phase by design. Phase 1–4 have never run against the orchestrator,
+  > and the old `pipeline.py` had zero coverage either, so there is no confidence to inherit.
+  > Run one university first — six queries of 500 — while the old code is still one `git show` away:
+  >
+  > ```
+  > python3 run.py --url https://itu.edu.pk --name "Information Technology University"
+  > ```
+  >
+  > Two bugs on the Phase 1 → Phase 2 handoff were already found this way (`158d47e`), both live
+  > since the original release, both invisible to a green suite and to the dry run.
+  > Rollback stays intact: tag `pre-refactor`, branch unmerged, nothing pushed.
+
+  **Pre-C24 verification done (`158d47e`).** Static bind-check of all ten calls
+  `_run_master_pipeline` makes against the real signatures: all bind. AST diff of the phase body
+  old→new: three behaviour-touching changes only (link reading extracted, `_source_ids_by_tier` moved
+  onto `StateManager`, one lazy import hoisted). Production code still reaching a shim is **three
+  lines** — `inspector/dashboard.py:388` (`src.state`), `:429` (`src.schema`),
+  `logger/notebook_logger.py:29` (`src.state`) — plus one test import, so C24 is a small step, and
+  the orchestrator touches no shim at all.
   The one deliberately large commit. Remove `src/{extract_links,extract_data,ingest,inspect_cli,json_io,state,schema,notebook_logger,universal_normalizer,pipeline}.py`.
   **`cli.py` stays** — D4 was answered "keep thin root shims" in C22, so root `cli.py` and `run.py`
   are the two supported entrypoints, not leftovers. Every remaining import points at the real module.
