@@ -148,6 +148,19 @@ again at the commit it affects.
   fails on a one-component remainder against a shim. Attribute reads *through* a shim
   (`src.state.config.state_db_path` → the shared singleton) stay allowed. Shims are discovered
   from docstrings, so C14/C15/C20 are covered automatically and the guard self-skips after C24.
+- **Multi-account query budget (user proposal, 2026-09-03).** C17 took the suite to 6 queries, so
+  6 × 83 = 498 against a 500/day cap — no retry headroom, and a full batch no longer fits in a day.
+  The user's answer: **run two NotebookLM accounts and fail over to the second when the first is
+  exhausted.** That turns `daily_query_budget` from one number into a pool, and touches
+  `StateManager.reserve_queries` / `remaining_query_budget` (the ledger is currently global, not
+  per-account), the NotebookLM client construction, and `Config`. **Not yet owned by a commit** —
+  it belongs after the extractor phase, alongside C21's config/wiring work, and needs a decision on
+  whether the ledger keys usage by account or just tracks which account is live.
+- **Program NAME canonicalisation is still unowned.** Plan section 5 says degree names, program
+  titles and essential identifiers "MUST be normalized via `normalizers/degree_names.py`". C17 did
+  degree *levels* only. Canonicalising the titles themselves (`M.Phil.` / `MPhil` / `M Phil
+  Management Sciences` → one form) is a real behaviour change and deserves its own commit.
+
 - Decisions **D2, D4, D5, D6** are still unanswered; each is due at the commit that needs it
   (D2 → C19, D4 → C21, D5 → C29, D6 → C26).
 
@@ -508,16 +521,47 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   Suite 277 → **338**.
   `feat(schema): replace 3-tier degree levels with Bachelors/Masters/PhD/Diploma`
 
-- [ ] **C18 — Per-program required fields (behaviour change, Finding 2).**  ← **NEXT**
-  Add to `ProgramItem`: full-paragraph `description` (focus areas, learning outcomes, career
-  prospects, distinctive features — replacing/superseding `summary_3_lines`), `admission_requirements`,
-  and deadline handling. Rewrite `_PROGRAM_STRUCTURE` and the program prompts to request all of §5's
-  required fields. Regenerate `university_payload_schema.json`.
-  **Gate:** schema round-trips; one real NotebookLM query (or a recorded fixture) returns a payload
-  that validates against the new model.
+- [x] **C18 — Per-program required fields (behaviour change, Finding 2).** — `c9e192a`
+  `ProgramItem` now carries every field plan §5 lists as required, pinned by a parametrised test
+  driven off a list rather than prose so a future field cannot be quietly dropped.
+
+  - **`description`** (`Optional[str]`) — the full-paragraph overview §5 asks for. Supersedes
+    `summary_3_lines`, which is kept as a deprecated field (every pre-C18 payload carries it and
+    `inspect_cli` re-validates those on read) but is **no longer requested by any prompt**.
+  - **`admission_requirements`** (`Optional[str]`) — process and documents, distinct from the raw
+    marks in `eligibility_requirements`.
+  - **`application_deadline` → `application_deadlines: List[str]`** — §5 says "deadline(s)"; a
+    programme with Fall and Spring intakes has two, and the singular field forced one to be dropped.
+    The retired singular key is accepted as a Pydantic **validation alias**, without which a pre-C18
+    programme's only deadline was silently dropped at validation.
+
+  Both new fields default to **`None`, not to prose** — a programme page that genuinely says nothing
+  normalizes to nothing. That is the C19 posture, adopted early for the fields C18 introduces.
+
+  `normalizers/program_fields.py` (new, 5th step in `normalize_universal_program`) carries pre-C18
+  values onto the new fields. It **never invents**: `description` is filled from `summary_3_lines`
+  only when that is real text, explicitly *not* when it is the schema's
+  `SUMMARY_FALLBACK` stand-in — C19 removes that placeholder, and propagating it into a second
+  field would have made C19's job worse. The fallback string was extracted to a named constant so
+  the two modules cannot disagree about what it is.
+
+  Also updated: all four programme prompts (a shared `_PROGRAM_FIELD_NOTE` calls out that
+  `description` must be a paragraph, since it is the field a model most readily skimps on) and
+  `inspect_cli` (new `format_deadlines()` helper, CSV column renamed, search now reads `description`
+  and falls back to the retired summary).
+
+  **Gates, all met:** all 8 `pre-refactor` payloads normalize **and validate against the new model**
+  — 263/263 programmes came out with a `description`, deadlines carried wherever one was published ·
+  `UniversityPayload.model_validate(payload.model_dump()) == payload` round-trips · a recorded real
+  fixture (`pre_c18_programs.input.json`, three ITU programmes in their original pre-C18 shape) is
+  the committed regression case · full C17→C18 payload diff shows **only** the three intended field
+  changes: 263 `description` filled, 263 `application_deadlines` filled, 147 `application_deadline`
+  removed. Nothing in `main_info`, `contact`, `faculties` or the truncation flag moved.
+
+  Suite 338 → **361**.
   `feat(extractor): request and model full per-program field set`
 
-- [ ] **C19 — Strip fabricated normalizer defaults** *(only if D2 = yes; Finding 7).*
+- [ ] **C19 — Strip fabricated normalizer defaults** *(only if D2 = yes; Finding 7).*  ← **NEXT**
   Remove the invented `"Standard University Application Fee"` / `"Refer to Official Tuition Portal"` /
   HSSC-aggregate fallbacks; leave nulls for the auditor to report.
   **Gate:** a test asserts a program with no published fee normalizes to `None`, not to prose.
