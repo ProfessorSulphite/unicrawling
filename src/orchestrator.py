@@ -273,24 +273,56 @@ async def _run_master_pipeline(
     print(f"================================================================================\n")
 
 
-def _read_harvested_links(uni_slug: str) -> List[str]:
-    """Phase 1's output, from the per-slug ledger or the flat-file fallback."""
-    links_list: List[str] = []
+def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
+    """
+    Phase 1's output for one university, in the shape Phase 2 documents:
+    records of at least {"url": str, "tier": int}, in Phase 1's rank order.
+
+    Reads data/links/<slug>.jsonl -- the per-university partition, written
+    atomically with a tier per link. Falls back to the shared extracted_links.txt
+    only when no partition exists; that file is non-atomic and, in an --hec batch,
+    undifferentiated across universities, which is the exact problem the partition
+    was introduced to solve.
+
+    Two bugs lived here from the original release until C22's follow-up, both
+    from never reading the partition:
+
+      1. the loop tested `item.get("href")`, and the partition writes "url" --
+         so the per-slug branch appended nothing, ever, and every run silently
+         used the flat file;
+      2. the flat file yields bare URL strings, which ingest_university_sources
+         normalises to **tier 1**. Every source in every notebook was therefore
+         tier 1, and Phase 3's per-query source scoping -- the whole reason the
+         tier is recorded -- was a no-op that scoped every query to everything.
+    """
+    records: List[Dict[str, Any]] = []
     links_file = config.data_links_dir / f"{uni_slug}.jsonl"
     if links_file.exists():
         with open(links_file, "r", encoding="utf-8") as f:
             for line in f:
-                if line.strip():
+                if not line.strip():
+                    continue
+                try:
                     item = json.loads(line)
-                    if item.get("href"):
-                        links_list.append(item["href"])
+                except json.JSONDecodeError:
+                    # A torn final line must not cost the university every link
+                    # that was written before it.
+                    continue
+                # "href" is accepted alongside "url" only so a partition written
+                # by an older build still loads; nothing writes it today.
+                url = item.get("url") or item.get("href")
+                if url:
+                    records.append({"url": url, "tier": int(item.get("tier", 1) or 1)})
 
-    if not links_list:
+    if not records:
         txt_path = config.base_dir / "extracted_links.txt"
         if txt_path.exists():
             with open(txt_path, "r", encoding="utf-8") as f:
-                links_list = [line.strip() for line in f if line.strip()]
-    return links_list
+                # No tier was ever recorded for these; 1 is what Phase 2 assumes.
+                records = [
+                    {"url": line.strip(), "tier": 1} for line in f if line.strip()
+                ]
+    return records
 
 
 # ------------------------------------------------------------------- batch --

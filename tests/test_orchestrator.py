@@ -230,3 +230,194 @@ def test_neither_entrypoint_still_defaults_to_the_old_filename():
     for parser in (orchestrator_parser(), inspector_parser()):
         for action in parser._actions:
             assert str(getattr(action, "default", "")) != "config.json"
+
+
+# ------------------------------------------ the Phase 1 -> Phase 2 handoff --
+#
+# The two pieces C22 actually changed, plus the contract they sit on. Phase 1
+# writes data/links/<slug>.jsonl -- atomically, with a tier per link -- and
+# ingest_university_sources documents exactly what it needs back:
+#
+#     links: Records from data/links/<slug>.jsonl. Each needs at least
+#            {"url": str, "tier": int}. Plain strings are accepted and
+#            default to tier 1.
+#
+# Nothing had ever tested that the orchestrator honours it.
+
+import json as _json
+
+from src.orchestrator import _read_harvested_links
+
+PARTITION_RECORD = {
+    "university_slug": "itu",
+    "university_name": "Information Technology University",
+    "university_url": "https://itu.edu.pk",
+    "rank": 1,
+    "url": "https://itu.edu.pk/admissions",
+    "anchor_text": "Admissions",
+    "tier": 1,
+    "tier_name": "admissions",
+    "weighted_score": 0.91,
+    "raw_similarity_score": 0.88,
+    "matched_keyword": "admission",
+    "year_tag": "2026",
+}
+
+
+@pytest.fixture
+def links_dir(monkeypatch, tmp_path):
+    d = tmp_path / "links"
+    d.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("src.config.config.data_links_dir", d)
+    monkeypatch.setattr("src.config.config.base_dir", tmp_path)
+    return d
+
+
+def _write_partition(links_dir, slug, records):
+    path = links_dir / f"{slug}.jsonl"
+    path.write_text("\n".join(_json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    return path
+
+
+def test_the_per_slug_partition_is_read_at_all(links_dir):
+    """
+    The partition is written with key "url". A reader looking for "href" finds
+    nothing in it, ever, and silently falls through to the shared flat file --
+    which is the undifferentiated file the partition exists to replace.
+    """
+    _write_partition(links_dir, "itu", [PARTITION_RECORD])
+    links = _read_harvested_links("itu")
+    assert links, "the per-university partition produced no links"
+
+
+def test_every_link_carries_the_tier_phase_1_assigned(links_dir):
+    """
+    Tiers are the whole point of the partition: Phase 3 scopes each query to the
+    sources that can answer it. Handing Phase 2 bare strings makes every source
+    tier 1, and the scoping silently becomes a no-op.
+    """
+    records = [
+        {**PARTITION_RECORD, "rank": 1, "url": "https://itu.edu.pk/admissions", "tier": 1},
+        {**PARTITION_RECORD, "rank": 2, "url": "https://itu.edu.pk/programs", "tier": 2},
+        {**PARTITION_RECORD, "rank": 3, "url": "https://itu.edu.pk/fees", "tier": 3},
+    ]
+    _write_partition(links_dir, "itu", records)
+
+    links = _read_harvested_links("itu")
+    assert [l["tier"] for l in links] == [1, 2, 3]
+    assert [l["url"] for l in links] == [r["url"] for r in records]
+
+
+def test_rank_order_from_phase_1_is_preserved(links_dir):
+    """Phase 2 caps at max_sources_per_notebook, so order decides what survives."""
+    records = [
+        {**PARTITION_RECORD, "rank": i, "url": f"https://itu.edu.pk/p{i}", "tier": 1}
+        for i in range(1, 6)
+    ]
+    _write_partition(links_dir, "itu", records)
+    assert [l["url"] for l in _read_harvested_links("itu")] == [r["url"] for r in records]
+
+
+def test_the_flat_file_is_only_a_fallback(links_dir, tmp_path):
+    """
+    extracted_links.txt is shared and non-atomic. It may be used when no
+    partition exists, but never in preference to one.
+    """
+    (tmp_path / "extracted_links.txt").write_text(
+        "https://itu.edu.pk/from-the-flat-file\n", encoding="utf-8"
+    )
+    _write_partition(links_dir, "itu", [PARTITION_RECORD])
+
+    links = _read_harvested_links("itu")
+    assert [l["url"] for l in links] == ["https://itu.edu.pk/admissions"]
+
+
+def test_the_flat_file_still_works_when_no_partition_exists(links_dir, tmp_path):
+    (tmp_path / "extracted_links.txt").write_text(
+        "https://itu.edu.pk/a\nhttps://itu.edu.pk/b\n", encoding="utf-8"
+    )
+    links = _read_harvested_links("itu")
+    assert [l["url"] for l in links] == ["https://itu.edu.pk/a", "https://itu.edu.pk/b"]
+    # Nothing recorded a tier for these, and 1 is what Phase 2 assumes.
+    assert {l["tier"] for l in links} == {1}
+
+
+def test_no_links_anywhere_yields_an_empty_list(links_dir):
+    assert _read_harvested_links("itu") == []
+
+
+def test_what_phase_1_writes_is_what_phase_2_accepts(links_dir):
+    """
+    The contract, end to end: feed the reader a real partition record and check
+    the result satisfies ingest_university_sources' documented normalisation.
+    """
+    _write_partition(links_dir, "itu", [PARTITION_RECORD])
+    for item in _read_harvested_links("itu"):
+        assert isinstance(item, dict)
+        assert item.get("url")
+        assert isinstance(item.get("tier"), int)
+
+
+async def test_phase_1_hands_phase_2_tiered_records_not_bare_urls(
+    monkeypatch, links_dir, tmp_path
+):
+    """
+    The handoff, exercised inside _run_master_pipeline rather than asserted about
+    it. Phase 2 is stubbed to refuse the batch immediately, so nothing touches
+    the network -- but by then it has already received `links`, which is the one
+    thing under test.
+
+    IngestResult's own docstring records that returning a bare count "destroyed
+    the tier association at the Phase 2/Phase 3 boundary and forced every query
+    to run unscoped". That was fixed in the ingestor; the caller kept passing
+    tier-less strings, so the fix was inert until now.
+    """
+    from src.ingestor.source_management import IngestResult
+    from src.orchestrator import _run_master_pipeline
+
+    _write_partition(links_dir, "itu", [
+        {**PARTITION_RECORD, "rank": 1, "url": "https://itu.edu.pk/admissions", "tier": 1},
+        {**PARTITION_RECORD, "rank": 2, "url": "https://itu.edu.pk/programs", "tier": 2},
+        {**PARTITION_RECORD, "rank": 3, "url": "https://itu.edu.pk/news", "tier": 4},
+    ])
+
+    async def fake_link_extractor(**kwargs):
+        return None
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    seen = {}
+
+    async def fake_ingest(*, uni_slug, uni_name, links, client, **kw):
+        seen["links"] = links
+        # Refuse the batch: the run stops here, having already taken the links.
+        return IngestResult(skipped=True, skip_reason="stubbed in test")
+
+    monkeypatch.setattr("src.orchestrator.run_link_extractor", fake_link_extractor)
+    monkeypatch.setattr("src.orchestrator.ingest_university_sources", fake_ingest)
+    monkeypatch.setattr(
+        "src.orchestrator.NotebookLMClient.from_storage", staticmethod(lambda *a, **k: _FakeClient())
+    )
+
+    state = StateManager(db_path=tmp_path / "state.sqlite")
+    try:
+        await _run_master_pipeline(state, "https://itu.edu.pk")
+    finally:
+        state.close()
+
+    links = seen["links"]
+    assert links, "Phase 2 was handed nothing"
+    assert all(isinstance(l, dict) for l in links), (
+        "bare strings reach Phase 2 as tier 1, silently disabling Phase 3 scoping"
+    )
+    assert [l["tier"] for l in links] == [1, 2, 4]
+    assert [l["url"] for l in links] == [
+        "https://itu.edu.pk/admissions",
+        "https://itu.edu.pk/programs",
+        "https://itu.edu.pk/news",
+    ]

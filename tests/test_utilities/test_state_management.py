@@ -92,3 +92,50 @@ def test_reset_state_clears_source_map(state):
     assert state.get_source_ids("nust") == []
 
 
+
+
+# ------------------------------------------------ C22: tier-scoped sources --
+#
+# source_ids_by_tier moved off pipeline.py onto StateManager in C22. Phase 3
+# scopes each query to the sources that can answer it, so getting this wrong
+# either widens every query to every source or narrows it to none -- and both
+# failures look like "the extraction was a bit worse today".
+
+def test_source_ids_by_tier_groups_by_tier(state):
+    state.record_sources("itu", [
+        ("s1", "https://itu.edu.pk/admissions", 1),
+        ("s2", "https://itu.edu.pk/apply", 1),
+        ("s3", "https://itu.edu.pk/programs", 2),
+        ("s4", "https://itu.edu.pk/fees", 3),
+    ])
+    assert state.source_ids_by_tier("itu") == {1: ["s1", "s2"], 2: ["s3"], 3: ["s4"]}
+
+
+def test_an_empty_tier_is_absent_rather_than_empty(state):
+    """A tier mapped to [] would scope that query to no sources at all."""
+    state.record_sources("itu", [("s1", "https://itu.edu.pk/a", 2)])
+    mapping = state.source_ids_by_tier("itu")
+    assert mapping == {2: ["s1"]}
+    assert 1 not in mapping and 3 not in mapping
+
+
+def test_no_recorded_sources_returns_none_not_an_empty_dict(state):
+    """
+    The query suite reads None as "search every source" and {} as "search
+    nothing". A university whose source map was never written must fall back to
+    searching everything, not come back empty.
+    """
+    assert state.source_ids_by_tier("never-ingested") is None
+
+
+def test_it_does_not_leak_another_universitys_sources(state):
+    state.record_sources("itu", [("s1", "https://itu.edu.pk/a", 1)])
+    state.record_sources("lums", [("s2", "https://lums.edu.pk/a", 1)])
+    assert state.source_ids_by_tier("itu") == {1: ["s1"]}
+    assert state.source_ids_by_tier("lums") == {1: ["s2"]}
+
+
+def test_tier_4_is_included(state):
+    """The loop is hardcoded to tiers 1-4; a tier 4 source must not be dropped."""
+    state.record_sources("itu", [("s1", "https://itu.edu.pk/news", 4)])
+    assert state.source_ids_by_tier("itu") == {4: ["s1"]}
