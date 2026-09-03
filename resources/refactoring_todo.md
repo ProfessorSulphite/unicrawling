@@ -804,68 +804,122 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
 
 ### Phase 10 — Cleanup and cutover
 
-- [ ] **C24 — Delete every shim; rewrite every import.**  ← **BLOCKED — see below**
+- [x] **C24 — Delete every shim; rewrite every import.**  `c27ada1`
+  Small by the time it arrived, which was the point of the strangler-fig order: only **four**
+  imports still reached a shim, three of them lazy imports inside functions with no reason to be
+  lazy. Each shim's re-exported names were checked against their defining modules before deletion.
+  `src/` is now `config.py`, `orchestrator.py`, `__init__.py` and five packages.
 
-  > **HOLD: nothing has ever executed a pipeline phase.** `--dry-run` proves the queue, the run log
-  > and `--resume`; it executes no phase by design. Phase 1–4 have never run against the orchestrator,
-  > and the old `pipeline.py` had zero coverage either, so there is no confidence to inherit.
-  > Run one university first — six queries of 500 — while the old code is still one `git show` away:
-  >
-  > ```
-  > python3 run.py --url https://itu.edu.pk --name "Information Technology University"
-  > ```
-  >
-  > Two bugs on the Phase 1 → Phase 2 handoff were already found this way (`158d47e`), both live
-  > since the original release, both invisible to a green suite and to the dry run.
-  > Rollback stays intact: tag `pre-refactor`, branch unmerged, nothing pushed.
+  The `try/except ImportError` fallbacks went too — they let a module be imported as `src.state`
+  *or* bare `state`, a path no test covered and both root entrypoints bypass. `test_shim_hygiene.py`
+  self-skips as designed; its classifier self-tests now run against a synthetic shim set, so the
+  guard stays exercised and stays ready if a later refactor introduces another shim.
+  **`cli.py` and `run.py` both stay** (D4). Suite → **490 passed, 1 skipped**.
 
-  **Pre-C24 verification done (`158d47e`).** Static bind-check of all ten calls
-  `_run_master_pipeline` makes against the real signatures: all bind. AST diff of the phase body
-  old→new: three behaviour-touching changes only (link reading extracted, `_source_ids_by_tier` moved
-  onto `StateManager`, one lazy import hoisted). Production code still reaching a shim is **three
-  lines** — `inspector/dashboard.py:388` (`src.state`), `:429` (`src.schema`),
-  `logger/notebook_logger.py:29` (`src.state`) — plus one test import, so C24 is a small step, and
-  the orchestrator touches no shim at all.
-  The one deliberately large commit. Remove `src/{extract_links,extract_data,ingest,inspect_cli,json_io,state,schema,notebook_logger,universal_normalizer,pipeline}.py`.
-  **`cli.py` stays** — D4 was answered "keep thin root shims" in C22, so root `cli.py` and `run.py`
-  are the two supported entrypoints, not leftovers. Every remaining import points at the real module.
-  **Gate:** `grep -rn "^from src\.\(extract\|ingest\|inspect_cli\|json_io\|state\|schema\|notebook_logger\|universal_normalizer\|pipeline\) " src/ tests/` empty; full suite green.
-  `refactor: remove compatibility shims and flat modules`
+- [x] **C25 — Registry consolidation** *(D6 answered: **merge**, per the recommendation).*  `cd4ecc2`
+  **The split was not cosmetic.** All 15 `rankings_pk.json` entries carried `rankings: []`, and
+  `apply_registry_facts` assigns registry rankings over the payload — correctly, since a rank the
+  model supplied for an institution nobody recorded a rank for is invented. So the extractor wrote
+  **empty rankings for NUST and LUMS on every run** while their sourced QS ranks, 353 and 540, sat
+  in the other registry the whole time. The live ITU payload shows the signature.
 
-- [ ] **C25 — Registry consolidation** *(per D6; Finding 4).*  ← after C24
-  Merge `rankings_pk.json` entries into `rankings_global.json`, repoint `config.rankings_json_path`,
-  delete `rankings_pk.json`, fix the `test_pipeline.py:685-687` assertions.
-  **Gate:** `lookup_registry("nust.edu.pk")` still resolves after the merge.
-  `refactor(resources): consolidate rankings registries into rankings_global.json`
+  **I got the fix wrong first and reverted it.** Making the assignment conditional would let a
+  model-invented rank survive for any university the registry does not rank — most of them. The
+  data was wrong, not the line. Tests now pin both halves.
 
-- [ ] **C26 — Migrate `notebook_audit.jsonl` (1.3 MB) into the new logging structure.**
-  Convert to the JSON log format under `logger/notebook_logger.py`; delete `loggings/.gitkeep`.
-  **Gate:** the migration is idempotent; no audit record is lost (count before == count after).
-  `refactor(logger): migrate notebook audit trail to structured JSON logs`
+  Merge was field-wise with a loss audit (pk contributed `type`/`aliases`, global contributed
+  `country`/`established_year`/`accreditation_body`): 15 + 5 → **17 entries, zero value losses**.
+  `utilities/registry.py` is the single loader and takes the pk path's alias/subdomain resolution,
+  which the global path never had. `GLOBAL_FACTS_FILE` was **deleted, not repointed** — binding a
+  config path at module level freezes it, the same by-value hazard the shims had. Suite → **511**.
 
-- [ ] **C27 — Finalize the test tree.**
-  Confirm the mirror is complete (`test_utilities/`, `test_extractor/`, `test_ingestor/`,
-  `test_inspector/`, `test_logger/`), then write the **new** `tests/test_pipeline.py` as a genuine
-  end-to-end orchestration suite (Finding 9) — full run over a stubbed NotebookLM, resume from log,
-  health-check skip path, Supabase gate blocked by a failing audit. Update `conftest.py` / `pytest.ini`.
-  **Gate:** the e2e suite passes; total test count ≥ the C0 baseline.
-  `test: mirror module structure and add end-to-end pipeline suite`
+- [x] **C26 — Migrate `notebook_audit.jsonl` into structured JSON logs.**  `da2415d`
+  One JSON document per notebook under `loggings/notebook_logs/`. Migration is idempotent by
+  construction — it rebuilds each document rather than appending — because a migration that doubles
+  an audit trail is worse than one that never ran. **Verified, not asserted: 19,395 in, 19,395 out,
+  33 files byte-identical after a second pass.** Source never deleted.
 
-- [ ] **C28 — Documentation.**
-  `AGENTS.md` (new structure), `README.md` (tree + quick start), `COMMANDS.md` (~10 `config.json`
-  references, every renamed command, **and the `qdrant`/`pinecone` export formats removed in
-  C11/C11b that it still documents**), `CHANGELOG.md` (the refactor entry), regenerate or delete
-  the now-stale `src_summary.md`, refresh `.env.example`.
-  **Gate:** every command shown in `COMMANDS.md` actually runs.
-  `docs: update all documentation for modular architecture`
+  **The larger finding: the test suite was writing to production log paths** — 203 records per
+  `pytest`, and **17,423 of that file's 19,395 lines were synthetic** (`nb-123`, `nb-health-1`).
+  90% of the audit trail for a pipeline that talks to a paid API was test exhaust, growing on every
+  run. `tests/conftest.py` now redirects every writable Config path into `tmp_path`, autouse and
+  unconditional because the failure is silent. Notebook ids are sanitised before becoming filenames.
+  Suite → **528**.
 
-- [ ] **C29 — `inspector/sync.py`: Supabase** *(per D5 — last, greenfield).*
-  Design the tables against the final C17/C18 schema, add the client + credentials, and gate the push
-  behind a passing C21 audit — local DB → inspect → validate → **only then** push.
-  **Gate:** a dry-run sync against a Supabase branch; the push refuses to run when the audit fails.
-  `feat(inspector): Supabase sync gated on passing data audit`
+- [x] **C27 — Finalize the test tree; write the real `tests/test_pipeline.py`.**  `5683f1a`
+  Finding 9's filename finally used for what it was held for. **Stubbed at two seams only** — the
+  crawler and the NotebookLM client — so everything between them is production code. That boundary
+  is the point: every bug this pipeline has shipped lived in a seam between modules that were each
+  individually tested and each individually green. Three are now covered here.
+
+  15 e2e tests: full run, tier scoping reaching the queries, no two buckets sharing an answer,
+  deletion only after the payload is durable, the audit trail's lifecycle, both skip paths spending
+  no quota, batch, resume, and the push gate refusing a real run's output while allowing a complete
+  one.
+
+  **Writing them found three more things:** the isolation fixture did not cover `config.base_dir`,
+  so a zero-link test silently picked up the repo root's real `extracted_links.txt` and provisioned
+  a notebook for it · `backup_existing_outputs` used a second-resolution timestamp with `copytree`,
+  which raises `FileExistsError` — two `--rerun-all` invocations in the same second crashed the run
+  mid-archive · it also archived workspaces containing only the empty directories
+  `ensure_directories()` creates on import. Also filled the two coverage gaps that mattered:
+  `utilities/workspace.py` (the one function that can lose a completed run) and `logger/setup.py`.
+  Suite → **556**, against a C0 baseline of 116.
+
+- [x] **C28 — Documentation.**  `2a29fb9`
+  COMMANDS.md's stated gate was "every command shown actually runs" and nothing enforced it, so it
+  drifted into documenting three deleted files, `config.json`, two removed export formats, and
+  "116 tests" long after the suite passed 500 — all plausible, none true, nothing failing.
+
+  **The gate is now `tests/test_docs.py`:** every fenced shell command is extracted, its file or
+  module must exist, its subcommands and flags are checked against the *real* argparse parsers, and
+  every `--help` variant is actually executed. It also fails on a hardcoded test count.
+
+  `src_summary.md` **deleted rather than regenerated** — 858 hand-maintained lines mirroring every
+  class in `src/`, already describing files gone a dozen commits earlier. A hand-written mirror
+  drifts the moment anyone edits the source. Suite → **564**.
+
+- [x] **C29 — `inspector/sync.py`: Supabase** *(D5 answered in part — see below).*  `85d4588`
+  The gate is the commit; the transport is the small part. `sync_to_supabase()` runs the C21 audit
+  **before it looks at credentials**, so a gappy corpus with no credentials reports the data
+  problem rather than a missing-config error — otherwise configuring Supabase would appear to fix a
+  data problem. `dry_run` defaults True. `force` exists because a gate that cannot be overridden
+  gets deleted the first time it is inconvenient, but it is never the default and is reported.
+
+  `flatten_for_supabase()` is pure — no client, no network, no credentials — because the
+  payload→rows mapping is the part most likely to be wrong. `resources/supabase_schema.sql` keys on
+  the canonical domain so re-extraction upserts; almost every column is nullable **deliberately**,
+  since after C19 a NOT NULL would either reject good rows or push someone back toward fabricating
+  a value. The four NOT NULLs are exactly `CRITICAL_PROGRAM_FIELDS` plus university identity, and a
+  test asserts the DDL and that constant cannot drift apart.
+
+  **What D5 still needs from the user:** no Supabase project exists, no credentials are set, and
+  the DDL has never been applied. `cli.py sync --no-dry-run` raises `SupabaseNotConfigured` naming
+  the missing piece. The dry run works against the real corpus — and the audit **correctly refuses
+  it**. Suite → **581**.
 
 ---
+
+## Status
+
+**All commits C0–C29 are complete.** Suite 116 → **581 passed, 2 skipped**.
+
+### Open items, none blocking
+
+1. **Re-extract ITU.** The live payload predates the concurrency fix (`9718346`), so its bachelors
+   bucket holds the PhD programmes. `cli.py audit` refuses it by name.
+2. **D5's remaining half** — a Supabase project, credentials, and applying the DDL.
+3. **Two-account NotebookLM failover** (user's proposal). 6 × 83 = 498 against a 500/day cap leaves
+   no retry headroom, so a full batch does not fit in one day. Needs a decision on whether the
+   ledger keys usage per account or only tracks which is live; touches `StateManager.reserve_queries`,
+   `remaining_query_budget`, client construction and `Config`.
+4. **Programme-name canonicalisation.** Plan §5 requires titles normalized via `degree_names.py`;
+   C17 did levels only. Deserves its own commit.
+5. **`logging.basicConfig` at import time** in `extractor/linkers/constants.py` — a side effect that
+   belongs in `logger/setup.py`.
+6. **`diploma` came back empty** on the live run and `application_fee` is 0% across all programmes.
+   Both may be prompt problems rather than code problems; the auditor now reports them.
+
 
 ## Part D — Sequencing Notes
 
