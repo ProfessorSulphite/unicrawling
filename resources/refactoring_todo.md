@@ -408,26 +408,53 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   Suite 206 → **212**.
   `refactor(extractor): split extract_links into linkers subpackage`
 
-- [ ] **C15 — Split `extract_data.py` (27 KB) into `extractor/crawlers/`.**  ← **NEXT**
-  `notebook_querying.py` (`QuerySpec`, `QUERY_SUITE`, `_ask`, `run_query`, `ExtractionReport`) ·
-  `exa_enriching.py` (`exa_find_application_portal`) · `json_repairing.py`
-  (`strip_citation_markers`, `_balanced_span`, `extract_json_str`, `repair_and_validate_json`,
-  adapters) · `runner.py` (`extract_university_payload`, registry facts, notebook deletion).
-  Shim `src/extract_data.py`. Tests → `tests/test_extractor/test_crawlers_*.py`.
-  **Gate:** the JSON-repair test battery (the highest-value tests in the suite) passes unchanged.
+- [x] **C15 — Split `extract_data.py` (27 KB) into `extractor/crawlers/`.** — `c009a85`, `a178cf7`
+  725 lines → four modules, exactly as planned. `json_repairing.py` (252) · `notebook_querying.py`
+  (234) · `exa_enriching.py` (55) · `runner.py` (240). Shim `src/extract_data.py` (61 lines,
+  30 names, omits the mutable `_RANKINGS_CACHE`).
+
+  **Deviation:** no `constants.py` was needed, unlike C14. The only name shared across all four
+  modules was `logger`, and each module now calls `logging.getLogger("ExtractData")` directly —
+  same logger object, no shared module.
+
+  DAG: `json_repairing ← notebook_querying ← runner`; `exa_enriching ← runner`.
+
+  **Gates, all met:** AST diff 32/32 top-level definitions present exactly once with byte-identical
+  bodies · differential probe against the `pre-refactor` worktree byte-identical · JSON-repair
+  battery passes unchanged.
+
+  `a178cf7` moved the Phase 3 tests out into `test_crawlers_{json_repairing,runner}.py` and
+  **deleted `tests/test_pipeline.py`**, which had by then been emptied of everything it once held.
+  Suite 212 → **212**.
   `refactor(extractor): split extract_data into crawlers subpackage`
 
-- [ ] **C16 — Split `universal_normalizer.py` into `extractor/normalizers/`.**
-  `currency_tuition.py` (`resolve_universal_currency`, tuition handling — **labels currency, never
-  converts**, Finding 8) · `eligibility.py` (eligibility/requirement consolidation) ·
-  `degree_names.py` (**new, empty scaffold** — filled in C17) · `runner.py`
-  (`normalize_universal_payload`, `load_global_registry`).
-  Shim `src/universal_normalizer.py`.
-  **Gate:** normalizing an existing `uni_outputs/*.json` file produces byte-identical output to
-  pre-commit (capture a golden file first).
+- [x] **C16 — Split `universal_normalizer.py` into `extractor/normalizers/`.** — `ca6fe00`, `1855cda`
+  `currency_tuition.py` (92) · `eligibility.py` (43) · `degree_names.py` (8, scaffold) ·
+  `runner.py` (109). Shim `src/universal_normalizer.py` (33 lines, omits the mutable
+  `_GLOBAL_REGISTRY`). DAG: `currency_tuition, eligibility ← runner`.
+
+  **This one is not a pure move.** `normalize_universal_program` was a single 50-line function doing
+  two unrelated jobs; it is now an extract-method into `apply_currency_and_tuition` and
+  `apply_eligibility_defaults`, with the old function reduced to sequencing them. An AST diff cannot
+  vouch for a body that changed shape, so `ca6fe00` landed **61 characterization tests first** —
+  the module had zero coverage despite sitting on a production read path (`inspect_cli` normalizes
+  every payload it yields).
+
+  `GLOBAL_FACTS_FILE` moved one directory deeper: anchor is now `parents[3]`, not `parent.parent`.
+  Verified to resolve to the same `resources/rankings_global.json`.
+
+  **Gate, met:** `normalize_universal_payload` over all 8 real payloads from the `pre-refactor` tag,
+  pre-split vs post-split — byte-identical on all 8, and identical again routed through the shim.
+  Suite 212 → **273**.
+
+  **Carried to C19:** the characterization tests mark every fabricated value with a `FABRICATED
+  (D2/C19)` comment — invented tuition pointers, application fees, Abitur/GPA eligibility, a
+  specific weighted admission formula, country-derived accreditation bodies, and hardcoded
+  LMU/ITU/NUST founding years matched by *name substring* (so any university whose name contains
+  "itu" inherits ITU Lahore's 2012). That set of assertions is C19's checklist.
   `refactor(extractor): split universal_normalizer into normalizers subpackage`
 
-- [ ] **C17 — Degree taxonomy: 4 levels (behaviour change, Findings 1 + 3).**
+- [ ] **C17 — Degree taxonomy: 4 levels (behaviour change, Findings 1 + 3).**  ← **NEXT**
   `DegreeLevel` → `bachelors` / `masters` / `phd` / `diploma`; `ProgramCategoryBlock` keys renamed;
   **add a 6th `diploma` query** to `QUERY_SUITE` and rewrite the three existing program prompts to the
   new level names; bump `queries_per_university` 5 → 6 and re-derive `daily_query_budget`; update the
