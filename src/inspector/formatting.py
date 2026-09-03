@@ -12,6 +12,23 @@ from rich.console import Console
 
 console = Console()
 
+
+def show(value: Any, empty: str = "N/A") -> str:
+    """
+    Render a payload value for display.
+
+    Since C19 the extractor writes null rather than inventing a value, so every
+    string field reaching this layer can legitimately be None. Rich raises on a
+    None cell and `None.upper()` raises before that, so a record the pipeline
+    now produces routinely used to crash `inspect` and `diff` outright.
+
+    Missing renders as missing. It is not the display layer's job to guess.
+    """
+    if value is None:
+        return empty
+    text = str(value).strip()
+    return text or empty
+
 # Regex constants
 FEE_NUMBER_REGEX = re.compile(r"\d[\d,]*")
 
@@ -28,7 +45,13 @@ def format_deadlines(prog: Dict[str, Any], empty: str = "N/A") -> str:
 
 
 def extract_numeric_fee(fee_str: Optional[str]) -> Optional[float]:
-    """Parses numeric PKR tuition fee from fee string."""
+    """
+    Parse the first number out of a fee string.
+
+    Currency-agnostic: it returns 1500 for both "EUR 1,500" and "PKR 1,500".
+    Comparing the results across currencies is therefore meaningless -- see the
+    note on the --max-fee filter in cli.py.
+    """
     if not fee_str:
         return None
     matches = FEE_NUMBER_REGEX.findall(fee_str)

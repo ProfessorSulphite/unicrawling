@@ -17,7 +17,12 @@ from rich.tree import Tree
 
 from src.config import config
 from src.extractor.normalizers.runner import PROGRAM_BUCKETS
-from src.inspector.formatting import console, extract_numeric_fee, format_deadlines
+from src.inspector.formatting import (
+    console,
+    extract_numeric_fee,
+    format_deadlines,
+    show,
+)
 from src.inspector.records import find_university_record, load_all_records
 
 
@@ -54,11 +59,11 @@ def inspect_university(query: str):
     if main.get("exa_enriched"):
         portal_badge += " [yellow](Exa Enriched)[/yellow]"
 
-    header_text = f"""[bold magenta]{main.get('name')}[/bold magenta] ([yellow]{main.get('abbreviation', 'N/A')}[/yellow])
-[cyan]Website:[/cyan] {main.get('website')}
-[cyan]Type:[/cyan] {main.get('type', 'public').upper()} | [cyan]City:[/cyan] {main.get('city', 'N/A')} | [cyan]Country:[/cyan] {main.get('country', 'Pakistan')}
+    header_text = f"""[bold magenta]{show(main.get('name'), query)}[/bold magenta] ([yellow]{show(main.get('abbreviation'))}[/yellow])
+[cyan]Website:[/cyan] {show(main.get('website'))}
+[cyan]Type:[/cyan] {show(main.get('type'), 'Unknown').upper()} | [cyan]City:[/cyan] {show(main.get('city'))} | [cyan]Country:[/cyan] {show(main.get('country'), 'Unknown')}
 [cyan]Application Portal:[/cyan] {portal_badge}
-[dim]{main.get('description', '')[:200]}...[/dim]"""
+[dim]{show(main.get('description'), '')[:200]}[/dim]"""
 
     console.print(Panel(header_text, title="🏛️ Institution Profile", expand=False))
 
@@ -78,22 +83,22 @@ def inspect_university(query: str):
         ug_table.add_column("Program Name", style="bold cyan")
         ug_table.add_column("Department", style="dim")
         ug_table.add_column("Duration", style="green")
-        ug_table.add_column("Tuition Fee (PKR)", style="yellow")
+        ug_table.add_column("Tuition Fee", style="yellow")
         ug_table.add_column("Eligibility / Entry Tests", style="magenta")
         ug_table.add_column("Deadline", style="red")
 
         for p in ug_list[:12]:
             elig = p.get("eligibility_requirements", {})
             tests = ", ".join(elig.get("entry_tests_accepted", [])) if isinstance(elig.get("entry_tests_accepted"), list) else ""
-            elig_str = f"Min {elig.get('minimum_marks_percentage', 'N/A')}"
+            elig_str = f"Min {show(elig.get('minimum_marks_percentage'))}"
             if tests:
                 elig_str += f"\nTests: {tests}"
 
             ug_table.add_row(
-                p.get("name"),
-                p.get("department", "N/A"),
-                p.get("duration", "N/A"),
-                p.get("tuition_fee", "N/A"),
+                show(p.get("name")),
+                show(p.get("department")),
+                show(p.get("duration")),
+                show(p.get("tuition_fee")),
                 elig_str,
                 format_deadlines(p),
             )
@@ -104,15 +109,15 @@ def inspect_university(query: str):
         gr_table.add_column("Program Name", style="bold cyan")
         gr_table.add_column("Department", style="dim")
         gr_table.add_column("Duration", style="green")
-        gr_table.add_column("Tuition Fee (PKR)", style="yellow")
+        gr_table.add_column("Tuition Fee", style="yellow")
         gr_table.add_column("Deadline", style="red")
 
         for p in gr_list[:10]:
             gr_table.add_row(
-                p.get("name"),
-                p.get("department", "N/A"),
-                p.get("duration", "N/A"),
-                p.get("tuition_fee", "N/A"),
+                show(p.get("name")),
+                show(p.get("department")),
+                show(p.get("duration")),
+                show(p.get("tuition_fee")),
                 format_deadlines(p),
             )
         console.print(gr_table)
@@ -125,9 +130,9 @@ def inspect_university(query: str):
 
         for p in phd_list:
             phd_table.add_row(
-                p.get("name"),
-                p.get("department", "N/A"),
-                p.get("scholarships_info", "N/A"),
+                show(p.get("name")),
+                show(p.get("department")),
+                show(p.get("scholarships_info")),
             )
         console.print(phd_table)
 
@@ -140,10 +145,10 @@ def inspect_university(query: str):
 
         for p in dip_list:
             dip_table.add_row(
-                p.get("name"),
-                p.get("department", "N/A"),
-                p.get("duration", "N/A"),
-                p.get("tuition_fee", "N/A"),
+                show(p.get("name")),
+                show(p.get("department")),
+                show(p.get("duration")),
+                show(p.get("tuition_fee")),
             )
         console.print(dip_table)
 
@@ -151,7 +156,7 @@ def inspect_university(query: str):
     if facs:
         tree = Tree("[bold green]🏫 Faculties & Departments[/bold green]")
         for f in facs:
-            f_node = tree.add(f"[bold cyan]{f.get('faculty_name')}[/bold cyan]")
+            f_node = tree.add(f"[bold cyan]{show(f.get('faculty_name'), 'Unnamed faculty')}[/bold cyan]")
             for d in f.get("departments", []):
                 f_node.add(f"[dim]{d}[/dim]")
         console.print(tree)
@@ -159,15 +164,42 @@ def inspect_university(query: str):
     # Contact Info
     phones = contact.get("phone_numbers", [])
     phones_str = ", ".join(phones) if isinstance(phones, list) else str(phones)
-    contact_panel = f"""[bold yellow]Official Email:[/bold yellow] {contact.get('official_email', 'N/A')}
+    contact_panel = f"""[bold yellow]Official Email:[/bold yellow] {show(contact.get('official_email'))}
 [bold yellow]Phones:[/bold yellow] {phones_str or 'N/A'}
-[bold yellow]Address:[/bold yellow] {contact.get('physical_address', 'N/A')}"""
+[bold yellow]Address:[/bold yellow] {show(contact.get('physical_address'))}"""
     console.print(Panel(contact_panel, title="📞 Admissions Desk Contact", expand=False))
 
 
 # ------------------------------------------------------------------------------
 # 2. SIDE-BY-SIDE COMPARISON COMMAND (diff <slug1> <slug2>)
 # ------------------------------------------------------------------------------
+
+def _declared_currency(programs: dict) -> Optional[str]:
+    """
+    The one currency a university's programmes agree on, or None.
+
+    Returns None when the programmes disagree as well as when none declares a
+    currency: a single range covering two currencies is not a range, and since
+    C19 the currency field is only set when something in the record actually
+    supports it.
+    """
+    found = {
+        str(prog.get("currency")).strip().upper()
+        for bucket in PROGRAM_BUCKETS
+        for prog in programs.get(bucket, [])
+        if prog.get("currency")
+    }
+    return found.pop() if len(found) == 1 else None
+
+
+def _fee_range(fees: list, programs: dict) -> str:
+    """Format a min-max fee span, labelled only if the currency is unambiguous."""
+    if not fees:
+        return "N/A"
+    span = f"{min(fees):,.0f} - {max(fees):,.0f}"
+    currency = _declared_currency(programs)
+    return f"{currency} {span}" if currency else span
+
 
 def compare_universities(slug1: str, slug2: str):
     """Compares two extracted university payloads side-by-side in a Rich Table."""
@@ -205,7 +237,7 @@ def compare_universities(slug1: str, slug2: str):
         for prog in p1.get(cat, [])
     ]
     fees1 = [f for f in fees1 if f is not None]
-    fee_str1 = f"PKR {min(fees1):,.0f} - {max(fees1):,.0f}" if fees1 else "N/A"
+    fee_str1 = _fee_range(fees1, p1)
 
     fees2 = [
         extract_numeric_fee(prog.get("tuition_fee"))
@@ -213,19 +245,24 @@ def compare_universities(slug1: str, slug2: str):
         for prog in p2.get(cat, [])
     ]
     fees2 = [f for f in fees2 if f is not None]
-    fee_str2 = f"PKR {min(fees2):,.0f} - {max(fees2):,.0f}" if fees2 else "N/A"
+    fee_str2 = _fee_range(fees2, p2)
 
     portal1 = m1.get("key_links", {}).get("application_portal_url")
     portal2 = m2.get("key_links", {}).get("application_portal_url")
 
-    table = Table(title=f"⚔️ University Side-by-Side Comparison: {m1.get('name')} vs {m2.get('name')}", show_lines=True)
+    table = Table(
+        title=f"⚔️ University Side-by-Side Comparison: "
+              f"{show(m1.get('name'), slug1)} vs {show(m2.get('name'), slug2)}",
+        show_lines=True,
+    )
     table.add_column("Metric / Feature", style="bold cyan")
-    table.add_column(f"{m1.get('name')} ({m1.get('abbreviation', slug1).upper()})", style="bold yellow")
-    table.add_column(f"{m2.get('name')} ({m2.get('abbreviation', slug2).upper()})", style="bold green")
+    table.add_column(f"{show(m1.get('name'), slug1)} ({show(m1.get('abbreviation'), slug1).upper()})", style="bold yellow")
+    table.add_column(f"{show(m2.get('name'), slug2)} ({show(m2.get('abbreviation'), slug2).upper()})", style="bold green")
 
-    table.add_row("Institution Type", m1.get("type", "N/A").upper(), m2.get("type", "N/A").upper())
-    table.add_row("City / Location", m1.get("city", "N/A"), m2.get("city", "N/A"))
-    table.add_row("Website Domain", m1.get("website", "N/A"), m2.get("website", "N/A"))
+    table.add_row("Institution Type", show(m1.get("type")).upper(), show(m2.get("type")).upper())
+    table.add_row("City / Location", show(m1.get("city")), show(m2.get("city")))
+    table.add_row("Country", show(m1.get("country"), "Unknown"), show(m2.get("country"), "Unknown"))
+    table.add_row("Website Domain", show(m1.get("website")), show(m2.get("website")))
     table.add_row(
         "Application Portal URL",
         f"[green]{portal1}[/green]" if portal1 else "[red]Missing[/red]",
@@ -234,7 +271,8 @@ def compare_universities(slug1: str, slug2: str):
     table.add_row("Bachelors Programs (BS)", str(ug1), str(ug2))
     table.add_row("Graduate Programs (MS)", str(gr1), str(gr2))
     table.add_row("PhD & Doctoral Programs", str(phd1), str(phd2))
-    table.add_row("Total Degree Offerings", str(ug1 + gr1 + phd1), str(ug2 + gr2 + phd2))
+    table.add_row("Diploma & Certificate Programs", str(dip1), str(dip2))
+    table.add_row("Total Degree Offerings", str(ug1 + gr1 + phd1 + dip1), str(ug2 + gr2 + phd2 + dip2))
     table.add_row("Tuition Fee Range", fee_str1, fee_str2)
     table.add_row("Faculties / Schools Count", str(len(rec1.get("faculties", []))), str(len(rec2.get("faculties", []))))
 
@@ -243,7 +281,7 @@ def compare_universities(slug1: str, slug2: str):
     e2_phones = c2.get("phone_numbers", [])
     p2_str = ", ".join(e2_phones) if isinstance(e2_phones, list) else str(e2_phones)
 
-    table.add_row("Official Email", c1.get("official_email", "N/A"), c2.get("official_email", "N/A"))
+    table.add_row("Official Email", show(c1.get("official_email")), show(c2.get("official_email")))
     table.add_row("Admissions Office Phone", p1_str or "N/A", p2_str or "N/A")
 
     console.print(table)
@@ -294,10 +332,10 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
 
                     matches.append(
                         {
-                            "university": uni_name,
+                            "university": show(uni_name, "Unknown University"),
                             "category": cat_label,
-                            "program_name": p_name,
-                            "department": dept or "N/A",
+                            "program_name": show(p_name),
+                            "department": show(dept),
                             "tuition_fee": fee_str or "N/A",
                             "deadline": format_deadlines(p),
                             "portal_url": portal_url,
@@ -319,7 +357,7 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
     table.add_column("Level", style="dim")
     table.add_column("Program Name", style="bold yellow")
     table.add_column("Department", style="magenta")
-    table.add_column("Tuition Fee (PKR)", style="green")
+    table.add_column("Tuition Fee", style="green")
     table.add_column("Deadline", style="red")
 
     for m in matches[:25]:  # Limit output table display cap
@@ -368,7 +406,7 @@ def inspect_state():
                 status_style = "bold red"
 
             table.add_row(
-                r['university_slug'].upper(),
+                show(r.get('university_slug')).upper(),
                 f"[{status_style}]{r['status']}[/{status_style}]",
                 r.get('notebook_id') or "N/A",
                 str(r.get('sources_ingested', 0)),

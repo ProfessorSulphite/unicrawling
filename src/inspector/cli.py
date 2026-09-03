@@ -75,8 +75,17 @@ def retry_pipeline(target: str = "failed"):
     for item in to_retry:
         slug = item["university_slug"]
         console.print(f"\n[bold magenta]🚀 Retrying pipeline execution for slug: {slug}...[/bold magenta]")
-        # Construct fallback website URL if not stored
-        url = f"https://{slug}.edu.pk"
+        # The state row is supposed to carry the URL that was crawled. The
+        # .edu.pk guess below is a leftover from a Pakistan-only corpus and is
+        # wrong for every other country, so it is used only as a last resort and
+        # announced when it is.
+        url = item.get("website") or item.get("url")
+        if not url:
+            url = f"https://{slug}.edu.pk"
+            console.print(
+                f"[yellow]No URL recorded for {slug}; guessing {url}. "
+                f"This guess only holds for Pakistani institutions.[/yellow]"
+            )
         try:
             asyncio.run(run_master_pipeline(url=url, max_links=60))
             console.print(f"[bold green]✓ Pipeline successfully completed for {slug}![/bold green]")
@@ -123,7 +132,7 @@ def interactive_menu():
         elif choice == "3":
             kw = Prompt.ask("Enter search keyword (e.g., data science, computer, scholarship)")
             lvl = Prompt.ask("Filter by level (BS, MS, PhD, or press Enter for all)", default="")
-            max_f = Prompt.ask("Filter max tuition fee PKR (or press Enter for none)", default="")
+            max_f = Prompt.ask("Filter max tuition fee, in the fee's own currency (or press Enter for none)", default="")
             fee_val = float(max_f) if max_f.strip().isdigit() else None
             if kw:
                 search_programs(kw, level=lvl or None, max_fee=fee_val)
@@ -164,7 +173,15 @@ def main():
     search_parser = subparsers.add_parser("search", help="Global search across all degree programs")
     search_parser.add_argument("keyword", type=str, help="Keyword to search (e.g., 'data science')")
     search_parser.add_argument("--level", type=str, default=None, help="Degree level filter (BS, MS, PhD)")
-    search_parser.add_argument("--max-fee", type=float, default=None, help="Maximum tuition fee filter in PKR")
+    search_parser.add_argument(
+        "--max-fee",
+        type=float,
+        default=None,
+        # Compares the first number in the fee string, whatever currency it is in,
+        # so across a multi-country corpus this filter is only meaningful when
+        # combined with a single-currency slice. See extract_numeric_fee.
+        help="Maximum tuition fee filter, compared in the fee's own currency",
+    )
 
     # Command: retry [target]
     retry_parser = subparsers.add_parser("retry", help="Retry failed or pending pipeline state runs")
