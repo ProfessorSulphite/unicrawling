@@ -4,7 +4,7 @@ Serves as single source of truth for prompts, validation, and JSON export.
 """
 from typing import Any, List, Optional
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 
 class UniversityType(str, Enum):
@@ -31,6 +31,11 @@ class DegreeLevel(str, Enum):
 # Retired DegreeLevel values, kept only so payloads written before C17 still
 # load. Module-level rather than a ProgramItem attribute: Pydantic claims
 # leading-underscore class attributes as private attrs.
+# Stand-in written when a programme arrives with no summary at all. Named rather
+# than inlined so the normalizer can tell a real summary from this one; C19 is
+# where it gets removed in favour of a null.
+SUMMARY_FALLBACK = "Academic degree program offered by the university."
+
 _RETIRED_DEGREE_LEVELS = {
     "undergraduate": "bachelors",
     "graduate": "masters",
@@ -112,7 +117,31 @@ class ProgramItem(BaseModel):
     application_fee: Optional[str] = Field(None, description="Application fee amount and currency")
     career_prospects: Optional[str] = Field(None, description="Target career outcomes or roles")
     courses_taught: List[str] = []
+    # C18, plan section 5: the deliverable per-programme field. A full paragraph
+    # covering focus areas, learning outcomes, career prospects and any
+    # distinctive specialisations -- enough for a student to judge fit.
+    # Optional, not required: a programme page that genuinely says nothing about
+    # itself should normalize to None, not to invented prose.
+    description: Optional[str] = Field(
+        None,
+        description=(
+            "Full-paragraph overview of the programme: focus areas, learning "
+            "outcomes, career prospects, distinctive features or specializations"
+        ),
+    )
+    # DEPRECATED (C18): superseded by `description`, which asks for the same
+    # thing without the arbitrary three-line cap. Kept because every payload
+    # written before C18 carries it and inspect_cli re-validates those on read;
+    # the prompts no longer request it. The normalizer carries a real value over
+    # into `description` when that field is empty.
     summary_3_lines: str
+    admission_requirements: Optional[str] = Field(
+        None,
+        description=(
+            "Admission process and requirements beyond raw eligibility marks: "
+            "documents, interviews, portfolios, prerequisites, entry-test steps"
+        ),
+    )
     # Defaulted rather than required: every field inside EligibilityRequirements is
     # itself optional, so a missing block carries no less information than an empty
     # one -- but marking it required forces a repair re-ask that spends real budget
@@ -120,7 +149,17 @@ class ProgramItem(BaseModel):
     # unchanged; the object still always serialises.
     eligibility_requirements: EligibilityRequirements = Field(default_factory=EligibilityRequirements)
     application_status: ApplicationStatus = ApplicationStatus.ROLLING
-    application_deadline: Optional[str] = None
+    # Plural since C18 (plan section 5, "Application deadline(s)"). A programme
+    # with Fall and Spring intakes has two published deadlines, and the singular
+    # field forced one of them to be dropped or crammed into prose.
+    application_deadlines: List[str] = Field(
+        default_factory=list,
+        # The retired singular key is accepted as an alias rather than migrated
+        # elsewhere: without it a pre-C18 payload's only deadline is silently
+        # dropped at validation, which is a fact a student would act on.
+        validation_alias=AliasChoices("application_deadlines", "application_deadline"),
+        description="Every published application deadline, one entry per intake",
+    )
 
     # Every payload written before C17 carries the old three-level names, and
     # inspect_cli re-validates those files on every read. Coercing them here
@@ -144,7 +183,21 @@ class ProgramItem(BaseModel):
     def _coerce_summary(cls, v: Any) -> str:
         if isinstance(v, str) and v.strip():
             return v.strip()
-        return "Academic degree program offered by the university."
+        return SUMMARY_FALLBACK
+
+    # Accepts the singular string the extractor still tends to emit, and the
+    # retired application_deadline value that every pre-C18 payload carries.
+    # Same shape as ContactInfo's phone-number coercion.
+    @field_validator("application_deadlines", mode="before")
+    @classmethod
+    def _coerce_deadlines(cls, v: Any) -> List[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        if isinstance(v, list):
+            return [str(d).strip() for d in v if d is not None and str(d).strip()]
+        return [str(v).strip()]
 
 
 class ProgramCategoryBlock(BaseModel):

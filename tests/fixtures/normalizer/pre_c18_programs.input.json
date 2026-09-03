@@ -1,0 +1,182 @@
+{
+  "main_info": {
+    "name": "Information Technology University",
+    "abbreviation": "ITU",
+    "country": "Pakistan",
+    "city": "Lahore",
+    "established_year": 2012,
+    "accreditation_body": "HEC, PEC, NCEAC",
+    "admission_cycles_offered": [
+      "Fall"
+    ],
+    "primary_instruction_language": "English",
+    "website": "https://itu.edu.pk/",
+    "type": "public",
+    "description": "Established in 2012, Information Technology University (ITU) is a research-oriented public university in Lahore, Pakistan, offering undergraduate and graduate programs in engineering, computer science, business, and humanities.",
+    "domain_verified": true,
+    "verification_note": "Identity fields sourced from resources/rankings_pk.json registry.",
+    "key_links": {
+      "academics_url": "https://itu.edu.pk/academics/",
+      "admissions_url": "https://itu.edu.pk/admissions/",
+      "application_portal_url": "https://application.itu.edu.pk/"
+    },
+    "rankings": [],
+    "exa_enriched": false
+  },
+  "programs": {
+    "undergraduate": [
+      {
+        "name": "BS Artificial Intelligence",
+        "program_info_link": "https://itu.edu.pk/admissions/bs-artificial-intelligence",
+        "department": "Department of Artificial Intelligence",
+        "degree_level": "undergraduate",
+        "duration": "4 Years",
+        "tuition_fee": "1,416,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Honhaar Undergraduate Scholarship, PEEF, HEC Need Based, ITU Employee Scholarship",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "Agriculture, defense, healthcare, governance, transportation, e-commerce, finance, and education sectors",
+        "courses_taught": [
+          "Functional English",
+          "Digital Logic Design",
+          "Programming Fundamentals",
+          "Object Oriented Programming",
+          "Database Systems",
+          "Data Structures",
+          "Artificial Intelligence",
+          "Machine Learning",
+          "Computer Vision"
+        ],
+        "summary_3_lines": "The program imparts in-depth knowledge to transform complex scenarios into actionable decisions.\nIt focuses on utilizing knowledge, vision, language, and large databases to enhance human capabilities.\nThe curriculum includes machine learning, neural networks, computer vision, and natural language processing.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "50%",
+          "entry_tests_accepted": [
+            "ITU Admission Test",
+            "SAT",
+            "USAT-CS",
+            "USAT-E",
+            "USAT-GS"
+          ],
+          "aggregate_formula": "Academic Record 50% (Matric/O-Level 15% + Inter part I/Inter/A-Level 35%) + Admission Test/SAT-I/USAT 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      }
+    ],
+    "graduate": [
+      {
+        "name": "MS Computer Engineering",
+        "program_info_link": "https://itu.edu.pk/admissions/ms-computer-engineering",
+        "department": "Department of Computer and Software Engineering",
+        "degree_level": "graduate",
+        "duration": "2 Years",
+        "tuition_fee": "327,000",
+        "currency": "PKR",
+        "scholarships_info": "Top 3 Merit Scholarship, CGPA Merit Scholarship, Graduate Student Fellowship, ITU Graduate Discount",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": "R&D, Industrial Automation, Robotics, Multimedia, Sensing, and Artificial Intelligence",
+        "courses_taught": [
+          "Advanced Computer Architecture – I",
+          "Advanced Digital Systems Design",
+          "Advanced Digital Signal Processing",
+          "Advanced Computer Networks",
+          "Stochastic Systems",
+          "Advanced Mathematics",
+          "Real Time Embedded Systems",
+          "System on Chip Design",
+          "Hardware Software Co-Design",
+          "ASIC Design Methodologies",
+          "Hardware Security",
+          "Emerging Computing Architectures for AI",
+          "VLSI Testing and Verification",
+          "VLSI Architecture and Systems",
+          "Advanced Computer Architecture-II",
+          "Industrial Automation",
+          "Internet of Things",
+          "Mobile and Wireless Networks",
+          "Information Security",
+          "Cloud Computing with Big Data Applications",
+          "Embedded IoT",
+          "Blockchain",
+          "Digital Image Processing",
+          "Computer Vision",
+          "Machine Learning",
+          "Deep Learning",
+          "Pattern Recognition",
+          "Engineering Aspects of Remote Sensing",
+          "Radar Interferometry",
+          "Image Processing Methodologies for Remote Sensing Data",
+          "Natural Language Processing",
+          "Advanced Algorithms Analysis",
+          "Advanced Operating Systems",
+          "Information Retrieval and Text Mining",
+          "Tools and Techniques for Data Science",
+          "Parallel & Distributed Computing",
+          "Applied Optimization",
+          "Advanced Software Engineering",
+          "Scientific Writing and Research Methodologies"
+        ],
+        "summary_3_lines": "Focuses on cutting-edge technologies like Hardware Design, Embedded IoT, and Artificial Intelligence.\nPrepares professionals for leading roles in engineering and scientific industry teams.\nRequires 30 credit hours including coursework and a research thesis.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60%",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 50% + Admission Test 50%"
+        },
+        "application_status": "open",
+        "application_deadline": "August 5, 2026"
+      }
+    ],
+    "postgraduate_and_phd": [
+      {
+        "name": "PhD Computer Science",
+        "program_info_link": "https://itu.edu.pk/admissions/phd-computer-science/",
+        "department": "Department of Computer Science",
+        "degree_level": "postgraduate_phd",
+        "duration": null,
+        "tuition_fee": null,
+        "currency": "PKR",
+        "scholarships_info": "Pre-Doctoral Fellowship Program provides PKR 80,000 to 90,000 per month for 4 years with a tuition fee waiver.",
+        "intake_terms": [
+          "Fall"
+        ],
+        "delivery_mode": "On-Campus",
+        "application_fee": null,
+        "career_prospects": null,
+        "courses_taught": [],
+        "summary_3_lines": "The program emphasizes scholarly proficiency and the capacity for independent, original investigation.\nStudents must prepare a detailed research proposal and defend original research that contributes to their field.\nThe curriculum aims to provide a technically oriented education covering the discipline's theoretical foundations.",
+        "eligibility_requirements": {
+          "minimum_marks_percentage": "60% or 1st division in annual system, or CGPA of 3.0",
+          "entry_tests_accepted": [
+            "ITU Graduate Admission Test"
+          ],
+          "aggregate_formula": "Academic Record 30% + Admission Test 35% + Interview 35%"
+        },
+        "application_status": "open",
+        "application_deadline": "2026-08-05"
+      }
+    ]
+  },
+  "faculties": [],
+  "contact": {
+    "official_email": "admission@itu.edu.pk",
+    "phone_numbers": [
+      "042-99046061",
+      "0307-0111488",
+      "042-111-111-488"
+    ],
+    "physical_address": "6th Floor, Arfa Software Technology Park, Ferozepur Road, Lahore",
+    "admissions_office_location": "ITU Admissions Office, 6th Floor, Arfa Software Technology Park, Ferozepur Road, Lahore",
+    "sub_campuses_contact": []
+  },
+  "programs_possibly_truncated": false
+}

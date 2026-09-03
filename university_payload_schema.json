@@ -520,18 +520,7 @@
           "title": "Courses Taught",
           "type": "array"
         },
-        "summary_3_lines": {
-          "title": "Summary 3 Lines",
-          "type": "string"
-        },
-        "eligibility_requirements": {
-          "$ref": "#/$defs/EligibilityRequirements"
-        },
-        "application_status": {
-          "$ref": "#/$defs/ApplicationStatus",
-          "default": "rolling"
-        },
-        "application_deadline": {
+        "description": {
           "anyOf": [
             {
               "type": "string"
@@ -541,7 +530,40 @@
             }
           ],
           "default": null,
-          "title": "Application Deadline"
+          "description": "Full-paragraph overview of the programme: focus areas, learning outcomes, career prospects, distinctive features or specializations",
+          "title": "Description"
+        },
+        "summary_3_lines": {
+          "title": "Summary 3 Lines",
+          "type": "string"
+        },
+        "admission_requirements": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Admission process and requirements beyond raw eligibility marks: documents, interviews, portfolios, prerequisites, entry-test steps",
+          "title": "Admission Requirements"
+        },
+        "eligibility_requirements": {
+          "$ref": "#/$defs/EligibilityRequirements"
+        },
+        "application_status": {
+          "$ref": "#/$defs/ApplicationStatus",
+          "default": "rolling"
+        },
+        "application_deadlines": {
+          "description": "Every published application deadline, one entry per intake",
+          "items": {
+            "type": "string"
+          },
+          "title": "Application Deadlines",
+          "type": "array"
         }
       },
       "required": [

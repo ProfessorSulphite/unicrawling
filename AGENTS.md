@@ -67,8 +67,8 @@ flowchart TD
 * **Responsibilities**:
   - Execute a 5 to 6 targeted query suite per university against NotebookLM using strict JSON schema prompt files:
     - **Q1**: `main_info` (Metadata, Rankings, Academics/Admissions/Application Portal URLs).
-    - **Q2**: `programs.bachelors` (BS, BSc, BA, BBA, MBBS, LLB, PharmD, DPT with 3-line summaries, fees, eligibility).
-    - **Q3**: `programs.masters` (MS, MSc, MA, MBA, MPhil, LLM with 3-line summaries, fees, eligibility).
+    - **Q2**: `programs.bachelors` (BS, BSc, BA, BBA, MBBS, LLB, PharmD, DPT with full-paragraph descriptions, fees, eligibility, admission requirements, deadlines).
+    - **Q3**: `programs.masters` (MS, MSc, MA, MBA, MPhil, LLM with full-paragraph descriptions, fees, eligibility, admission requirements, deadlines).
     - **Q4**: `programs.phd` (research doctorates only; post-doctoral fellowships are excluded).
     - **Q4b**: `programs.diploma` (postgraduate diplomas, PGDs, certificates) — added in C17.
     - **Q5**: `faculties` (Faculties, Schools, and constituent departments).

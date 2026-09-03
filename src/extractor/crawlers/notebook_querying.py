@@ -74,23 +74,41 @@ Match this exact structure:
 Leave "rankings" as an empty array; do not state any numeric rank.
 """ + _JSON_CONTRACT
 
+# Every field plan section 5 lists as required per programme. C18 replaced the
+# three-line summary with a full-paragraph `description` and added
+# `admission_requirements`; deadlines became a list because a programme with
+# Fall and Spring intakes has two, and the singular field forced one to be
+# dropped. `currency` is a LABEL for whatever the university published -- the
+# pipeline never converts (Finding 8).
 _PROGRAM_STRUCTURE = """[
   {
     "name": "<Program Name>", "program_info_link": "<URL or null>",
     "department": "<or null>", "degree_level": "%s",
-    "duration": "<e.g. 4 Years>", "tuition_fee": "<or null>", "currency": "PKR",
+    "duration": "<e.g. 4 Years>", "tuition_fee": "<fee exactly as published, or null>",
+    "currency": "<currency the university publishes the fee in, e.g. PKR, EUR, USD>",
     "scholarships_info": "<or null>", "intake_terms": ["Fall"],
     "delivery_mode": "On-Campus", "application_fee": "<or null>",
     "career_prospects": "<or null>", "courses_taught": [],
-    "summary_3_lines": "<exactly 3 short lines describing the programme>",
+    "description": "<ONE FULL PARAGRAPH: what the programme covers, its focus areas, learning outcomes, career prospects, and any distinctive specializations>",
+    "admission_requirements": "<how to apply and what is required beyond marks: documents, interviews, portfolios, prerequisites, entry-test steps, or null>",
     "eligibility_requirements": {
       "minimum_marks_percentage": "<or null>", "entry_tests_accepted": [],
       "aggregate_formula": "<or null>"
     },
     "application_status": "open" | "closed" | "rolling" | "upcoming",
-    "application_deadline": "<or null>"
+    "application_deadlines": ["<one entry per published deadline; [] if none stated>"]
   }
 ]"""
+
+# Appended to every programme query. `description` is the plan's headline
+# deliverable and the field a model is most likely to skimp on, so it is called
+# out separately from the structure block rather than left as one line of JSON.
+_PROGRAM_FIELD_NOTE = (
+    "\"description\" must be a full paragraph, not a phrase and not a list -- a "
+    "student should be able to read it alone and know what the programme is. "
+    "Leave a field null rather than guessing; an unstated deadline is [] and an "
+    "unstated fee is null.\n"
+)
 
 QUERY_SUITE: List[QuerySpec] = [
     QuerySpec(
@@ -109,7 +127,7 @@ QUERY_SUITE: List[QuerySpec] = [
             + (_PROGRAM_STRUCTURE % "bachelors") + "\n"
             + "MBBS, PharmD and DPT are bachelors-level entry programmes here; list "
             "them in this query, not the PhD one.\n"
-            + _JSON_CONTRACT
+            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
@@ -122,7 +140,7 @@ QUERY_SUITE: List[QuerySpec] = [
             + (_PROGRAM_STRUCTURE % "masters") + "\n"
             + "Include MPhil programmes here. Exclude postgraduate diplomas and "
             "certificates -- those belong to the diploma query.\n"
-            + _JSON_CONTRACT
+            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
@@ -135,7 +153,7 @@ QUERY_SUITE: List[QuerySpec] = [
             + (_PROGRAM_STRUCTURE % "phd") + "\n"
             + "Research doctorates only. Do not include post-doctoral fellowships, "
             "which are appointments rather than programmes.\n"
-            + _JSON_CONTRACT
+            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
@@ -152,7 +170,7 @@ QUERY_SUITE: List[QuerySpec] = [
             + (_PROGRAM_STRUCTURE % "diploma") + "\n"
             + "Award-bearing programmes only. Do not list individual courses or "
             "modules that are part of a degree.\n"
-            + _JSON_CONTRACT
+            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),

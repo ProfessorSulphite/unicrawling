@@ -46,6 +46,17 @@ FEE_NUMBER_REGEX = re.compile(r"\d[\d,]*")
 # HELPER DATA LOADERS
 # ------------------------------------------------------------------------------
 
+def format_deadlines(prog: Dict[str, Any], empty: str = "N/A") -> str:
+    """Render application_deadlines for display. C18 made the field a list."""
+    deadlines = prog.get("application_deadlines")
+    if isinstance(deadlines, str):
+        deadlines = [deadlines]
+    if not isinstance(deadlines, list):
+        deadlines = []
+    cleaned = [str(d).strip() for d in deadlines if d is not None and str(d).strip()]
+    return "; ".join(cleaned) if cleaned else empty
+
+
 def iter_all_records() -> Iterator[Dict[str, Any]]:
     """
     Yield normalized university payloads one at a time.
@@ -214,7 +225,7 @@ def inspect_university(query: str):
                 p.get("duration", "N/A"),
                 p.get("tuition_fee", "N/A"),
                 elig_str,
-                p.get("application_deadline", "N/A"),
+                format_deadlines(p),
             )
         console.print(ug_table)
 
@@ -232,7 +243,7 @@ def inspect_university(query: str):
                 p.get("department", "N/A"),
                 p.get("duration", "N/A"),
                 p.get("tuition_fee", "N/A"),
-                p.get("application_deadline", "N/A"),
+                format_deadlines(p),
             )
         console.print(gr_table)
 
@@ -397,7 +408,7 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
             for p in progs.get(cat_key, []):
                 p_name = p.get("name", "")
                 dept = p.get("department", "")
-                summary = p.get("summary_3_lines", "")
+                summary = p.get("description") or p.get("summary_3_lines", "")
                 elig = p.get("eligibility_requirements", {})
                 elig_text = str(elig)
                 courses = " ".join(p.get("courses_taught", [])) if isinstance(p.get("courses_taught"), list) else ""
@@ -418,7 +429,7 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
                             "program_name": p_name,
                             "department": dept or "N/A",
                             "tuition_fee": fee_str or "N/A",
-                            "deadline": p.get("application_deadline", "N/A"),
+                            "deadline": format_deadlines(p),
                             "portal_url": portal_url,
                         }
                     )
@@ -562,7 +573,7 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None)
                             "department": p.get("department", ""),
                             "duration": p.get("duration", ""),
                             "tuition_fee": p.get("tuition_fee", ""),
-                            "application_deadline": p.get("application_deadline", ""),
+                            "application_deadlines": format_deadlines(p, empty=""),
                             "application_portal_url": portal_url,
                             "official_email": email,
                         }
@@ -578,7 +589,7 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None)
             "department",
             "duration",
             "tuition_fee",
-            "application_deadline",
+            "application_deadlines",
             "application_portal_url",
             "official_email",
         ]

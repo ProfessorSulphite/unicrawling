@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 from src.extractor.normalizers.currency_tuition import apply_currency_and_tuition
 from src.extractor.normalizers.degree_names import apply_degree_level
 from src.extractor.normalizers.eligibility import apply_eligibility_defaults
+from src.extractor.normalizers.program_fields import apply_program_field_carryover
 from src.utilities.schema import DegreeLevel
 
 # Bucket names in ProgramCategoryBlock, derived from the enum so the two cannot
@@ -66,10 +67,15 @@ def normalize_universal_program(prog: Dict[str, Any], country: str) -> Dict[str,
     four canonical levels using the programme name as the stronger evidence. It
     reads nothing the other two write either, so it is ordered last only for
     readability.
+
+    C18 added a fourth, apply_program_field_carryover, which moves pre-C18
+    values onto the fields the current schema looks for. It runs last because it
+    only ever fills a field the earlier steps left empty.
     """
     prog = apply_currency_and_tuition(prog, country)
     prog = apply_eligibility_defaults(prog, country)
     prog = apply_degree_level(prog)
+    prog = apply_program_field_carryover(prog)
     return prog
 
 
