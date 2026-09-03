@@ -64,7 +64,9 @@ from src.utilities.naming import derive_uni_info  # noqa: E402
 from src.utilities.state_management import QuotaExceededError, StateManager  # noqa: E402
 from src.utilities.workspace import backup_existing_outputs  # noqa: E402
 
-DEFAULT_RUN_SETTINGS_PATH = Path("config.json")
+# Defined on Config (C23) so the inspector's `batch` subcommand can share the
+# default without importing this module at module scope -- Finding 6.
+DEFAULT_RUN_SETTINGS_PATH = config.run_settings_path
 
 
 def compile_master_json() -> Path:
@@ -449,7 +451,7 @@ async def run_batch_pipeline(
         export_dataset(format_type="json")
 
         # Record where this run's universities actually came from, which for a
-        # resume is the token rather than whatever config.json says today.
+        # resume is the token rather than whatever run_settings.json says today.
         result_analytics_file = generate_result_analytics(resumed_from or config_file_path)
         console.print(
             Panel(

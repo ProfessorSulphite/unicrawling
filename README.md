@@ -29,7 +29,7 @@ An autonomous, multi-agent 4-phase data extraction, transformation, universal sc
 
 ```
 notebooklm_scripts/
-├── config.json                           # ⚙️ Multi-country university links & pipeline settings
+├── run_settings.json                           # ⚙️ Multi-country university links & pipeline settings
 ├── cli.py                                # ⚡ Root CLI executable entrypoint wrapper
 ├── query_qdrant.py                       # 🔍 Standalone Qdrant Cloud interactive CLI query tool
 ├── src/                                  # 📦 Core Source Package
@@ -72,10 +72,10 @@ notebooklm_scripts/
 
 ---
 
-## ⚡ Quick Start: Multi-Country Batch Ingestion (`config.json`)
+## ⚡ Quick Start: Multi-Country Batch Ingestion (`run_settings.json`)
 
-### 1. Configure Target Links (`config.json`)
-Specify target universities grouped by country and set pipeline parameters in `config.json`:
+### 1. Configure Target Links (`run_settings.json`)
+Specify target universities grouped by country and set pipeline parameters in `run_settings.json`:
 
 ```json
 {
@@ -179,7 +179,7 @@ Upon completing a batch run, the system generates `data/outputs/result.json` sum
 ```json
 {
   "timestamp": "2026-07-25T13:40:00",
-  "config_file": "config.json",
+  "config_file": "run_settings.json",
   "total_universities": 6,
   "country_distribution": {
     "Pakistan": 3,

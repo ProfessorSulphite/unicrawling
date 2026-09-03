@@ -47,6 +47,15 @@ class Config:
 
     tests_dir: Path = BASE_DIR / "tests"                                         # Test tree, mirroring the src/ package layout
 
+    # Renamed in C23. The previous filename collided with this module's own
+    # name: one file is the run's university list and per-run settings, the
+    # other is the application's own configuration, and "the config" meant
+    # either one depending on who was speaking.
+    # Lives here rather than in the orchestrator so the inspector's `batch`
+    # subcommand can default to it without importing the orchestrator at module
+    # scope, which Finding 6 forbids.
+    run_settings_path: Path = BASE_DIR / "run_settings.json"                     # Universities to crawl and per-run pipeline settings
+
     # ═══════════════════════════════════════════════════════════════════════
     # LOGGING
     # ═══════════════════════════════════════════════════════════════════════

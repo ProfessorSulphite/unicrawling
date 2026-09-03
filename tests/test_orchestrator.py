@@ -31,7 +31,7 @@ TWO_UNIVERSITIES = {
 @pytest.fixture
 def workspace(monkeypatch, tmp_path):
     """A config file, an isolated state DB, and isolated log directories."""
-    settings_path = tmp_path / "config.json"
+    settings_path = tmp_path / "run_settings.json"
     settings_path.write_text(json.dumps(TWO_UNIVERSITIES), encoding="utf-8")
 
     single = tmp_path / "single_logs"
@@ -206,3 +206,27 @@ def test_derive_uni_info_is_the_one_slug_rule():
     """Everything is filed under this slug: state row, payload, links file."""
     assert derive_uni_info("https://www.itu.edu.pk/programs") == ("ITU", "itu", "itu.edu.pk")
     assert derive_uni_info("https://lmu.de", "LMU Munich") == ("LMU Munich", "lmu", "lmu.de")
+
+
+# ------------------------------------------------- C23: the settings file --
+
+def test_the_run_settings_default_comes_from_config_not_a_literal():
+    """
+    C23 renamed config.json to run_settings.json. The default lives on Config so
+    the inspector's `batch` subcommand can share it without importing the
+    orchestrator at module scope, which Finding 6 forbids.
+    """
+    from src.config import config
+    from src.orchestrator import DEFAULT_RUN_SETTINGS_PATH
+
+    assert DEFAULT_RUN_SETTINGS_PATH == config.run_settings_path
+    assert config.run_settings_path.name == "run_settings.json"
+
+
+def test_neither_entrypoint_still_defaults_to_the_old_filename():
+    from src.inspector.cli import build_parser as inspector_parser
+    from src.orchestrator import build_parser as orchestrator_parser
+
+    for parser in (orchestrator_parser(), inspector_parser()):
+        for action in parser._actions:
+            assert str(getattr(action, "default", "")) != "config.json"

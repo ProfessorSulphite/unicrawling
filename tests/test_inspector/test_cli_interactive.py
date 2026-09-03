@@ -206,7 +206,8 @@ def test_export_offers_only_the_surviving_formats():
 
     from src.inspector import cli
 
-    parser_src = inspect.getsource(cli.main)
+    # C23 split the command table out of main(); the parser is what this guards.
+    parser_src = inspect.getsource(cli.build_parser)
     assert "qdrant" not in parser_src.lower()
     assert "pinecone" not in parser_src.lower()
     assert '"csv", "json"' in parser_src

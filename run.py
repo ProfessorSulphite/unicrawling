@@ -3,7 +3,7 @@
 Root entrypoint for the pipeline (decision D4).
 
     python3 run.py --url https://itu.edu.pk
-    python3 run.py --config config.json --dry-run
+    python3 run.py --config run_settings.json --dry-run
     python3 run.py --resume c_7
 
 A thin root shim rather than making `python -m src.orchestrator` the only way

@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 from rich.prompt import Confirm, Prompt
 
@@ -165,7 +166,8 @@ def interactive_menu():
 # CLI ENTRY POINT
 # ------------------------------------------------------------------------------
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """The command table, separate from dispatch so a test can inspect it."""
     parser = argparse.ArgumentParser(description="Developer-Grade Education Counselor RAG CLI Tool")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -221,14 +223,25 @@ def main():
     subparsers.add_parser("notebooks", help="List active NotebookLM notebooks and source counts")
 
     # Command: batch
-    batch_parser = subparsers.add_parser("batch", help="Run multi-country batch pipeline from config.json")
-    batch_parser.add_argument("--config", type=Path, default=Path("config.json"), help="Configuration JSON file")
+    batch_parser = subparsers.add_parser(
+        "batch", help="Run the multi-country batch pipeline from run_settings.json"
+    )
+    batch_parser.add_argument(
+        "--config",
+        type=Path,
+        default=config.run_settings_path,
+        help="Run-settings JSON file (universities and per-run settings)",
+    )
     batch_parser.add_argument("--rerun-all", action="store_true", help="Force backup and rerun all configured universities")
 
     # Command: interactive
     subparsers.add_parser("interactive", help="Launch Rich Interactive TUI Menu")
 
-    args = parser.parse_args()
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
 
     if args.command == "batch":
         try:
