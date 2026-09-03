@@ -69,10 +69,12 @@
       "type": "object"
     },
     "DegreeLevel": {
+      "description": "The four levels a counselling student can actually apply to (C17).\n\nReplaces undergraduate / graduate / postgraduate_phd, which conflated a\ntaught masters with an MPhil and had no home at all for the PGDs and\ndiplomas that make up a large share of Pakistani enrolment. Post-doctoral\nis deliberately absent: it is a research appointment, not a programme.\nLegacy values still coerce -- see ProgramItem._coerce_degree_level.",
       "enum": [
-        "undergraduate",
-        "graduate",
-        "postgraduate_phd"
+        "bachelors",
+        "masters",
+        "phd",
+        "diploma"
       ],
       "title": "DegreeLevel",
       "type": "string"
@@ -223,6 +225,7 @@
         },
         "country": {
           "default": "Pakistan",
+          "description": "Country location of the university (e.g. Germany, USA, UK, Switzerland, Pakistan)",
           "title": "Country",
           "type": "string"
         },
@@ -236,14 +239,69 @@
             }
           ],
           "default": null,
+          "description": "City location of campus e.g. Islamabad, Munich, Boston",
           "title": "City"
+        },
+        "established_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Year university was founded",
+          "title": "Established Year"
+        },
+        "accreditation_body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Accrediting agency e.g. HEC, ABET, TEQSA, WASC",
+          "title": "Accreditation Body"
+        },
+        "admission_cycles_offered": {
+          "description": "Admission terms e.g. Fall, Spring, Summer, Winter",
+          "items": {
+            "type": "string"
+          },
+          "title": "Admission Cycles Offered",
+          "type": "array"
+        },
+        "primary_instruction_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "English",
+          "description": "Main teaching language",
+          "title": "Primary Instruction Language"
         },
         "website": {
           "title": "Website",
           "type": "string"
         },
         "type": {
-          "$ref": "#/$defs/UniversityType",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UniversityType"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "default": "public"
         },
         "description": {
@@ -294,29 +352,38 @@
       "type": "object"
     },
     "ProgramCategoryBlock": {
+      "description": "One bucket per DegreeLevel; the key names match the enum values exactly.\n\nPre-C17 the keys were undergraduate / graduate / postgraduate_and_phd, and\nthe last of those did not even match its own enum value\n(\"postgraduate_phd\"). Keys and enum values are now the same four strings, so\na bucket name can be derived from a level rather than translated.",
       "properties": {
-        "undergraduate": {
+        "bachelors": {
           "default": [],
           "items": {
             "$ref": "#/$defs/ProgramItem"
           },
-          "title": "Undergraduate",
+          "title": "Bachelors",
           "type": "array"
         },
-        "graduate": {
+        "masters": {
           "default": [],
           "items": {
             "$ref": "#/$defs/ProgramItem"
           },
-          "title": "Graduate",
+          "title": "Masters",
           "type": "array"
         },
-        "postgraduate_and_phd": {
+        "phd": {
           "default": [],
           "items": {
             "$ref": "#/$defs/ProgramItem"
           },
-          "title": "Postgraduate And Phd",
+          "title": "Phd",
+          "type": "array"
+        },
+        "diploma": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProgramItem"
+          },
+          "title": "Diploma",
           "type": "array"
         }
       },
@@ -382,6 +449,7 @@
         },
         "currency": {
           "default": "PKR",
+          "description": "Currency of tuition fee (e.g. EUR, USD, GBP, CHF, PKR)",
           "title": "Currency",
           "type": "string"
         },
@@ -396,6 +464,53 @@
           ],
           "default": null,
           "title": "Scholarships Info"
+        },
+        "intake_terms": {
+          "description": "Intake terms for this program e.g. Fall, Spring, Winter",
+          "items": {
+            "type": "string"
+          },
+          "title": "Intake Terms",
+          "type": "array"
+        },
+        "delivery_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "On-Campus",
+          "description": "On-Campus, Online, or Hybrid",
+          "title": "Delivery Mode"
+        },
+        "application_fee": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Application fee amount and currency",
+          "title": "Application Fee"
+        },
+        "career_prospects": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target career outcomes or roles",
+          "title": "Career Prospects"
         },
         "courses_taught": {
           "default": [],
@@ -432,8 +547,7 @@
       "required": [
         "name",
         "degree_level",
-        "summary_3_lines",
-        "eligibility_requirements"
+        "summary_3_lines"
       ],
       "title": "ProgramItem",
       "type": "object"

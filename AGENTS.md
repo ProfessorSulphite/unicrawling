@@ -67,9 +67,10 @@ flowchart TD
 * **Responsibilities**:
   - Execute a 5 to 6 targeted query suite per university against NotebookLM using strict JSON schema prompt files:
     - **Q1**: `main_info` (Metadata, Rankings, Academics/Admissions/Application Portal URLs).
-    - **Q2**: `programs.undergraduate` (BS, BSc, BA degree programs with 3-line summaries, fees, eligibility).
-    - **Q3**: `programs.graduate` (MS, MSc, MA, MPhil degree programs with 3-line summaries, fees, eligibility).
-    - **Q4**: `programs.postgraduate_and_phd` (PhD and Doctorate programs).
+    - **Q2**: `programs.bachelors` (BS, BSc, BA, BBA, MBBS, LLB, PharmD, DPT with 3-line summaries, fees, eligibility).
+    - **Q3**: `programs.masters` (MS, MSc, MA, MBA, MPhil, LLM with 3-line summaries, fees, eligibility).
+    - **Q4**: `programs.phd` (research doctorates only; post-doctoral fellowships are excluded).
+    - **Q4b**: `programs.diploma` (postgraduate diplomas, PGDs, certificates) — added in C17.
     - **Q5**: `faculties` (Faculties, Schools, and constituent departments).
     - **Q6**: `contact` (Emails, phone numbers, physical address, admissions desk).
   - Reserve the suite against the 500/day NotebookLM budget **before** issuing any query, refusing to start a university that cannot complete within the remaining allowance.
@@ -83,7 +84,7 @@ flowchart TD
 * **Responsibilities**:
   - Execute the **Inspect CLI Utility** (`inspect_cli.py`) to audit dataset health:
     - Unique university count and type distribution (Public vs Private).
-    - Total program breakdown (Undergraduate, Graduate, PhD counts).
+    - Total program breakdown (Bachelors, Masters, PhD, Diploma counts).
     - Empty and NaN field audit across all 4 blocks.
     - Application portal link coverage and completeness rankings.
   - Process natural language student inquiries against the Vector DB with direct official source citations and links.

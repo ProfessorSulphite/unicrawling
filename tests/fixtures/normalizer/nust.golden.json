@@ -44,9 +44,10 @@
     "website": "https://nust.edu.pk/"
   },
   "programs": {
-    "graduate": [],
-    "postgraduate_and_phd": [],
-    "undergraduate": []
+    "bachelors": [],
+    "diploma": [],
+    "masters": [],
+    "phd": []
   },
   "programs_possibly_truncated": false
 }

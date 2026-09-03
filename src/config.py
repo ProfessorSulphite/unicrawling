@@ -152,11 +152,15 @@ class Config:
     # Independent queries in the suite run concurrently. Kept low: the ceiling
     # here is NotebookLM's per-notebook chat rate limit, not our CPU.
     query_concurrency: int = 3               # Queries issued in parallel per notebook; raising it risks rate limiting
-    # NotebookLM Pro daily ceiling. At 5 queries x 83 universities = 415, this
-    # leaves 85 queries of retry headroom. C17 adds a 6th (diploma) query, which
-    # must be re-derived against this budget before a full batch is run.
+    # NotebookLM Pro daily ceiling. C17 added the 6th (diploma) query, so the
+    # arithmetic is now 6 x 83 universities = 498 -- which clears the cap by two
+    # queries and leaves no retry headroom at all. A full 83-university batch
+    # therefore no longer fits in one day: at 6 queries the budget covers 83
+    # universities only if nothing is ever retried, and 75 with the same ~10%
+    # retry headroom the 5-query suite had. Batch sizing, not this number, is
+    # what has to give -- daily_query_budget is a real external quota, not a knob.
     daily_query_budget: int = 500            # Hard daily cap enforced by the state ledger; must match the real NotebookLM quota
-    queries_per_university: int = 5          # Queries in the suite; reserved up-front per university, so it must match QUERY_SUITE
+    queries_per_university: int = 6          # Queries in the suite; reserved up-front per university, so it must match QUERY_SUITE
 
     # ═══════════════════════════════════════════════════════════════════════
     # EXTERNAL API KEYS

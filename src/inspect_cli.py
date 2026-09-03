@@ -29,6 +29,13 @@ try:
 except ImportError:
     from config import config
 
+# The four canonical programme buckets (C17), derived from DegreeLevel so this
+# module cannot drift out of step with the schema.
+try:
+    from src.extractor.normalizers.runner import PROGRAM_BUCKETS
+except ImportError:
+    from extractor.normalizers.runner import PROGRAM_BUCKETS
+
 console = Console()
 
 # Regex constants
@@ -175,16 +182,18 @@ def inspect_university(query: str):
     console.print(Panel(header_text, title="🏛️ Institution Profile", expand=False))
 
     # Programs Tables
-    ug_list = progs.get("undergraduate", [])
-    gr_list = progs.get("graduate", [])
-    phd_list = progs.get("postgraduate_and_phd", [])
+    ug_list = progs.get("bachelors", [])
+    gr_list = progs.get("masters", [])
+    phd_list = progs.get("phd", [])
+    dip_list = progs.get("diploma", [])
 
     console.print(
-        f"\n[bold yellow]🎓 Academic Degree Programs ({len(ug_list) + len(gr_list) + len(phd_list)} Total)[/bold yellow]"
+        f"\n[bold yellow]🎓 Academic Degree Programs "
+        f"({len(ug_list) + len(gr_list) + len(phd_list) + len(dip_list)} Total)[/bold yellow]"
     )
 
     if ug_list:
-        ug_table = Table(title="Undergraduate Programs (BS / BSc)", show_lines=True)
+        ug_table = Table(title="Bachelors Programs (BS / BSc)", show_lines=True)
         ug_table.add_column("Program Name", style="bold cyan")
         ug_table.add_column("Department", style="dim")
         ug_table.add_column("Duration", style="green")
@@ -228,7 +237,7 @@ def inspect_university(query: str):
         console.print(gr_table)
 
     if phd_list:
-        phd_table = Table(title="Postgraduate & PhD Programs", show_lines=True)
+        phd_table = Table(title="PhD Programs", show_lines=True)
         phd_table.add_column("Program Name", style="bold magenta")
         phd_table.add_column("Department", style="dim")
         phd_table.add_column("Stipend / Fellowship Info", style="green")
@@ -240,6 +249,22 @@ def inspect_university(query: str):
                 p.get("scholarships_info", "N/A"),
             )
         console.print(phd_table)
+
+    if dip_list:
+        dip_table = Table(title="Diploma & Certificate Programs", show_lines=True)
+        dip_table.add_column("Program Name", style="bold blue")
+        dip_table.add_column("Department", style="dim")
+        dip_table.add_column("Duration", style="green")
+        dip_table.add_column("Tuition Fee", style="yellow")
+
+        for p in dip_list:
+            dip_table.add_row(
+                p.get("name"),
+                p.get("department", "N/A"),
+                p.get("duration", "N/A"),
+                p.get("tuition_fee", "N/A"),
+            )
+        console.print(dip_table)
 
     # Faculties Tree
     if facs:
@@ -283,17 +308,19 @@ def compare_universities(slug1: str, slug2: str):
     c2 = rec2.get("contact", {})
 
     # Compute program counts
-    ug1 = len(p1.get("undergraduate", []))
-    ug2 = len(p2.get("undergraduate", []))
-    gr1 = len(p1.get("graduate", []))
-    gr2 = len(p2.get("graduate", []))
-    phd1 = len(p1.get("postgraduate_and_phd", []))
-    phd2 = len(p2.get("postgraduate_and_phd", []))
+    ug1 = len(p1.get("bachelors", []))
+    ug2 = len(p2.get("bachelors", []))
+    gr1 = len(p1.get("masters", []))
+    gr2 = len(p2.get("masters", []))
+    phd1 = len(p1.get("phd", []))
+    phd2 = len(p2.get("phd", []))
+    dip1 = len(p1.get("diploma", []))
+    dip2 = len(p2.get("diploma", []))
 
     # Fee ranges
     fees1 = [
         extract_numeric_fee(prog.get("tuition_fee"))
-        for cat in ["undergraduate", "graduate", "postgraduate_and_phd"]
+        for cat in PROGRAM_BUCKETS
         for prog in p1.get(cat, [])
     ]
     fees1 = [f for f in fees1 if f is not None]
@@ -301,7 +328,7 @@ def compare_universities(slug1: str, slug2: str):
 
     fees2 = [
         extract_numeric_fee(prog.get("tuition_fee"))
-        for cat in ["undergraduate", "graduate", "postgraduate_and_phd"]
+        for cat in PROGRAM_BUCKETS
         for prog in p2.get(cat, [])
     ]
     fees2 = [f for f in fees2 if f is not None]
@@ -323,7 +350,7 @@ def compare_universities(slug1: str, slug2: str):
         f"[green]{portal1}[/green]" if portal1 else "[red]Missing[/red]",
         f"[green]{portal2}[/green]" if portal2 else "[red]Missing[/red]",
     )
-    table.add_row("Undergraduate Programs (BS)", str(ug1), str(ug2))
+    table.add_row("Bachelors Programs (BS)", str(ug1), str(ug2))
     table.add_row("Graduate Programs (MS)", str(gr1), str(gr2))
     table.add_row("PhD & Doctoral Programs", str(phd1), str(phd2))
     table.add_row("Total Degree Offerings", str(ug1 + gr1 + phd1), str(ug2 + gr2 + phd2))
@@ -357,9 +384,10 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
         progs = rec.get("programs", {})
 
         categories = [
-            ("undergraduate", "BS / BSc"),
-            ("graduate", "MS / MSc"),
-            ("postgraduate_and_phd", "PhD"),
+            ("bachelors", "BS / BSc"),
+            ("masters", "MS / MSc"),
+            ("phd", "PhD"),
+            ("diploma", "Diploma / Certificate"),
         ]
 
         for cat_key, cat_label in categories:
@@ -515,9 +543,10 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None)
             email = contact.get("official_email", "")
 
             categories = [
-                ("undergraduate", "Undergraduate"),
-                ("graduate", "Graduate"),
-                ("postgraduate_and_phd", "PhD"),
+                ("bachelors", "Bachelors"),
+                ("masters", "Masters"),
+                ("phd", "PhD"),
+                ("diploma", "Diploma"),
             ]
 
             for cat_key, cat_label in categories:
@@ -617,6 +646,7 @@ def audit_analytics(file_path: Optional[Path] = None):
     total_ug = 0
     total_gr = 0
     total_phd = 0
+    total_dip = 0
     total_facs = 0
     portal_count = 0
     admissions_count = 0
@@ -649,9 +679,10 @@ def audit_analytics(file_path: Optional[Path] = None):
                 exa_count += 1
 
             progs = data.get("programs", {})
-            total_ug += len(progs.get("undergraduate", []))
-            total_gr += len(progs.get("graduate", []))
-            total_phd += len(progs.get("postgraduate_and_phd", []))
+            total_ug += len(progs.get("bachelors", []))
+            total_gr += len(progs.get("masters", []))
+            total_phd += len(progs.get("phd", []))
+            total_dip += len(progs.get("diploma", []))
             total_facs += len(data.get("faculties", []))
 
             contact = data.get("contact", {})
@@ -665,9 +696,10 @@ def audit_analytics(file_path: Optional[Path] = None):
 
     table.add_row("Total Extracted Universities", str(total_unis), "[bold green]100% Extracted[/bold green]")
     table.add_row("Public vs Private Distribution", f"{public_count} Public / {private_count} Private", "[dim]Balanced Coverage[/dim]")
-    table.add_row("Total Undergraduate Programs", str(total_ug), "[cyan]BS/BSc Extracted[/cyan]")
-    table.add_row("Total Graduate Programs", str(total_gr), "[cyan]MS/MSc Extracted[/cyan]")
+    table.add_row("Total Bachelors Programs", str(total_ug), "[cyan]BS/BSc Extracted[/cyan]")
+    table.add_row("Total Masters Programs", str(total_gr), "[cyan]MS/MSc Extracted[/cyan]")
     table.add_row("Total PhD Programs", str(total_phd), "[magenta]Doctoral Extracted[/magenta]")
+    table.add_row("Total Diploma Programs", str(total_dip), "[blue]PGD/Certificate Extracted[/blue]")
     table.add_row("Total Faculties & Schools", str(total_facs), "[green]Hierarchy Mapped[/green]")
     table.add_row(
         "Application Portal Link Coverage",

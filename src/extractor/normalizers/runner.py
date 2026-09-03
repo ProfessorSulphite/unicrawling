@@ -9,7 +9,23 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.extractor.normalizers.currency_tuition import apply_currency_and_tuition
+from src.extractor.normalizers.degree_names import apply_degree_level
 from src.extractor.normalizers.eligibility import apply_eligibility_defaults
+from src.utilities.schema import DegreeLevel
+
+# Bucket names in ProgramCategoryBlock, derived from the enum so the two cannot
+# drift apart: since C17 a bucket name IS its DegreeLevel value.
+PROGRAM_BUCKETS = tuple(level.value for level in DegreeLevel)
+
+# Pre-C17 bucket names, and where their contents belong now. "graduate" folds
+# into masters because that is what it held -- MS/MPhil/MBA; the PGDs it should
+# have held were never asked for before the diploma query existed.
+RETIRED_PROGRAM_BUCKETS = {
+    "undergraduate": DegreeLevel.BACHELORS.value,
+    "graduate": DegreeLevel.MASTERS.value,
+    "postgraduate_and_phd": DegreeLevel.PHD.value,
+    "postgraduate_phd": DegreeLevel.PHD.value,
+}
 
 # Same registry entry as the pre-split module: logging.getLogger returns one
 # object per name.
@@ -45,9 +61,15 @@ def normalize_universal_program(prog: Dict[str, Any], country: str) -> Dict[str,
     C16 split the body into two named steps. Order and effects are unchanged: the
     currency/tuition step ran first and the eligibility step second, and neither
     reads a value the other writes.
+
+    C17 added a third, apply_degree_level, which settles degree_level onto the
+    four canonical levels using the programme name as the stronger evidence. It
+    reads nothing the other two write either, so it is ordered last only for
+    readability.
     """
     prog = apply_currency_and_tuition(prog, country)
     prog = apply_eligibility_defaults(prog, country)
+    prog = apply_degree_level(prog)
     return prog
 
 
@@ -99,8 +121,25 @@ def normalize_universal_payload(record: Dict[str, Any]) -> Dict[str, Any]:
         main["accreditation_body"] = f"Ministry of Higher Education ({country})"
 
     # Normalize Programs
+    #
+    # Retired bucket names are folded into the canonical four first (C17).
+    # Without this, every payload written before C17 keeps keys that
+    # ProgramCategoryBlock no longer declares, and each of its readers -- the
+    # inspector's audits, search, and CSV export -- silently sees zero
+    # programmes for those universities.
     progs = record.get("programs", {})
-    for cat_key in ["undergraduate", "graduate", "postgraduate_and_phd"]:
+    if isinstance(progs, dict) and "programs" in record:
+        for retired, canonical in RETIRED_PROGRAM_BUCKETS.items():
+            if retired in progs:
+                # Merged, not assigned: a half-migrated record carrying both
+                # names must not lose whichever list is written second.
+                merged = list(progs.pop(retired) or [])
+                progs[canonical] = list(progs.get(canonical) or []) + merged
+        for bucket in PROGRAM_BUCKETS:
+            progs.setdefault(bucket, [])
+        record["programs"] = progs
+
+    for cat_key in PROGRAM_BUCKETS:
         program_list = progs.get(cat_key, [])
         for idx in range(len(program_list)):
             program_list[idx] = normalize_universal_program(program_list[idx], country)

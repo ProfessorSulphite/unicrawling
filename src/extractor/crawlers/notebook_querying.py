@@ -101,31 +101,58 @@ QUERY_SUITE: List[QuerySpec] = [
         tiers=(1, 2, 3, 4),
     ),
     QuerySpec(
-        key="undergraduate",
+        key="bachelors",
         prompt=(
-            "List every UNDERGRADUATE degree programme (BS, BSc, BBA, BA, BE, MBBS, "
-            "LLB, PharmD) offered by this university, as a JSON array matching:\n"
-            + (_PROGRAM_STRUCTURE % "undergraduate") + "\n" + _JSON_CONTRACT
+            "List every BACHELORS degree programme (BS, BSc, BA, BBA, BE, B.Ed, BFA, "
+            "MBBS, LLB, PharmD, DPT) offered by this university, as a JSON array "
+            "matching:\n"
+            + (_PROGRAM_STRUCTURE % "bachelors") + "\n"
+            + "MBBS, PharmD and DPT are bachelors-level entry programmes here; list "
+            "them in this query, not the PhD one.\n"
+            + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
     ),
     QuerySpec(
-        key="graduate",
+        key="masters",
         prompt=(
-            "List every GRADUATE degree programme (MS, MSc, MBA, MPhil, MA, ME, LLM) "
-            "offered by this university, as a JSON array matching:\n"
-            + (_PROGRAM_STRUCTURE % "graduate") + "\n" + _JSON_CONTRACT
+            "List every MASTERS degree programme (MS, MSc, MA, MBA, MPhil, M.Ed, LLM, "
+            "ME) offered by this university, as a JSON array matching:\n"
+            + (_PROGRAM_STRUCTURE % "masters") + "\n"
+            + "Include MPhil programmes here. Exclude postgraduate diplomas and "
+            "certificates -- those belong to the diploma query.\n"
+            + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
     ),
     QuerySpec(
-        key="postgraduate_phd",
+        key="phd",
         prompt=(
-            "List every PhD and doctoral programme offered by this university, as a "
-            "JSON array matching:\n"
-            + (_PROGRAM_STRUCTURE % "postgraduate_phd") + "\n" + _JSON_CONTRACT
+            "List every PhD and research doctorate programme offered by this "
+            "university, as a JSON array matching:\n"
+            + (_PROGRAM_STRUCTURE % "phd") + "\n"
+            + "Research doctorates only. Do not include post-doctoral fellowships, "
+            "which are appointments rather than programmes.\n"
+            + _JSON_CONTRACT
+        ),
+        model=List[ProgramItem],
+        tiers=(1, 2),
+    ),
+    # Sixth query, added in C17. Postgraduate diplomas and certificates are a
+    # large share of Pakistani enrolment and had no bucket at all under the old
+    # three-level taxonomy -- they were either dropped or misfiled as masters.
+    QuerySpec(
+        key="diploma",
+        prompt=(
+            "List every DIPLOMA and CERTIFICATE programme (postgraduate diploma, PGD, "
+            "advanced diploma, professional certificate) offered by this university, "
+            "as a JSON array matching:\n"
+            + (_PROGRAM_STRUCTURE % "diploma") + "\n"
+            + "Award-bearing programmes only. Do not list individual courses or "
+            "modules that are part of a degree.\n"
+            + _JSON_CONTRACT
         ),
         model=List[ProgramItem],
         tiers=(1, 2),

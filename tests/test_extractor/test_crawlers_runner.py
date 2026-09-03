@@ -17,7 +17,14 @@ from src.extractor.crawlers.runner import (
     extract_university_payload,
     lookup_registry,
 )
-from src.utilities.schema import KeyLinks, MainInfo, UniversityPayload, UniversityType
+from src.config import config
+from src.utilities.schema import (
+    DegreeLevel,
+    KeyLinks,
+    MainInfo,
+    UniversityPayload,
+    UniversityType,
+)
 
 
 _Q1 = json.dumps({
@@ -44,7 +51,7 @@ def _extract_client(answers):
 
 
 async def test_extraction_builds_validated_payload():
-    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]"])
+    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     payload, report = await extract_university_payload(client, "nb-1", "NUST", "nust.edu.pk")
     assert isinstance(payload, UniversityPayload)
     # The registry's official name deliberately overrides the model's "NUST";
@@ -52,7 +59,7 @@ async def test_extraction_builds_validated_payload():
     assert payload.main_info.name == "National University of Sciences and Technology"
     assert payload.main_info.abbreviation == "NUST"
     assert payload.main_info.domain_verified is True
-    assert len(payload.programs.undergraduate) == 1
+    assert len(payload.programs.bachelors) == 1
     assert payload.contact.official_email == "info@nust.edu.pk"
     assert report.ok
 
@@ -63,7 +70,7 @@ async def test_extraction_does_not_delete_notebook():
     destroyed all 60 ingested sources. Deletion is now the orchestrator's call,
     made only after the payload is validated and persisted.
     """
-    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]"])
+    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     await extract_university_payload(client, "nb-1", "NUST", "nust.edu.pk")
     client.notebooks.delete.assert_not_called()
 
@@ -78,29 +85,32 @@ async def test_extraction_survives_a_failing_query_and_reports_it():
         MagicMock(answer="[]"),
         MagicMock(answer="[]"),
         MagicMock(answer="[]"),
+        MagicMock(answer="[]"),
     ])
     payload, report = await extract_university_payload(client, "nb-1", "NUST", "nust.edu.pk")
-    assert payload.programs.undergraduate == []
+    assert payload.programs.bachelors == []
     assert not report.ok
-    assert "undergraduate" in report.failed
+    assert "bachelors" in report.failed
 
 
 async def test_extraction_scopes_queries_by_tier():
     """Each query must see only the sources that can answer it."""
-    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]"])
+    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     by_tier = {1: ["s1"], 2: ["s2"], 3: ["s3"], 4: ["s4"]}
     await extract_university_payload(client, "nb-1", "NUST", "nust.edu.pk",
                                      source_ids_by_tier=by_tier)
+    # Indexed by suite position rather than a literal, so inserting a query
+    # (C17 added diploma ahead of faculties) does not silently re-point these
+    # at the wrong call.
     calls = client.chat.ask.call_args_list
-    faculties_call = calls[4].kwargs
-    assert faculties_call["source_ids"] == ["s3", "s1"]
-    undergrad_call = calls[1].kwargs
-    assert undergrad_call["source_ids"] == ["s1", "s2"]
+    order = [spec.key for spec in QUERY_SUITE]
+    assert calls[order.index("faculties")].kwargs["source_ids"] == ["s3", "s1"]
+    assert calls[order.index("bachelors")].kwargs["source_ids"] == ["s1", "s2"]
 
 
 async def test_extraction_flags_probable_truncation():
     """40 Tier-1 programme pages yielding 1 programme is a truncated answer."""
-    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]"])
+    client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     payload, _ = await extract_university_payload(
         client, "nb-1", "NUST", "nust.edu.pk", tier1_source_count=40)
     assert payload.programs_possibly_truncated is True
@@ -112,15 +122,28 @@ async def test_extraction_does_not_flag_healthy_yield():
          "summary_3_lines": "x", "eligibility_requirements": {}}
         for i in range(30)
     ])
-    client = _extract_client([_Q1, many, "[]", "[]", "[]"])
+    client = _extract_client([_Q1, many, "[]", "[]", "[]", "[]"])
     payload, _ = await extract_university_payload(
         client, "nb-1", "NUST", "nust.edu.pk", tier1_source_count=27)
     assert payload.programs_possibly_truncated is False
 
 
-async def test_query_suite_has_five_queries():
-    """5 x 83 = 415 of 500, leaving 85 queries of retry headroom."""
-    assert len(QUERY_SUITE) == 5
+async def test_query_suite_matches_the_reserved_budget():
+    """reserve_queries() claims queries_per_university up front, before a single
+    query is issued. If the suite grows past that number the ledger under-counts
+    and the daily NotebookLM cap is silently overrun, so the two are pinned
+    together here rather than left to drift.
+
+    C17 took the suite from 5 to 6 by adding the diploma query.
+    """
+    assert len(QUERY_SUITE) == 6
+    assert config.queries_per_university == len(QUERY_SUITE)
+
+
+async def test_query_suite_covers_every_degree_level():
+    """One programme query per DegreeLevel, keyed by the level's own value."""
+    keys = {spec.key for spec in QUERY_SUITE}
+    assert {level.value for level in DegreeLevel} <= keys
 def test_registry_lookup_resolves_aliases_and_subdomains():
     assert lookup_registry("nust.edu.pk") is not None
     assert lookup_registry("www.nust.edu.pk") is not None

@@ -14,9 +14,29 @@ class UniversityType(str, Enum):
 
 
 class DegreeLevel(str, Enum):
-    UNDERGRADUATE = "undergraduate"
-    GRADUATE = "graduate"
-    POSTGRADUATE_PHD = "postgraduate_phd"
+    """The four levels a counselling student can actually apply to (C17).
+
+    Replaces undergraduate / graduate / postgraduate_phd, which conflated a
+    taught masters with an MPhil and had no home at all for the PGDs and
+    diplomas that make up a large share of Pakistani enrolment. Post-doctoral
+    is deliberately absent: it is a research appointment, not a programme.
+    Legacy values still coerce -- see ProgramItem._coerce_degree_level.
+    """
+    BACHELORS = "bachelors"
+    MASTERS = "masters"
+    PHD = "phd"
+    DIPLOMA = "diploma"
+
+
+# Retired DegreeLevel values, kept only so payloads written before C17 still
+# load. Module-level rather than a ProgramItem attribute: Pydantic claims
+# leading-underscore class attributes as private attrs.
+_RETIRED_DEGREE_LEVELS = {
+    "undergraduate": "bachelors",
+    "graduate": "masters",
+    "postgraduate_phd": "phd",
+    "postgraduate_and_phd": "phd",
+}
 
 
 class ApplicationStatus(str, Enum):
@@ -102,6 +122,23 @@ class ProgramItem(BaseModel):
     application_status: ApplicationStatus = ApplicationStatus.ROLLING
     application_deadline: Optional[str] = None
 
+    # Every payload written before C17 carries the old three-level names, and
+    # inspect_cli re-validates those files on every read. Coercing them here
+    # keeps historical output loadable without a migration pass.
+    #
+    # Kept deliberately self-contained rather than delegating to
+    # extractor.normalizers.degree_names: utilities is the leaf layer and must
+    # not import upward, even lazily. The richer name-based classifier lives
+    # there and runs during normalization; this only translates the field's own
+    # retired vocabulary. An unrecognised value is passed through untouched so
+    # Pydantic still rejects it and the repair loop still gets its turn.
+    @field_validator("degree_level", mode="before")
+    @classmethod
+    def _coerce_degree_level(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return _RETIRED_DEGREE_LEVELS.get(v.strip().lower(), v)
+        return v
+
     @field_validator("summary_3_lines", mode="before")
     @classmethod
     def _coerce_summary(cls, v: Any) -> str:
@@ -111,9 +148,17 @@ class ProgramItem(BaseModel):
 
 
 class ProgramCategoryBlock(BaseModel):
-    undergraduate: List[ProgramItem] = []
-    graduate: List[ProgramItem] = []
-    postgraduate_and_phd: List[ProgramItem] = []
+    """One bucket per DegreeLevel; the key names match the enum values exactly.
+
+    Pre-C17 the keys were undergraduate / graduate / postgraduate_and_phd, and
+    the last of those did not even match its own enum value
+    ("postgraduate_phd"). Keys and enum values are now the same four strings, so
+    a bucket name can be derived from a level rather than translated.
+    """
+    bachelors: List[ProgramItem] = []
+    masters: List[ProgramItem] = []
+    phd: List[ProgramItem] = []
+    diploma: List[ProgramItem] = []
 
 
 class FacultyItem(BaseModel):

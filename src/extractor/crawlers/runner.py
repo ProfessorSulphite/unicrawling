@@ -193,10 +193,13 @@ async def extract_university_payload(
             main_info.exa_enriched = True
 
     # --- Block 2: programs ---
+    # Bucket names, QuerySpec keys and DegreeLevel values are all the same four
+    # strings since C17, so this is a straight fan-out with nothing to translate.
     programs = ProgramCategoryBlock(
-        undergraduate=results.get("undergraduate") or [],
-        graduate=results.get("graduate") or [],
-        postgraduate_and_phd=results.get("postgraduate_phd") or [],
+        bachelors=results.get("bachelors") or [],
+        masters=results.get("masters") or [],
+        phd=results.get("phd") or [],
+        diploma=results.get("diploma") or [],
     )
 
     # --- Truncation signal ---
@@ -204,7 +207,8 @@ async def extract_university_payload(
     # programmes than pages almost certainly had its answer cut short. This is a
     # free quality flag; the field was previously hardcoded to False.
     total_programs = (
-        len(programs.undergraduate) + len(programs.graduate) + len(programs.postgraduate_and_phd)
+        len(programs.bachelors) + len(programs.masters)
+        + len(programs.phd) + len(programs.diploma)
     )
     truncated = bool(tier1_source_count) and total_programs < max(1, tier1_source_count // 2)
     if truncated:

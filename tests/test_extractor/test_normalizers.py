@@ -22,6 +22,7 @@ import pytest
 
 from src.extractor.normalizers.currency_tuition import resolve_universal_currency
 from src.extractor.normalizers.runner import (
+    PROGRAM_BUCKETS,
     normalize_universal_payload,
     normalize_universal_program,
 )
@@ -166,8 +167,8 @@ def test_stated_eligibility_is_never_overwritten():
 def _payload(**main):
     base = {"name": "Test University", "website": "https://test.edu.pk", "country": "Pakistan"}
     base.update(main)
-    return {"main_info": base, "programs": {"undergraduate": [], "graduate": [],
-                                            "postgraduate_and_phd": []}}
+    return {"main_info": base, "programs": {"bachelors": [], "masters": [],
+                                            "phd": [], "diploma": []}}
 
 
 def test_instruction_language_is_country_aware():
@@ -202,7 +203,26 @@ def test_a_stated_established_year_is_never_overwritten():
     assert out["main_info"]["established_year"] == 1885
 
 
-def test_programs_are_normalized_in_place_across_all_three_categories():
+def test_programs_are_normalized_in_place_across_all_four_categories():
+    payload = _payload()
+    payload["programs"] = {
+        "bachelors": [_prog(name="BS CS")],
+        "masters": [_prog(name="MS CS")],
+        "phd": [_prog(name="PhD CS")],
+        "diploma": [_prog(name="PGD Data Science")],
+    }
+    out = normalize_universal_payload(payload)
+    for key in PROGRAM_BUCKETS:
+        assert out["programs"][key][0]["tuition_fee"] == "Refer to Official Tuition Portal"
+
+
+def test_retired_buckets_are_folded_into_the_canonical_four():
+    """A payload written before C17 must not lose its programmes on read.
+
+    inspect_cli re-normalizes every record it loads, so if the retired bucket
+    names survived here the inspector's audits, search and CSV export would all
+    report zero programmes for every university extracted before this commit.
+    """
     payload = _payload()
     payload["programs"] = {
         "undergraduate": [_prog(name="BS CS")],
@@ -210,8 +230,37 @@ def test_programs_are_normalized_in_place_across_all_three_categories():
         "postgraduate_and_phd": [_prog(name="PhD CS")],
     }
     out = normalize_universal_payload(payload)
-    for key in ("undergraduate", "graduate", "postgraduate_and_phd"):
-        assert out["programs"][key][0]["tuition_fee"] == "Refer to Official Tuition Portal"
+    assert set(out["programs"]) == set(PROGRAM_BUCKETS)
+    assert [p["name"] for p in out["programs"]["bachelors"]] == ["BS CS"]
+    assert [p["name"] for p in out["programs"]["masters"]] == ["MS CS"]
+    assert [p["name"] for p in out["programs"]["phd"]] == ["PhD CS"]
+    assert out["programs"]["diploma"] == []
+
+
+def test_retired_and_canonical_buckets_merge_rather_than_overwrite():
+    """A half-migrated payload carrying both names keeps every programme."""
+    payload = _payload()
+    payload["programs"] = {
+        "undergraduate": [_prog(name="BS CS")],
+        "bachelors": [_prog(name="BBA")],
+    }
+    out = normalize_universal_payload(payload)
+    assert sorted(p["name"] for p in out["programs"]["bachelors"]) == ["BBA", "BS CS"]
+
+
+def test_degree_level_is_settled_from_the_programme_name():
+    """The name outranks the declared level, which the extractor gets wrong.
+
+    "Doctorate of Physical Therapy" arrived filed as postgraduate_and_phd in one
+    real payload and as undergraduate in another. DPT is a five-year
+    post-intermediate degree here, so bachelors is the answer in both.
+    """
+    payload = _payload()
+    payload["programs"] = {
+        "phd": [_prog(name="Doctorate of Physical Therapy", degree_level="postgraduate_phd")],
+    }
+    out = normalize_universal_payload(payload)
+    assert out["programs"]["phd"][0]["degree_level"] == "bachelors"
 
 
 # ------------------------------------------------- golden files, real payloads --
@@ -224,6 +273,13 @@ def test_real_payloads_normalize_to_their_golden_output(slug):
     These three came out of tag `pre-refactor` -- real Phase 3 output, not
     hand-written. They are the small ones; the full 8 were diffed once as the C16
     gate, which is what the commit message reports.
+
+    Re-captured once, at C17, for the bucket rename. That regeneration was gated
+    the same way: all 8 payloads pre-C17 vs post-C17 showed no change to
+    main_info, contact, faculties or the truncation flag, no programme count or
+    order drift, and no field change other than degree_level -- 260 of which were
+    the straight three-to-four rename and 3 of which were real reclassifications
+    the mapper corrected (see test_degree_names.py).
     """
     src = json.loads((FIXTURES / f"{slug}.input.json").read_text())
     golden = (FIXTURES / f"{slug}.golden.json").read_text()

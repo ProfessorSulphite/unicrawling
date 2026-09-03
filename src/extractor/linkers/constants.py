@@ -216,16 +216,29 @@ YEAR_SUFFIX_REGEX = re.compile(
 
 # Degree-level markers, used to key deduplication. A BS and an MS in the same
 # discipline are different programmes and must never collapse into one another.
+# Keyed by the C17 DegreeLevel names so this map and the payload taxonomy read
+# the same. The keys never leave deduplication.py -- they only have to be
+# distinct from one another -- but keeping one vocabulary avoids a translation
+# nobody would remember to do.
+#
+# "pgd" moved out of the masters set into its own diploma level: under the old
+# three-way split a "PGD in Data Science" link deduped against an "MS in Data
+# Science" link and one of them was silently dropped. They are different
+# programmes, which is the whole reason this map exists.
 DEGREE_LEVEL_TOKENS = {
-    "undergraduate": {
+    "bachelors": {
         "bs", "bsc", "bsce", "bscs", "bachelor", "bachelors", "be", "bba",
         "ba", "bfa", "bed", "bds", "mbbs", "pharmd", "llb", "undergraduate", "ug",
     },
-    "graduate": {
+    "masters": {
         "ms", "msc", "mba", "mphil", "ma", "me", "mfa", "med", "llm",
-        "master", "masters", "graduate", "pgd",
+        "master", "masters", "graduate",
     },
-    "postgraduate_phd": {"phd", "doctorate", "doctoral", "postdoc", "dsc", "md"},
+    # "postdoc" is kept as a marker here and nowhere else: post-doctoral is not a
+    # level a student applies to (plan section 1, note 5), but a post-doc link
+    # still must not collapse into a PhD link.
+    "phd": {"phd", "doctorate", "doctoral", "postdoc", "dsc", "md"},
+    "diploma": {"pgd", "pgdip", "diploma", "certificate"},
 }
 
 # Tokens that carry no discipline meaning and must be dropped before building a

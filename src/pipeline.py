@@ -468,6 +468,7 @@ def generate_result_analytics(config_path: Path) -> Path:
     total_ug = 0
     total_gr = 0
     total_phd = 0
+    total_dip = 0
     portal_count = 0
     contact_count = 0
 
@@ -485,11 +486,12 @@ def generate_result_analytics(config_path: Path) -> Path:
             contact_count += 1
 
         progs = rec.get("programs", {})
-        total_ug += len(progs.get("undergraduate", []))
-        total_gr += len(progs.get("graduate", []))
-        total_phd += len(progs.get("postgraduate_and_phd", []))
+        total_ug += len(progs.get("bachelors", []))
+        total_gr += len(progs.get("masters", []))
+        total_phd += len(progs.get("phd", []))
+        total_dip += len(progs.get("diploma", []))
 
-    total_programs = total_ug + total_gr + total_phd
+    total_programs = total_ug + total_gr + total_phd + total_dip
 
     analytics_payload = {
         "timestamp": datetime.now().isoformat(),
@@ -497,9 +499,10 @@ def generate_result_analytics(config_path: Path) -> Path:
         "total_universities": total_unis,
         "country_distribution": country_counts,
         "program_counts": {
-            "undergraduate": total_ug,
-            "graduate": total_gr,
-            "postgraduate_phd": total_phd,
+            "bachelors": total_ug,
+            "masters": total_gr,
+            "phd": total_phd,
+            "diploma": total_dip,
             "total_programs": total_programs
         },
         "quality_metrics": {

@@ -41,7 +41,10 @@ def test_json_repair_strips_fences_and_citations():
     assert len(programs) == 1
     # No trailing whitespace debris: the old regex left "BS Artificial Intelligence ".
     assert programs[0].name == "BS Artificial Intelligence"
-    assert programs[0].degree_level == DegreeLevel.UNDERGRADUATE
+    # The fixture still says "undergraduate": that is what a real pre-C17 answer
+    # looks like, and the schema's retired-value coercion is what turns it into
+    # the canonical level. Leaving the raw value alone keeps that path covered.
+    assert programs[0].degree_level == DegreeLevel.BACHELORS
     assert programs[0].application_status == ApplicationStatus.OPEN
 
 

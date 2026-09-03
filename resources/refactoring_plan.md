@@ -266,7 +266,7 @@ class Config:
 2. If a source fails during the full upload, isolate it — do not discard successful sources
 3. If the entire notebook fails, skip that university and log the failure
 4. Never retry a failed notebook more than `max_query_retries` times
-5. Always reserve the full 5-query budget for a university BEFORE starting queries
+5. Always reserve the full per-university query budget BEFORE starting queries (6 since C17 added the diploma query: `config.queries_per_university`, pinned to `len(QUERY_SUITE)` by test)
 6. The health check logic should be configurable via `Config` (sample percentage, minimum sample size) so it can be tuned without code changes
 
 ### 7. Migration File Mapping
