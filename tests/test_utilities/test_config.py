@@ -82,12 +82,16 @@ def test_output_paths_point_at_all_uni_outputs():
 
 def test_ensure_directories_creates_every_workspace_path(tmp_path):
     """ensure_directories must cover every directory the pipeline writes into."""
+    # Built from a pristine Config, not the module singleton: C26's autouse
+    # isolation fixture repoints the singleton's paths outside base_dir, so
+    # relative_to() on it would raise.
+    pristine = Config()
     overrides = {
-        name: tmp_path / Path(getattr(config, name)).relative_to(config.base_dir)
+        name: tmp_path / Path(getattr(pristine, name)).relative_to(pristine.base_dir)
         for name in Config.__dataclass_fields__
         if name.endswith("_dir") and name != "base_dir"
     }
-    cfg = dataclasses.replace(config, base_dir=tmp_path, **overrides)
+    cfg = dataclasses.replace(pristine, base_dir=tmp_path, **overrides)
 
     cfg.ensure_directories()
 

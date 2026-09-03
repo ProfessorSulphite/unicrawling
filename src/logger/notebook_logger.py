@@ -10,8 +10,13 @@ Captures every stage of a NotebookLM notebook's life cycle:
 
 Persists structured events to three destinations:
   1. loggings/notebook_lifecycle.log (human-readable log)
-  2. loggings/notebook_audit.jsonl (machine-readable JSONL stream)
+  2. loggings/notebook_logs/<notebook_id>.json (machine-readable, per notebook)
   3. data/state.sqlite (notebook_audit table via StateManager)
+
+Destination 2 was a single append-only notebook_audit.jsonl until C26. One file
+held every event from every run since 2026-07-24 and nothing rotated it; see
+logger/notebook_audit.py for why it is now scoped per notebook, and
+logger/migrate_audit.py for the conversion.
 """
 import json
 import logging
@@ -21,6 +26,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from src.config import config
+from src.logger.notebook_audit import append_event
 from src.utilities.state_management import StateManager
 
 _lock = threading.Lock()
@@ -32,7 +38,6 @@ class NotebookLifecycleLogger:
     def __init__(self):
         config.ensure_directories()
         self.log_file = config.notebook_lifecycle_log_path
-        self.jsonl_file = config.notebook_audit_jsonl_path
         self.state_mgr = StateManager()
 
     def _timestamp(self) -> str:
@@ -65,12 +70,11 @@ class NotebookLifecycleLogger:
             except Exception as e:
                 logging.warning(f"Failed to write to lifecycle log: {e}")
 
-            # 2. Machine-readable JSONL audit file
+            # 2. Machine-readable per-notebook JSON audit document
             try:
-                with open(self.jsonl_file, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                append_event(payload)
             except Exception as e:
-                logging.warning(f"Failed to write to audit jsonl: {e}")
+                logging.warning(f"Failed to write notebook audit log: {e}")
 
             # 3. SQLite database table
             try:

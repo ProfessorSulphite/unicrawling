@@ -20,6 +20,7 @@ loggings/*.log
 loggings/*.jsonl
 loggings/single_logs/*.json
 loggings/complete_logs/*.json
+loggings/notebook_logs/*.json
 src/loggings/*.log
 outputs_backup*
 

@@ -17,21 +17,20 @@ from src.logger.notebook_logger import NotebookLifecycleLogger
 @pytest.fixture
 def temp_logger_env(monkeypatch, tmp_path):
     log_file = tmp_path / "notebook_lifecycle.log"
-    jsonl_file = tmp_path / "notebook_audit.jsonl"
+    notebook_logs = tmp_path / "notebook_logs"
     sqlite_db = tmp_path / "state.sqlite"
 
-    monkeypatch.setattr("src.logger.notebook_logger.config.notebook_lifecycle_log_path", log_file)
-    monkeypatch.setattr("src.logger.notebook_logger.config.notebook_audit_jsonl_path", jsonl_file)
-    # One line, not two: config is a singleton, so reaching it through the logger
-    # module and through src.config patches the same object.
+    # config is a singleton, so one setattr per field reaches every module.
+    monkeypatch.setattr("src.config.config.notebook_lifecycle_log_path", log_file)
+    monkeypatch.setattr("src.config.config.notebook_logs_dir", notebook_logs)
     monkeypatch.setattr("src.config.config.state_db_path", sqlite_db)
 
     logger = NotebookLifecycleLogger()
-    return logger, log_file, jsonl_file, sqlite_db
+    return logger, log_file, notebook_logs, sqlite_db
 
 
 def test_log_notebook_created(temp_logger_env):
-    logger, log_file, jsonl_file, sqlite_db = temp_logger_env
+    logger, log_file, notebook_logs, sqlite_db = temp_logger_env
 
     nb_id = "test_nb_123"
     title = "ITU_Counseling_DB"
@@ -49,12 +48,18 @@ def test_log_notebook_created(temp_logger_env):
     assert "NOTEBOOK_CREATED" in log_text
     assert nb_id in log_text
 
-    # 2. Verify jsonl log
-    assert jsonl_file.exists()
-    jsonl_lines = [json.loads(line) for line in jsonl_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert len(jsonl_lines) == 1
-    assert jsonl_lines[0]["event_type"] == "NOTEBOOK_CREATED"
-    assert jsonl_lines[0]["details"]["title"] == title
+    # 2. Verify the per-notebook JSON audit document (C26)
+    from src.logger.notebook_audit import load_notebook_log
+
+    doc = load_notebook_log(nb_id)
+    assert doc["notebook_id"] == nb_id
+    assert doc["uni_slug"] == uni_slug
+    assert doc["event_counts"] == {"NOTEBOOK_CREATED": 1}
+    assert len(doc["events"]) == 1
+    assert doc["events"][0]["event_type"] == "NOTEBOOK_CREATED"
+    assert doc["events"][0]["details"]["title"] == title
+    # Scoped to its own file, not appended to a shared stream.
+    assert [p.stem for p in notebook_logs.glob("*.json")] == [nb_id]
 
     # 3. Verify SQLite DB
     sm = StateManager(db_path=sqlite_db)
@@ -65,7 +70,7 @@ def test_log_notebook_created(temp_logger_env):
 
 
 def test_all_lifecycle_events(temp_logger_env):
-    logger, log_file, jsonl_file, sqlite_db = temp_logger_env
+    logger, log_file, notebook_logs, sqlite_db = temp_logger_env
     nb_id = "test_nb_full_cycle"
     slug = "ncbae"
 

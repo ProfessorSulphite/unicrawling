@@ -67,7 +67,10 @@ class Config:
     loggings_single_logs_dir: Path = BASE_DIR / "loggings" / "single_logs"       # s_{id}.json -- single/partial runs
     loggings_complete_logs_dir: Path = BASE_DIR / "loggings" / "complete_logs"   # c_{id}.json -- full batch runs
     notebook_lifecycle_log_path: Path = BASE_DIR / "loggings" / "notebook_lifecycle.log"   # Human-readable NotebookLM lifecycle trace
-    notebook_audit_jsonl_path: Path = BASE_DIR / "loggings" / "notebook_audit.jsonl"       # Machine-readable NotebookLM audit trail; migrated to JSON logs in C26
+    notebook_logs_dir: Path = BASE_DIR / "loggings" / "notebook_logs"                      # One JSON audit document per notebook (C26)
+    # Legacy single-file audit trail, replaced by notebook_logs_dir in C26. Kept
+    # so the migration can find it; nothing writes here any more.
+    notebook_audit_jsonl_path: Path = BASE_DIR / "loggings" / "notebook_audit.jsonl"       # DEPRECATED: pre-C26 append-only audit stream, migration input only
 
     # ═══════════════════════════════════════════════════════════════════════
     # CRAWLING LIMITS & THRESHOLDS (Phase 1)
@@ -223,6 +226,7 @@ class Config:
             self.loggings_dir,
             self.loggings_single_logs_dir,
             self.loggings_complete_logs_dir,
+            self.notebook_logs_dir,
             self.tests_dir,
         ]:
             path.mkdir(parents=True, exist_ok=True)
