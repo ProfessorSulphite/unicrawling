@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from src.extractor.normalizers.currency_tuition import apply_currency_and_tuition
 from src.extractor.normalizers.degree_names import apply_degree_level
-from src.extractor.normalizers.eligibility import apply_eligibility_defaults
+from src.extractor.normalizers.eligibility import normalize_eligibility
 from src.extractor.normalizers.program_fields import apply_program_field_carryover
 from src.utilities.schema import DegreeLevel
 
@@ -55,25 +55,29 @@ def load_global_registry() -> Dict[str, Any]:
     return _GLOBAL_REGISTRY
 
 
-def normalize_universal_program(prog: Dict[str, Any], country: str) -> Dict[str, Any]:
+def normalize_universal_program(
+    prog: Dict[str, Any], country: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Applies universal normalization rules to a single program dictionary.
 
-    C16 split the body into two named steps. Order and effects are unchanged: the
-    currency/tuition step ran first and the eligibility step second, and neither
-    reads a value the other writes.
+    Four steps, none of which invents a value since C19:
 
-    C17 added a third, apply_degree_level, which settles degree_level onto the
-    four canonical levels using the programme name as the stronger evidence. It
-    reads nothing the other two write either, so it is ordered last only for
-    readability.
+      apply_currency_and_tuition     labels the fee's currency, or leaves it null
+      normalize_eligibility          turns the extractor's "null"/"N/A" strings
+                                     into real nulls
+      apply_degree_level             settles degree_level onto the canonical four,
+                                     reading the programme name as the stronger
+                                     evidence (C17)
+      apply_program_field_carryover  moves pre-C18 values onto the fields the
+                                     current schema looks for (C18)
 
-    C18 added a fourth, apply_program_field_carryover, which moves pre-C18
-    values onto the fields the current schema looks for. It runs last because it
-    only ever fills a field the earlier steps left empty.
+    No step reads a value another writes, so the order is for readability only.
+    `country` is now optional and may legitimately be None: it is evidence for a
+    currency label, not a value to default.
     """
     prog = apply_currency_and_tuition(prog, country)
-    prog = apply_eligibility_defaults(prog, country)
+    prog = normalize_eligibility(prog)
     prog = apply_degree_level(prog)
     prog = apply_program_field_carryover(prog)
     return prog
@@ -107,24 +111,25 @@ def normalize_universal_payload(record: Dict[str, Any]) -> Dict[str, Any]:
         if reg_fact.get("rankings") and not main.get("rankings"):
             main["rankings"] = reg_fact["rankings"]
 
-    # Fallbacks for Main Identity
-    country = main.get("country") or "Pakistan"
-    if not main.get("primary_instruction_language"):
-        main["primary_instruction_language"] = "German / English" if country.lower() == "germany" else "English"
-
-    if not main.get("established_year"):
-        if domain == "lmu.de" or "lmu" in uni_name.lower():
-            main["established_year"] = 1472
-            main["accreditation_body"] = "Bavarian State Ministry of Science and the Arts"
-        elif "itu" in uni_name.lower():
-            main["established_year"] = 2012
-            main["accreditation_body"] = "Higher Education Commission (HEC)"
-        elif "nust" in uni_name.lower():
-            main["established_year"] = 1991
-            main["accreditation_body"] = "HEC / PEC"
-
-    if not main.get("accreditation_body"):
-        main["accreditation_body"] = f"Ministry of Higher Education ({country})"
+    # C19 removed four fabrications that used to sit here, none of them sourced:
+    #
+    #   - country defaulting to "Pakistan" when the extractor found none, which
+    #     then drove currency and eligibility guesses for the whole record
+    #   - primary_instruction_language defaulting to "English" (or
+    #     "German / English" for Germany), asserted for universities in every
+    #     country on earth
+    #   - established_year and accreditation_body hardcoded for three
+    #     universities matched by NAME SUBSTRING -- any institution whose name
+    #     merely contained "itu" inherited ITU Lahore's 2012, and "lmu" got 1472
+    #   - accreditation_body falling back to "Ministry of Higher Education
+    #     (<country>)", a body that in most countries does not exist under that
+    #     name
+    #
+    # The registry lookup above already supplies exactly these facts, sourced,
+    # for every university listed in resources/rankings_global.json. What it does
+    # not cover stays null, which is what the inspector's empty-field audit needs
+    # in order to report anything at all.
+    country = main.get("country")
 
     # Normalize Programs
     #

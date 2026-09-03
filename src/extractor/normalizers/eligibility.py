@@ -1,43 +1,49 @@
 """
-Eligibility and admission-requirement consolidation.
+Eligibility block cleanup. Since C19 it invents nothing.
 
-Every value written here is a placeholder invented when the model returned
-nothing; none of it is sourced, and the aggregate formula in particular states a
-specific weighting no source provided. See decision D2 -- C19 decides whether
-these become nulls.
+What this module used to do: when the extractor returned no minimum marks or no
+aggregate formula, it wrote one in, chosen by country. Three branches -- one for
+a handful of western European countries, one for the anglophone ones, and an
+`else` that handed *the entire rest of the world* Pakistan's
+"Intermediate / HSSC (60% Minimum)" and the weighted formula
+"Matric (10%) + HSSC (40%) + Entry Test (50%)". The AKU payload alone covers
+Kenya, Tanzania and Uganda, none of which have an HSSC.
+
+The aggregate formula was the worst of them: a specific admission calculation,
+stated with no source, that a student could plan an application around.
+
+What remains is normalisation, not invention: the strings the extractor uses to
+mean "nothing" ("null", "none", "N/A", "") become real nulls, so the inspector's
+empty-field audit can see them.
 """
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+# What the extractor writes when it means "no value". Normalised to None so an
+# absent fact reads as absent rather than as the word "null".
+_EMPTY_MARKERS = {"", "null", "none", "n/a", "na", "not available", "not specified", "-"}
 
 
-def apply_eligibility_defaults(prog: Dict[str, Any], country: str) -> Dict[str, Any]:
-    """
-    Step 3 of the former normalize_universal_program, extracted verbatim in C16.
+def _blank_to_none(value: Any) -> Optional[Any]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return None if value.strip().lower() in _EMPTY_MARKERS else value.strip()
+    return value
 
-    country_lower was computed once in the combined function; it is recomputed
-    here so this step stands alone. Same value, same call.
-    """
-    country_lower = country.lower()
 
-    # 3. Eligibility Requirements Normalization
+def normalize_eligibility(prog: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure the eligibility block exists and says nothing it cannot support."""
     elig = prog.get("eligibility_requirements") or {}
-    min_marks = elig.get("minimum_marks_percentage")
-    agg_form = elig.get("aggregate_formula")
 
-    if not min_marks or str(min_marks).strip().lower() in ("null", "none", ""):
-        if country_lower in ("germany", "france", "italy", "netherlands", "switzerland", "finland"):
-            elig["minimum_marks_percentage"] = "Abitur NC Grade / ECTS Credit Prerequisites"
-        elif country_lower in ("united states", "usa", "united kingdom", "uk", "canada", "australia"):
-            elig["minimum_marks_percentage"] = "High School Diploma / GPA Equivalent"
-        else:
-            elig["minimum_marks_percentage"] = "Intermediate / HSSC (60% Minimum)"
+    elig["minimum_marks_percentage"] = _blank_to_none(elig.get("minimum_marks_percentage"))
+    elig["aggregate_formula"] = _blank_to_none(elig.get("aggregate_formula"))
 
-    if not agg_form or str(agg_form).strip().lower() in ("null", "none", ""):
-        if country_lower in ("germany", "france", "italy", "netherlands", "switzerland", "finland"):
-            elig["aggregate_formula"] = "ECTS & Academic Degree Evaluation"
-        elif country_lower in ("united states", "usa", "united kingdom", "uk", "canada", "australia"):
-            elig["aggregate_formula"] = "GPA & Standardized Test Evaluation"
-        else:
-            elig["aggregate_formula"] = "Matric (10%) + HSSC (40%) + Entry Test (50%)"
+    tests = elig.get("entry_tests_accepted")
+    if isinstance(tests, str):
+        tests = [tests]
+    elig["entry_tests_accepted"] = [
+        t for t in (_blank_to_none(x) for x in (tests or [])) if t
+    ]
 
     prog["eligibility_requirements"] = elig
     return prog

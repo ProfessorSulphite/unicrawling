@@ -1,18 +1,24 @@
 """
-Characterization tests for the universal normalizer.
+Normalizer behaviour tests.
 
 Written BEFORE the C16 split, against the unsplit module, so the split had a net
-to fall into; repointed at the new modules by that split. universal_normalizer.py had no tests at all despite sitting on a
-production read path -- inspect_cli normalizes every payload it yields, so every
-export and every dashboard row goes through this code.
+to fall into, and repointed at the new modules by that split.
+universal_normalizer.py had no tests at all despite sitting on a production read
+path -- inspect_cli normalizes every payload it yields, so every export and every
+dashboard row goes through this code.
 
-These tests record what the normalizer *does today*, including the parts that are
-wrong. Several of the values asserted here are fabricated defaults the normalizer
-invents when the model returned nothing -- "Refer to Official Tuition Portal",
-"Standard University Application Fee", a made-up aggregate formula, an
-accreditation body derived from the country name. Those are decision D2's subject
-and are stripped in C19; until then, pinning them is what makes the split
-verifiable. Every such assertion is marked FABRICATED.
+Up to C18 the assertions marked FABRICATED pinned values the normalizer invented
+when the extractor returned nothing: a made-up aggregate admission formula, fee
+strings, eligibility criteria chosen by country, an accreditation body derived
+from the country name, and founding years hardcoded for three universities
+matched by name substring. Those were decision D2's subject.
+
+**D2 was answered: strip them.** The pipeline targets universities worldwide, and
+every one of those defaults encoded an assumption about Pakistan or western
+Europe -- the eligibility branch handed the entire rest of the world Pakistan's
+HSSC formula, which is wrong for the Kenyan, Tanzanian and Ugandan programmes
+already in the corpus. Each former FABRICATED assertion is now its inverse: the
+field stays null and the inspector's empty-field audit gets to report it.
 """
 import copy
 import json
@@ -63,14 +69,27 @@ def test_currency_falls_back_to_the_country_map_when_tuition_is_silent(country, 
     assert resolve_universal_currency("", country) == expected
 
 
-def test_currency_defaults_to_pkr_for_an_unknown_country():
-    # The historical default: this started as a Pakistan-only pipeline.
-    assert resolve_universal_currency(None, "Atlantis") == "PKR"
-    assert resolve_universal_currency(None, "") == "PKR"
+def test_currency_is_none_for_an_unmapped_country():
+    """Was PKR, from when this was a Pakistan-only pipeline. That default quietly
+    asserted every unmapped country's fees were in rupees -- and the map covers a
+    small fraction of the world's countries, so the tail was the common case."""
+    assert resolve_universal_currency(None, "Atlantis") is None
+    assert resolve_universal_currency(None, "") is None
+    assert resolve_universal_currency(None, None) is None
 
 
-def test_currency_uses_eur_for_an_unmapped_european_country():
-    assert resolve_universal_currency(None, "Eastern Europe") == "EUR"
+def test_currency_markers_are_matched_on_word_boundaries():
+    """`"RS" in text.upper()` matched inside COURSE, so any fee mentioning a
+    course was labelled PKR. Same substring-versus-token defect the link filter
+    and the degree mapper each had to fix."""
+    assert resolve_universal_currency("Fee for all courses: 5000", "Kenya") == "KES"
+    assert resolve_universal_currency("Rs. 150,000", "Pakistan") == "PKR"
+
+
+def test_the_currency_map_reaches_beyond_europe_and_south_asia():
+    for country, code in [("Kenya", "KES"), ("Tanzania", "TZS"), ("Uganda", "UGX"),
+                          ("Nigeria", "NGN"), ("Brazil", "BRL"), ("Japan", "JPY")]:
+        assert resolve_universal_currency(None, country) == code
 
 
 def test_tuition_string_beats_the_country_map():
@@ -86,35 +105,28 @@ def _prog(**kw):
     return base
 
 
-@pytest.mark.parametrize("country", ["Germany", "Finland", "Norway", "Austria"])
-def test_tuition_free_countries_get_the_semester_contribution_note(country):
+@pytest.mark.parametrize("country", ["Germany", "Finland", "Norway", "Austria",
+                                    "Pakistan", "Kenya", "Atlantis"])
+def test_a_missing_tuition_fee_stays_missing(country):
+    """No country gets a fee written for it.
+
+    The removed branch claimed "Tuition Free (Semester Contribution applies)" for
+    four European countries -- an outright claim about money, wrong for every
+    non-EU-student and executive programme those universities run -- and
+    "Refer to Official Tuition Portal" for everywhere else.
+    """
     out = normalize_universal_program(_prog(), country)
-    assert out["tuition_fee"] == "Tuition Free (Semester Contribution applies)"
-    # FABRICATED (D2/C19): invents a fee schedule the sources never stated.
-    assert out["application_fee"] == "Uni-Assist €75 / Free Direct Application"
+    assert out["tuition_fee"] is None
 
 
-def test_missing_tuition_elsewhere_gets_a_pointer_not_a_number():
-    out = normalize_universal_program(_prog(), "Pakistan")
-    # FABRICATED (D2/C19), but at least it does not invent an amount.
-    assert out["tuition_fee"] == "Refer to Official Tuition Portal"
-
-
-@pytest.mark.parametrize("empty", [None, "", "  ", "null", "None", "n/a", "0"])
-def test_these_all_count_as_missing_tuition(empty):
-    out = normalize_universal_program(_prog(tuition_fee=empty), "Pakistan")
-    assert out["tuition_fee"] == "Refer to Official Tuition Portal"
+def test_a_missing_application_fee_stays_missing():
+    out = normalize_universal_program(_prog(tuition_fee="PKR 1"), "Pakistan")
+    assert out.get("application_fee") is None
 
 
 def test_a_real_tuition_figure_is_left_alone():
     out = normalize_universal_program(_prog(tuition_fee="PKR 150,000 per semester"), "Pakistan")
     assert out["tuition_fee"] == "PKR 150,000 per semester"
-
-
-def test_missing_application_fee_is_filled_in():
-    out = normalize_universal_program(_prog(tuition_fee="PKR 1"), "Pakistan")
-    # FABRICATED (D2/C19).
-    assert out["application_fee"] == "Standard University Application Fee"
 
 
 def test_a_stated_application_fee_is_left_alone():
@@ -124,42 +136,49 @@ def test_a_stated_application_fee_is_left_alone():
 
 # -------------------------------------------------------- eligibility defaults --
 
-EU = ["Germany", "France", "Italy", "Netherlands", "Switzerland", "Finland"]
-ANGLO = ["United States", "USA", "United Kingdom", "UK", "Canada", "Australia"]
+ALL_OVER = ["Germany", "France", "Switzerland", "United States", "United Kingdom",
+            "Canada", "Australia", "Pakistan", "Kenya", "Tanzania", "Uganda",
+            "Brazil", "Japan", "Atlantis", ""]
 
 
-@pytest.mark.parametrize("country", EU)
-def test_eligibility_defaults_for_europe(country):
-    out = normalize_universal_program(_prog(), country)
-    elig = out["eligibility_requirements"]
-    # FABRICATED (D2/C19): no source said this programme uses Abitur NC.
-    assert elig["minimum_marks_percentage"] == "Abitur NC Grade / ECTS Credit Prerequisites"
-    assert elig["aggregate_formula"] == "ECTS & Academic Degree Evaluation"
+@pytest.mark.parametrize("country", ALL_OVER)
+def test_no_country_gets_eligibility_criteria_invented_for_it(country):
+    """The removed code had three branches: western Europe, the anglophone
+    countries, and an `else` that handed EVERYWHERE ELSE Pakistan's
+    "Intermediate / HSSC (60% Minimum)" and the weighted formula
+    "Matric (10%) + HSSC (40%) + Entry Test (50%)".
+
+    That formula was the single most misleading value the normalizer produced --
+    a specific admission calculation, stated with no source, that a student could
+    plan an application around. The AKU payload alone covers Kenya, Tanzania and
+    Uganda, none of which have an HSSC.
+    """
+    elig = normalize_universal_program(_prog(), country)["eligibility_requirements"]
+    assert elig["minimum_marks_percentage"] is None
+    assert elig["aggregate_formula"] is None
+    assert elig["entry_tests_accepted"] == []
 
 
-@pytest.mark.parametrize("country", ANGLO)
-def test_eligibility_defaults_for_anglophone_countries(country):
-    out = normalize_universal_program(_prog(), country)
-    elig = out["eligibility_requirements"]
-    # FABRICATED (D2/C19).
-    assert elig["minimum_marks_percentage"] == "High School Diploma / GPA Equivalent"
-    assert elig["aggregate_formula"] == "GPA & Standardized Test Evaluation"
-
-
-def test_eligibility_defaults_for_everywhere_else():
-    out = normalize_universal_program(_prog(), "Pakistan")
-    elig = out["eligibility_requirements"]
-    # FABRICATED (D2/C19): a specific weighted formula, invented wholesale. This is
-    # the single most misleading value the normalizer produces -- a student could
-    # act on it.
-    assert elig["minimum_marks_percentage"] == "Intermediate / HSSC (60% Minimum)"
-    assert elig["aggregate_formula"] == "Matric (10%) + HSSC (40%) + Entry Test (50%)"
+@pytest.mark.parametrize("empty", ["null", "None", "N/A", "  ", "", "not specified"])
+def test_the_extractors_words_for_nothing_become_real_nulls(empty):
+    """So the inspector's empty-field audit can see them. Normalisation, not
+    invention: no fact is added, one is made legible."""
+    prog = _prog(eligibility_requirements={"minimum_marks_percentage": empty,
+                                           "aggregate_formula": empty,
+                                           "entry_tests_accepted": [empty]})
+    elig = normalize_universal_program(prog, "Pakistan")["eligibility_requirements"]
+    assert elig["minimum_marks_percentage"] is None
+    assert elig["aggregate_formula"] is None
+    assert elig["entry_tests_accepted"] == []
 
 
 def test_stated_eligibility_is_never_overwritten():
     stated = {"minimum_marks_percentage": "70%", "aggregate_formula": "FSc 50% + NET 50%"}
     out = normalize_universal_program(_prog(eligibility_requirements=dict(stated)), "Pakistan")
-    assert out["eligibility_requirements"] == stated
+    # entry_tests_accepted is always present afterwards, empty when unstated:
+    # the inspector counts empty fields by reading them, so an absent key and a
+    # null one must not be two different things.
+    assert out["eligibility_requirements"] == {**stated, "entry_tests_accepted": []}
 
 
 # ------------------------------------------------------------- payload level --
@@ -171,36 +190,49 @@ def _payload(**main):
                                             "phd": [], "diploma": []}}
 
 
-def test_instruction_language_is_country_aware():
-    de = normalize_universal_payload(_payload(country="Germany"))
-    pk = normalize_universal_payload(_payload(country="Pakistan"))
-    assert de["main_info"]["primary_instruction_language"] == "German / English"
-    assert pk["main_info"]["primary_instruction_language"] == "English"
+@pytest.mark.parametrize("country", ["Germany", "Pakistan", "Kenya", "Japan", None])
+def test_instruction_language_is_never_asserted(country):
+    """Was "English", or "German / English" for Germany -- claimed for a
+    university in any country on earth, including ones where it is simply false."""
+    out = normalize_universal_payload(_payload(country=country))
+    assert out["main_info"].get("primary_instruction_language") is None
 
 
-def test_accreditation_body_falls_back_to_the_country_name():
-    out = normalize_universal_payload(_payload(country="Kenya"))
-    # FABRICATED (D2/C19): "Ministry of Higher Education (Kenya)" may not exist.
-    assert out["main_info"]["accreditation_body"] == "Ministry of Higher Education (Kenya)"
+@pytest.mark.parametrize("country", ["Kenya", "Pakistan", "Brazil", None])
+def test_accreditation_body_is_not_derived_from_the_country_name(country):
+    """Was "Ministry of Higher Education (<country>)" -- a body that under that
+    exact name does not exist in most countries."""
+    out = normalize_universal_payload(_payload(country=country))
+    assert out["main_info"].get("accreditation_body") is None
 
 
-@pytest.mark.parametrize("name,year,body", [
-    ("LMU Munich", 1472, "Bavarian State Ministry of Science and the Arts"),
-    ("ITU Lahore", 2012, "Higher Education Commission (HEC)"),
-    ("NUST Islamabad", 1991, "HEC / PEC"),
-])
-def test_three_universities_are_hardcoded_by_name(name, year, body):
-    # Hardcoded identity facts keyed off a substring of the name. Fragile -- any
-    # university whose name contains "itu" (Institute of Technology Umea, say)
-    # collects ITU Lahore's founding year. Recorded so C19 can decide its fate.
+@pytest.mark.parametrize("name", ["LMU Munich", "ITU Lahore", "NUST Islamabad",
+                                  "Institute of Technology Umea"])
+def test_no_university_gets_identity_facts_hardcoded_by_name(name):
+    """Three universities used to have their founding year and accrediting body
+    written in, matched by NAME SUBSTRING -- so "Institute of Technology Umea"
+    contains "itu" and collected ITU Lahore's 2012 and Pakistan's HEC.
+
+    The registry lookup supplies exactly these facts, sourced, for every
+    university in resources/rankings_global.json. Anything it does not cover
+    stays null.
+    """
     out = normalize_universal_payload(_payload(name=name))
-    assert out["main_info"]["established_year"] == year
-    assert out["main_info"]["accreditation_body"] == body
+    assert out["main_info"].get("established_year") is None
+    assert out["main_info"].get("accreditation_body") is None
 
 
 def test_a_stated_established_year_is_never_overwritten():
     out = normalize_universal_payload(_payload(name="NUST", established_year=1885))
     assert out["main_info"]["established_year"] == 1885
+
+
+def test_registry_facts_are_still_applied():
+    """Stripping the fabrications must not take the sourced facts with them."""
+    out = normalize_universal_payload(
+        _payload(name="NUST", website="https://nust.edu.pk"))
+    assert out["main_info"]["established_year"]
+    assert out["main_info"]["accreditation_body"]
 
 
 def test_programs_are_normalized_in_place_across_all_four_categories():
@@ -213,7 +245,13 @@ def test_programs_are_normalized_in_place_across_all_four_categories():
     }
     out = normalize_universal_payload(payload)
     for key in PROGRAM_BUCKETS:
-        assert out["programs"][key][0]["tuition_fee"] == "Refer to Official Tuition Portal"
+        program = out["programs"][key][0]
+        # Every bucket is walked: each programme comes back with the normalizer's
+        # own keys present, and with nothing invented in them.
+        assert program["tuition_fee"] is None
+        assert program["description"] is None
+        assert program["application_deadlines"] == []
+        assert program["eligibility_requirements"]["aggregate_formula"] is None
 
 
 def test_retired_buckets_are_folded_into_the_canonical_four():

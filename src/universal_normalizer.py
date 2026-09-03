@@ -2,8 +2,8 @@
 DEPRECATED compatibility shim -- universal_normalizer.py was split into
 src/extractor/normalizers/ in C16.
 
-  currency_tuition.py  currency labelling (never conversion) and tuition defaults
-  eligibility.py       eligibility / admission-requirement defaults
+  currency_tuition.py  currency labelling (never conversion, never invention)
+  eligibility.py       eligibility block cleanup (invents nothing since C19)
   degree_names.py      canonical degree levels -- scaffold, filled in C17
   runner.py            global facts registry, per-program and payload walks
 
@@ -23,7 +23,7 @@ from src.extractor.normalizers.currency_tuition import (  # noqa: F401
     resolve_universal_currency,
 )
 from src.extractor.normalizers.eligibility import (  # noqa: F401
-    apply_eligibility_defaults,
+    normalize_eligibility,
 )
 from src.extractor.normalizers.runner import (  # noqa: F401
     GLOBAL_FACTS_FILE,

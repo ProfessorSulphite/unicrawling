@@ -31,9 +31,9 @@ class DegreeLevel(str, Enum):
 # Retired DegreeLevel values, kept only so payloads written before C17 still
 # load. Module-level rather than a ProgramItem attribute: Pydantic claims
 # leading-underscore class attributes as private attrs.
-# Stand-in written when a programme arrives with no summary at all. Named rather
-# than inlined so the normalizer can tell a real summary from this one; C19 is
-# where it gets removed in favour of a null.
+# No longer written by anything (C19 removed the fallback). Kept because every
+# payload extracted before C19 contains this exact string, and the normalizer has
+# to recognise it in order to refuse to carry it into `description`.
 SUMMARY_FALLBACK = "Academic degree program offered by the university."
 
 _RETIRED_DEGREE_LEVELS = {
@@ -69,14 +69,22 @@ class KeyLinks(BaseModel):
 class MainInfo(BaseModel):
     name: str
     abbreviation: Optional[str] = None
-    country: str = Field("Pakistan", description="Country location of the university (e.g. Germany, USA, UK, Switzerland, Pakistan)")
+    # C19: no default. This drove currency labelling and the eligibility guesses
+    # for the whole record, so a university whose country the extractor missed
+    # was silently processed as Pakistani.
+    country: Optional[str] = Field(None, description="Country location of the university (e.g. Germany, USA, UK, Switzerland, Pakistan)")
     city: Optional[str] = Field(None, description="City location of campus e.g. Islamabad, Munich, Boston")
     established_year: Optional[int] = Field(None, description="Year university was founded")
     accreditation_body: Optional[str] = Field(None, description="Accrediting agency e.g. HEC, ABET, TEQSA, WASC")
-    admission_cycles_offered: List[str] = Field(default_factory=lambda: ["Fall", "Spring"], description="Admission terms e.g. Fall, Spring, Summer, Winter")
-    primary_instruction_language: Optional[str] = Field("English", description="Main teaching language")
+    # C19: was ["Fall", "Spring"] -- northern-hemisphere naming asserted for
+    # universities that run Semester 1 / Semester 2 from February.
+    admission_cycles_offered: List[str] = Field(default_factory=list, description="Admission terms e.g. Fall, Spring, Summer, Winter")
+    # C19: was "English", asserted worldwide.
+    primary_instruction_language: Optional[str] = Field(None, description="Main teaching language")
     website: str
-    type: Optional[UniversityType] = Field(UniversityType.PUBLIC)
+    # C19: was PUBLIC. Public-versus-private is roughly a coin flip and getting
+    # it wrong is a fact a student would act on.
+    type: Optional[UniversityType] = Field(None)
     description: str
     domain_verified: bool = False
     verification_note: Optional[str] = None
@@ -86,15 +94,17 @@ class MainInfo(BaseModel):
 
     @field_validator("primary_instruction_language", mode="before")
     @classmethod
-    def default_language(cls, v: Any) -> str:
-        return v if isinstance(v, str) and v.strip() else "English"
+    def blank_language_is_none(cls, v: Any) -> Optional[str]:
+        return v.strip() if isinstance(v, str) and v.strip() else None
 
     @field_validator("type", mode="before")
     @classmethod
-    def default_type(cls, v: Any) -> UniversityType:
-        if isinstance(v, str) and v.lower() in ("public", "private", "other"):
-            return UniversityType(v.lower())
-        return UniversityType.PUBLIC
+    def unreadable_type_is_none(cls, v: Any) -> Optional[UniversityType]:
+        if isinstance(v, UniversityType):
+            return v
+        if isinstance(v, str) and v.strip().lower() in ("public", "private", "other"):
+            return UniversityType(v.strip().lower())
+        return None
 
 
 class EligibilityRequirements(BaseModel):
@@ -110,10 +120,13 @@ class ProgramItem(BaseModel):
     degree_level: DegreeLevel
     duration: Optional[str] = None
     tuition_fee: Optional[str] = None
-    currency: str = Field("PKR", description="Currency of tuition fee (e.g. EUR, USD, GBP, CHF, PKR)")
+    # C19: was "PKR". A label for a fee nobody read is not a label, it is a claim.
+    currency: Optional[str] = Field(None, description="Currency of tuition fee (e.g. EUR, USD, GBP, CHF, PKR)")
     scholarships_info: Optional[str] = None
-    intake_terms: List[str] = Field(default_factory=lambda: ["Fall"], description="Intake terms for this program e.g. Fall, Spring, Winter")
-    delivery_mode: Optional[str] = Field("On-Campus", description="On-Campus, Online, or Hybrid")
+    # C19: were ["Fall"] and "On-Campus". Both were assumptions, and the growing
+    # share of online and hybrid provision makes the second one actively risky.
+    intake_terms: List[str] = Field(default_factory=list, description="Intake terms for this program e.g. Fall, Spring, Winter")
+    delivery_mode: Optional[str] = Field(None, description="On-Campus, Online, or Hybrid")
     application_fee: Optional[str] = Field(None, description="Application fee amount and currency")
     career_prospects: Optional[str] = Field(None, description="Target career outcomes or roles")
     courses_taught: List[str] = []
@@ -134,7 +147,7 @@ class ProgramItem(BaseModel):
     # written before C18 carries it and inspect_cli re-validates those on read;
     # the prompts no longer request it. The normalizer carries a real value over
     # into `description` when that field is empty.
-    summary_3_lines: str
+    summary_3_lines: Optional[str] = None
     admission_requirements: Optional[str] = Field(
         None,
         description=(
@@ -148,7 +161,8 @@ class ProgramItem(BaseModel):
     # from the 500/day NotebookLM ceiling to learn nothing. Output shape is
     # unchanged; the object still always serialises.
     eligibility_requirements: EligibilityRequirements = Field(default_factory=EligibilityRequirements)
-    application_status: ApplicationStatus = ApplicationStatus.ROLLING
+    # C19: was ROLLING, which told a student applications were open year-round.
+    application_status: Optional[ApplicationStatus] = None
     # Plural since C18 (plan section 5, "Application deadline(s)"). A programme
     # with Fall and Spring intakes has two published deadlines, and the singular
     # field forced one of them to be dropped or crammed into prose.
@@ -180,10 +194,11 @@ class ProgramItem(BaseModel):
 
     @field_validator("summary_3_lines", mode="before")
     @classmethod
-    def _coerce_summary(cls, v: Any) -> str:
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-        return SUMMARY_FALLBACK
+    def _coerce_summary(cls, v: Any) -> Optional[str]:
+        # C19: an absent summary was replaced with SUMMARY_FALLBACK. The constant
+        # survives only so the normalizer can RECOGNISE that string in payloads
+        # written before this commit and decline to promote it into description.
+        return v.strip() if isinstance(v, str) and v.strip() else None
 
     # Accepts the singular string the extractor still tends to emit, and the
     # retired application_deadline value that every pre-C18 payload carries.

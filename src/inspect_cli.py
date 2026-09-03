@@ -604,7 +604,10 @@ def export_dataset(format_type: str = "csv", output_path: Optional[Path] = None)
     elif fmt == "json":
         country_grouped: Dict[str, List[Dict[str, Any]]] = {}
         for rec in records:
-            c_name = rec.get("main_info", {}).get("country") or "Pakistan"
+            # C19: was "Pakistan". A record whose country the extractor never
+            # found is not Pakistani, and filing it there hides the gap in a
+            # bucket that looks legitimate.
+            c_name = rec.get("main_info", {}).get("country") or "Unknown"
             country_grouped.setdefault(c_name, []).append(rec)
 
         out_file = output_path or (config.data_outputs_dir / "university_counseling_data.json")

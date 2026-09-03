@@ -224,10 +224,17 @@
           "title": "Abbreviation"
         },
         "country": {
-          "default": "Pakistan",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "description": "Country location of the university (e.g. Germany, USA, UK, Switzerland, Pakistan)",
-          "title": "Country",
-          "type": "string"
+          "title": "Country"
         },
         "city": {
           "anyOf": [
@@ -285,7 +292,7 @@
               "type": "null"
             }
           ],
-          "default": "English",
+          "default": null,
           "description": "Main teaching language",
           "title": "Primary Instruction Language"
         },
@@ -302,7 +309,7 @@
               "type": "null"
             }
           ],
-          "default": "public"
+          "default": null
         },
         "description": {
           "title": "Description",
@@ -448,10 +455,17 @@
           "title": "Tuition Fee"
         },
         "currency": {
-          "default": "PKR",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "description": "Currency of tuition fee (e.g. EUR, USD, GBP, CHF, PKR)",
-          "title": "Currency",
-          "type": "string"
+          "title": "Currency"
         },
         "scholarships_info": {
           "anyOf": [
@@ -482,7 +496,7 @@
               "type": "null"
             }
           ],
-          "default": "On-Campus",
+          "default": null,
           "description": "On-Campus, Online, or Hybrid",
           "title": "Delivery Mode"
         },
@@ -534,8 +548,16 @@
           "title": "Description"
         },
         "summary_3_lines": {
-          "title": "Summary 3 Lines",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary 3 Lines"
         },
         "admission_requirements": {
           "anyOf": [
@@ -554,8 +576,15 @@
           "$ref": "#/$defs/EligibilityRequirements"
         },
         "application_status": {
-          "$ref": "#/$defs/ApplicationStatus",
-          "default": "rolling"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplicationStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "application_deadlines": {
           "description": "Every published application deadline, one entry per intake",
@@ -568,8 +597,7 @@
       },
       "required": [
         "name",
-        "degree_level",
-        "summary_3_lines"
+        "degree_level"
       ],
       "title": "ProgramItem",
       "type": "object"

@@ -79,7 +79,10 @@ def extract_hec_universities(limit: int = 5) -> List[Dict[str, str]]:
                             "name": text,
                             "url": href,
                             "sector": "Recognized",
-                            "city": "Pakistan"
+                            # Not a city. The HEC directory does not publish
+                            # one, and "Pakistan" in a city field is a wrong
+                            # answer dressed as a right one (C19).
+                            "city": None
                         })
                         if len(extracted_unis) >= limit:
                             break
