@@ -20,7 +20,7 @@ flowchart TD
     subgraph Phase 3: Schema-Guided Extraction & Exa Enrichment
         D -->|Ready Web Sources| E[Agent 3: Schema Query & Exa Enrichment Agent]
         E <-->|Exa API Search for Missing Rankings/Portals| F[Exa Web Search API]
-        E -->|Structured 4-Block JSON Payload| G[(Vector DB: Qdrant / Chroma / PGVector)]
+        E -->|Structured 4-Block JSON Payload| G[(Local store: JSONL ledger + per-university JSON)]
     end
 
     subgraph Phase 4: Data Quality Audit & Interactive Counseling
@@ -82,9 +82,43 @@ flowchart TD
 ### Agent 4: Data Quality Auditor & Interactive Counselor Agent (Phase 4)
 * **Role**: Data health analytics, inspection, and conversational counseling agent.
 * **Responsibilities**:
-  - Execute the **Inspect CLI Utility** (`inspect_cli.py`) to audit dataset health:
+  - Execute the **Inspector** (`cli.py`, `src/inspector/`) to audit dataset health:
     - Unique university count and type distribution (Public vs Private).
     - Total program breakdown (Bachelors, Masters, PhD, Diploma counts).
     - Empty and NaN field audit across all 4 blocks.
     - Application portal link coverage and completeness rankings.
   - Process natural language student inquiries against the Vector DB with direct official source citations and links.
+
+
+---
+
+## Module Map
+
+The four agents above are implemented as packages under `src/`, sequenced by
+`src/orchestrator.py`, which holds no logic of its own:
+
+| Agent | Package | Entry point |
+| :--- | :--- | :--- |
+| 1 — Crawling & link extraction | `src/extractor/linkers/` | `run_pipeline()` |
+| 2 — Ingestion & notebook lifecycle | `src/ingestor/` | `ingest_university_sources()` |
+| 3 — Schema query & enrichment | `src/extractor/crawlers/` | `extract_university_payload()` |
+| 4 — Quality audit & inspection | `src/inspector/` | `cli.py`, `audit_corpus()` |
+
+Shared, dependency-free leaf layer: `src/utilities/` (schema, state, JSON I/O,
+registry, naming, workspace). Nothing in `utilities/` imports upward, and
+nothing in `inspector/` imports the orchestrator at module scope — the
+orchestrator may import the inspector, never the reverse.
+
+### Standing rules the agents operate under
+
+1. **Nothing is invented to fill a gap.** An unanswered field is null; the
+   inspector's audit is what reports it. Identity facts and rankings come from
+   `resources/rankings_global.json`, never from the model.
+2. **Programmes are the primary target**, classified into exactly four levels:
+   bachelors, masters, phd, diploma.
+3. **Fees keep the currency the university published them in.** Currency is
+   labelled, never converted.
+4. **Quota is reserved before it is spent**, and a pre-flight health check can
+   refuse a university before a notebook is created.
+5. **Phase 3 queries one notebook serially.** Concurrent asks share a
+   conversation and return each other's answers.

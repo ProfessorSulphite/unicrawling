@@ -4,7 +4,6 @@
 [![Pydantic V2](https://img.shields.io/badge/pydantic-v2.13-red.svg)](https://docs.pydantic.dev/)
 [![Crawl4AI](https://img.shields.io/badge/Crawl4AI-v0.4.3--latest-green.svg)](https://github.com/unclecode/crawl4ai)
 [![NotebookLM](https://img.shields.io/badge/NotebookLM-v0.7.3--py-purple.svg)](https://github.com/teng-lin/notebooklm-py)
-[![Qdrant Cloud](https://img.shields.io/badge/Qdrant-Cloud_768dim-red.svg)](https://qdrant.tech/)
 [![Rich](https://img.shields.io/badge/CLI-Rich-orange.svg)](https://github.com/Textualize/rich)
 
 An autonomous, multi-agent 4-phase data extraction, transformation, universal schema normalization, and inspection pipeline designed for building a production-ready **Education Counseling RAG Vector Database** covering universities globally (**Pakistan**, **Germany**, **United States**, **United Kingdom**, **Europe**).
@@ -28,46 +27,48 @@ An autonomous, multi-agent 4-phase data extraction, transformation, universal sc
 ## 📂 Project Directory Structure
 
 ```
-notebooklm_scripts/
-├── run_settings.json                           # ⚙️ Multi-country university links & pipeline settings
-├── cli.py                                # ⚡ Root CLI executable entrypoint wrapper
-├── query_qdrant.py                       # 🔍 Standalone Qdrant Cloud interactive CLI query tool
-├── src/                                  # 📦 Core Source Package
+unicrawling/
+├── run.py                                # ⚡ Pipeline entrypoint  -> src/orchestrator.py
+├── cli.py                                # ⚡ Inspector entrypoint -> src/inspector/
+├── run_settings.json                     # ⚙️ Universities to crawl & per-run settings
+├── src/
 │   ├── config.py                         # Central configuration dataclass & workspace paths
-│   ├── schema.py                         # Strict Pydantic V2 models for master JSON hierarchy
-│   ├── state.py                          # SQLite resumable state machine (pooled WAL connection)
-│   ├── json_io.py                        # 💾 Streaming + crash-safe atomic JSON I/O primitives
-│   ├── universal_normalizer.py           # 🌐 Universal currency, tuition & eligibility normalizer
-│   ├── qdrant_validator.py               # ⚡ Automated 10-query Qdrant validation benchmark suite
-│   ├── ingest.py                         # Async ingestion: shared HTTP/2 pool & adaptive readiness
-│   ├── extract_data.py                   # 5-Query extraction, JSON repair & Exa fallback
-│   ├── extract_links.py                  # Phase 1 harvesting w/ shared memory-bounded browser pool
-│   ├── pipeline.py                       # Master 4-Phase pipeline & batch runner
-│   └── inspect_cli.py                    # Developer-grade Rich-powered inspection CLI
-├── tests/                                # Production Pytest suite (116 tests passing)
-│   ├── test_pipeline.py                  # Core 4-phase pipeline & extraction tests
-│   ├── test_json_io.py                   # Streaming/atomic JSON I/O tests
-│   ├── test_ingest_resilience.py         # Ingestion resilience & pre-flight tests
-│   ├── test_cli_interactive.py           # Interactive CLI tests
-│   └── test_notebook_logger.py           # Notebook lifecycle logging tests
+│   ├── orchestrator.py                   # Sequences the four phases; owns nothing else
+│   ├── utilities/                        # Leaf layer -- imports nothing above it
+│   │   ├── schema.py                     # Strict Pydantic V2 models for the master JSON
+│   │   ├── state_management.py           # SQLite resumable state machine (pooled WAL)
+│   │   ├── json_io.py                    # 💾 Streaming + crash-safe atomic JSON I/O
+│   │   ├── registry.py                   # Sourced identity/rankings lookup by domain
+│   │   ├── naming.py                     # URL -> (name, slug, domain); the one slug rule
+│   │   ├── workspace.py                  # Archiving outputs before a full rerun
+│   │   └── loaders.py                    # .env loading
+│   ├── extractor/
+│   │   ├── linkers/                      # Phase 1: crawl, filter, dedupe, score
+│   │   ├── crawlers/                     # Phase 3: query suite, JSON repair, Exa fallback
+│   │   └── normalizers/                  # Currency, eligibility, degree levels, carry-over
+│   ├── ingestor/                         # Phase 2: notebooks, sources, health check, quota
+│   ├── inspector/                        # Phase 4: dashboard, auditor, analytics, export
+│   └── logger/                           # Run manifests + per-notebook audit trail
+├── tests/                                # Mirrors src/, plus the end-to-end suite
+│   ├── test_pipeline.py                  # End-to-end: all four phases, stubbed at the seams
+│   ├── test_orchestrator.py              # Queue, run log, --resume
+│   ├── test_docs.py                      # Every documented command must actually run
+│   └── test_utilities/ test_extractor/ test_ingestor/ test_inspector/ test_logger/
 ├── data/
-│   ├── links/                            # Per-university candidate link partitions (.jsonl)
+│   ├── links/                            # Per-university link partitions (.jsonl, tiered)
 │   ├── outputs/
-│   │   ├── country_outputs/              # 🌐 Per-country output folders (e.g. pak_output/, german_output/)
-│   │   ├── uni_outputs/                  # 📄 Per-university formatted JSON payloads (.json)
-│   │   ├── university_counseling_data.json   # 📄 Country-grouped master JSON file
-│   │   ├── university_counseling_data.jsonl  # 📄 Master JSONL stream for Vector DB indexing
-│   │   ├── qdrant_export.json            # ⚡ 768-dim normalized dense vector payload
-│   │   └── result.json                   # 📊 Master batch execution analytics summary
-│   └── state.sqlite                      # SQLite database tracking pipeline manifest
+│   │   ├── country_outputs/              # 🌐 Per-country output folders
+│   │   ├── uni_outputs/                  # 📄 Per-university validated JSON payloads
+│   │   ├── all_uni_outputs/              # 📄 Master JSONL ledger + compiled JSON array
+│   │   └── result.json                   # 📊 Batch execution analytics summary
+│   └── state.sqlite                      # Pipeline manifest + the daily query ledger
+├── loggings/
+│   ├── single_logs/  complete_logs/      # s_{id}.json / c_{id}.json run manifests
+│   └── notebook_logs/                    # One JSON audit document per notebook
 ├── resources/
-│   ├── data_model_and_plan.md            # Master 4-Block JSON Schema specification
-│   ├── rankings_global.json              # Unified global university identity & rankings registry
-│   └── rankings_pk.json                  # Pakistan university rankings registry
-├── AGENTS.md                             # 4-Agent multi-agent system architecture
-├── CHANGELOG.md                          # Master build and execution log
-├── COMMANDS.md                           # 📖 Complete CLI & execution reference
-└── README.md                             # Master documentation & architecture guide
+│   ├── rankings_global.json              # Sourced identity & rankings registry
+│   └── refactoring_plan.md               # Architecture & migration plan
+├── AGENTS.md  CHANGELOG.md  COMMANDS.md  README.md
 ```
 
 ---
@@ -96,7 +97,6 @@ Specify target universities grouped by country and set pipeline parameters in `r
     "max_links": 60,
     "exclude_keywords": "news|events",
     "uptodate": true,
-    "sync_qdrant": true,
     "force_rerun_all": false,
     "clean_logging": true
   }
@@ -137,7 +137,7 @@ python3 cli.py retry failed
 
 ---
 
-## 🌐 Universal Schema Normalizer (`src/universal_normalizer.py`)
+## 🌐 Universal Schema Normalizer (`src/extractor/normalizers/`)
 
 The pipeline includes a universal normalization engine to ensure consistency across all international datasets:
 
@@ -152,23 +152,23 @@ The pipeline includes a universal normalization engine to ensure consistency acr
 
 ---
 
-## ☁️ Qdrant Cloud Vector Database Sync & Benchmark Suite
+## 🚦 Data Quality Gate
 
-Vector embeddings are generated using **768-dimensional normalized dense vectors (`BAAI/bge-base-en-v1.5`)**:
+Programmes are the primary data target, so the corpus is audited against the per-programme
+required fields before anything downstream consumes it:
 
-### Export & Sync to Qdrant Cloud
 ```bash
-python3 cli.py export --format qdrant --sync
+python3 cli.py audit
 ```
 
-### Automated 10-Query Retrieval Validation Benchmark
-When `--sync` is passed, the pipeline automatically executes a **10-Query Retrieval Benchmark Suite** against the active Qdrant Cloud collection. If validation achieves $\ge 80\%$ pass rate, live sync is retained; otherwise, automatic rollback safety is triggered.
+The audit reports per-field coverage, the degree-level distribution, and a hard verdict. It
+exits non-zero when coverage is below the floors in `src/config.py`, so it can gate a push
+script and not only a human reading a table. Two structural failures block regardless of
+coverage: a programme sitting in a bucket its own `degree_level` contradicts, and two buckets
+holding identical programmes -- which means one query received another's answer.
 
-### Interactive Standalone Qdrant Query CLI
-Search the Qdrant Cloud vector database in real-time:
-```bash
-python3 query_qdrant.py -q "BS Computer Science tuition fee and admission portal"
-```
+Nothing in the pipeline invents a value to fill a gap. An unanswered field is null, and the
+audit is what reports it.
 
 ---
 

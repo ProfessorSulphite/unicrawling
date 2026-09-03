@@ -164,3 +164,64 @@ Phases 2 and 3 are covered by mock-based tests against the **introspected real S
 
 - Full pytest suite passes at 115 tests (was 93; +22 new tests in `tests/test_json_io.py`).
 - End-to-end run against Information Technology University (https://itu.edu.pk) completed successfully.
+
+---
+
+## 4. Modular Refactor (C0–C28)
+
+Restructured `src/` from 13 flat files (~250 KB, with `extract_links.py` at 61 KB and
+`inspect_cli.py` at 52 KB) into five domain packages, one commit at a time, every commit green
+and bisectable. Strangler-fig order: each flat module became a package with a re-export shim,
+and the shims were deleted wholesale in C24 once nothing reached them.
+
+### 4.1 Structure
+
+- `src/utilities/` — leaf layer: `schema`, `state_management`, `json_io`, `registry`, `naming`,
+  `workspace`, `loaders`. Imports nothing above itself.
+- `src/extractor/{linkers,crawlers,normalizers}/`, `src/ingestor/`, `src/inspector/`,
+  `src/logger/`.
+- `src/orchestrator.py` replaces `pipeline.py` and sequences the four phases without owning
+  logic. Root `run.py` and `cli.py` are the two supported entry points.
+- The `pipeline` ↔ `inspect_cli` import cycle is broken by direction: the orchestrator may
+  import the inspector, never the reverse.
+
+### 4.2 Data-correctness changes
+
+- **Four degree levels** — bachelors / masters / phd / diploma, replacing three that had no home
+  for the PGDs and diplomas making up a large share of enrolment. A sixth NotebookLM query was
+  added for them.
+- **Stopped inventing values.** The normalizer had been filling empty fields with plausible
+  defaults: an application fee, a tuition pointer, and a country-selected eligibility block whose
+  `else` branch gave the entire non-European world Pakistan's `Matric (10%) + HSSC (40%) + Entry
+  Test (50%)` formula. 240 of 263 programmes carried it, including eight East African nursing
+  degrees. Schema defaults for country, currency, type, delivery mode, application status and
+  intake terms were removed with it. `tests/test_extractor/test_no_fabrication.py` is a standing
+  guard.
+- **Registry consolidation.** `rankings_pk.json` merged into `rankings_global.json`. Every pk
+  entry carried `rankings: []` and the extractor assigned that over the payload, so sourced QS
+  ranks (NUST 353, LUMS 540) were written out empty on every run.
+
+### 4.3 Bugs found and fixed
+
+All pre-existing, none introduced by the refactor; each was invisible to a green suite.
+
+- **Concurrent NotebookLM asks returned each other's answers.** Two prompts, one 4617-byte
+  response: the PhD programmes were filed as bachelors, with no error raised. The query suite is
+  now serial, guarded by a test that parses the function's own AST.
+- **The Phase 1 → Phase 2 handoff never read the link partition.** The reader looked for `href`
+  in a file written with `url`, so every run fell through to the shared flat file — which yields
+  bare strings, which normalise to tier 1, which silently disabled Phase 3's source scoping.
+- **The link filter matched substrings, not tokens**, so `"admin"` deleted
+  business-administration URLs; the same defect appeared in the degree mapper and in the currency
+  labeller, where `"RS"` matched inside `COURSE`.
+- **The test suite wrote to production log paths** — 203 records per run, and 90% of the audit
+  trail was test exhaust.
+- **`backup_existing_outputs` crashed on a same-second rerun**, and archived empty workspaces.
+
+### 4.4 Verification
+
+- Suite grew from 116 to 556 tests, including a genuine end-to-end pipeline suite stubbed only
+  at the crawler and NotebookLM boundaries.
+- `tests/test_docs.py` executes the commands this documentation shows, so it cannot silently rot.
+- A live single-university run against ITU exercised all four phases; it is what surfaced the
+  concurrency bug.

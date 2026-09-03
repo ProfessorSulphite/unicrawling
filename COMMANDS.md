@@ -4,7 +4,7 @@ Exhaustive reference for every runnable entry point in the Education Counselor R
 Every command listed here was executed against this repository and verified to run.
 
 > **Run everything from the project root** (`notebooklm_scripts/`). All entry points insert the
-> project root into `sys.path` themselves, but relative default paths (`config.json`,
+> project root into `sys.path` themselves, but relative default paths (`run_settings.json`,
 > `extracted_links.txt`) resolve against your current working directory.
 
 ---
@@ -14,9 +14,9 @@ Every command listed here was executed against this repository and verified to r
 1. [Entry Points at a Glance](#1-entry-points-at-a-glance)
 2. [Setup & Prerequisites](#2-setup--prerequisites)
 3. [`cli.py` — Main CLI](#3-clipy--main-cli)
-4. [`src/pipeline.py` — Master Pipeline Runner](#4-srcpipelinepy--master-pipeline-runner)
-5. [`src/extract_links.py` — Phase 1 Standalone](#5-srcextract_linkspy--phase-1-standalone)
-6. [`query_qdrant.py` — Vector Search](#6-query_qdrantpy--vector-search)
+4. [`run.py` — Pipeline Runner](#4-runpy--pipeline-runner)
+5. [Standalone module entry points](#5-standalone-module-entry-points)
+6. [Maintenance](#6-maintenance)
 7. [Testing](#7-testing)
 8. [Configuration Reference](#8-configuration-reference)
 9. [Output Files](#9-output-files)
@@ -29,15 +29,16 @@ Every command listed here was executed against this repository and verified to r
 
 | Command | Purpose | Network | Consumes NotebookLM quota |
 | :--- | :--- | :---: | :---: |
-| `python3 cli.py <subcommand>` | Main CLI (inspect, export, batch, …) | varies | only `batch` / `retry` |
-| `python3 src/pipeline.py` | Master 4-phase pipeline, single URL or batch | yes | **yes** |
-| `python3 src/extract_links.py` | Phase 1 link harvesting only | yes | no |
-| `python3 query_qdrant.py` | Query the Qdrant vector DB | yes | no |
-| `pytest` | Test suite (116 tests) | no | no |
+| `python3 cli.py <subcommand>` | Inspector: inspect, audit, export, … | varies | only `batch` / `retry` |
+| `python3 run.py` | Master 4-phase pipeline, single URL or batch | yes | **yes** |
+| `python3 -m src.inspector` | The same inspector, as a module | varies | only `batch` / `retry` |
+| `python3 -m src.orchestrator` | The same pipeline, as a module | yes | **yes** |
+| `pytest` | Test suite | no | no |
 
 **Quota-consuming commands are marked ⚠️ throughout.** The daily NotebookLM Pro ceiling is
-500 queries; the pipeline reserves 5 per university *before* querying and refuses to start a
-university that cannot complete within the remaining budget.
+500 queries; the pipeline reserves `config.queries_per_university` (6 since the diploma query was
+added) *before* querying, and refuses to start a university that cannot complete within the
+remaining budget. `run.py --dry-run` walks the whole queue and spends none of it.
 
 ---
 
@@ -65,7 +66,6 @@ EXA_API_KEY=...              # optional: application-portal gap filling in Phase
 QDRANT_URL=...               # default: http://localhost:6333
 QDRANT_API_KEY=...           # optional: omit for a local Qdrant container
 QDRANT_COLLECTION_NAME=...   # default: education_counselor
-PINECONE_API_KEY=...         # optional: only for --format pinecone
 PINECONE_INDEX_NAME=...      # default: education-counselor
 ```
 
@@ -104,25 +104,25 @@ python3 cli.py --help
 python3 cli.py <subcommand> --help
 ```
 
-`cli.py` is a thin wrapper around `src/inspect_cli.py`. Running `python3 cli.py` with no
+`cli.py` is a thin root entry point for `src/inspector/`. Running `python3 cli.py` with no
 subcommand prints the help text.
 
-### 3.1 `batch` ⚠️ — run the multi-country pipeline from `config.json`
+### 3.1 `batch` ⚠️ — run the multi-country pipeline from `run_settings.json`
 
 ```bash
 python3 cli.py batch
-python3 cli.py batch --config config.json
+python3 cli.py batch --config run_settings.json
 python3 cli.py batch --rerun-all
 ```
 
 | Flag | Type | Default | Meaning |
 | :--- | :--- | :--- | :--- |
-| `--config` | path | `config.json` | Batch configuration file |
+| `--config` | path | `run_settings.json` | Batch run-settings file |
 | `--rerun-all` | flag | off | Back up and reprocess **every** configured university |
 
 Behaviour:
 - Universities already marked `completed` in `data/state.sqlite` are **skipped** unless
-  `--rerun-all` is passed (or `force_rerun_all: true` is set in `config.json`).
+  `--rerun-all` is passed (or `force_rerun_all: true` is set in `run_settings.json`).
 - `--rerun-all` first copies `data/outputs/` to `data/outputs_backup_YYYYMMDD_HHMMSS/`,
   removes the original, and deletes the SQLite state files. **This is destructive to
   `data/outputs/` and the state DB** — the backup is your only copy.
@@ -174,24 +174,17 @@ python3 cli.py retry itu        # a specific slug
 ```bash
 python3 cli.py export --format csv
 python3 cli.py export --format json
-python3 cli.py export --format qdrant
-python3 cli.py export --format qdrant --sync
-python3 cli.py export --format pinecone
 python3 cli.py export --format csv --output /tmp/universities.csv
 ```
 
 | Flag | Type | Default | Meaning |
 | :--- | :--- | :--- | :--- |
-| `--format` | `csv` \| `qdrant` \| `pinecone` \| `json` | `csv` | Export format |
+| `--format` | `csv` \| `json` | `csv` | Export format |
 | `--output` | path | format-specific | Custom output path |
 | `--sync` | flag | off | **Live** Qdrant push + 10-query validation suite |
 
 Notes:
-- `qdrant` and `pinecone` load `BAAI/bge-base-en-v1.5` and generate 768-dim normalized dense
-  vectors. The first run downloads the model (hundreds of MB).
 - Without `--sync`, the Qdrant payload is written locally and **nothing is pushed**.
-- With `--sync`, points are upserted in batches of `qdrant_upsert_batch_size` (default 64) and
-  the 10-query benchmark runs afterwards.
 - If the collection exists with a different vector dimension, it is **deleted and recreated**.
 
 ### 3.7 `analytics` — dataset health audit
@@ -237,112 +230,97 @@ python3 cli.py interactive
 
 ---
 
-## 4. `src/pipeline.py` — Master Pipeline Runner
+## 4. `run.py` — Pipeline Runner
 
-Run all four phases. Two modes: **single URL** (when `--url` is given) or **batch** (otherwise).
+The 4-phase pipeline. `python3 -m src.orchestrator` is the same program.
 
 ```bash
-python3 src/pipeline.py --help
+python3 run.py --help
 ```
 
 ### 4.1 Single-university mode ⚠️
 
 ```bash
-python3 src/pipeline.py --url https://itu.edu.pk --name "Information Technology University"
-python3 src/pipeline.py --url https://itu.edu.pk --name "Information Technology University" --max-links 25
-python3 src/pipeline.py --url https://nust.edu.pk --name "NUST" --exclude-keywords "news|events|alumni"
+python3 run.py --url https://itu.edu.pk --name "Information Technology University"
+python3 run.py --url https://itu.edu.pk --name "ITU" --max-links 25
+python3 run.py --url https://nust.edu.pk --name "NUST" --exclude-keywords "news|events|alumni"
 ```
 
-| Flag | Type | Default | Meaning |
-| :--- | :--- | :--- | :--- |
-| `--url` | str | none | Target university URL. **Presence of this flag selects single mode.** |
-| `--name` | str | derived from domain | Full university name; also names the notebook |
-| `--max-links` | int | `60` | Maximum links retained by Phase 1 |
-| `--exclude-keywords` | str | `news\|events` | Pipe-separated exclusion patterns |
-| `--uptodate` | flag | `True` | 2026 recency boosting |
-| `--config` | path | `config.json` | Batch config (**batch mode only**) |
-| `--rerun-all` | flag | off | Force rerun (**batch mode only**) |
-
-> **Known quirk:** `--uptodate` is declared as `action="store_true", default=True`, so it is
-> always `True` here and **cannot be disabled from this entry point**. To crawl with recency
-> boosting off, use `src/extract_links.py --uptodate false` (Phase 1 standalone), which parses
-> the value properly.
-
-Always pass `--name` for a real institution. Without it the name is derived from the domain
-(`itu.edu.pk` → `ITU`), which changes the notebook title and weakens the rankings-registry
-lookup that supplies verified identity fields.
+Writes a run manifest to `loggings/single_logs/s_{id}.json`.
 
 ### 4.2 Batch mode ⚠️
 
-Omitting `--url` runs the same batch as `python3 cli.py batch`:
-
 ```bash
-python3 src/pipeline.py
-python3 src/pipeline.py --config config.json --rerun-all
+python3 run.py
+python3 run.py --config run_settings.json --rerun-all
 ```
 
-### 4.3 What each phase does
+Reads `run_settings.json`, skips universities `state.sqlite` already reports complete, and
+writes `loggings/complete_logs/c_{id}.json`. `--rerun-all` archives `data/outputs/` to a
+timestamped sibling and resets the state database — the two must move together, or every
+university would still read "completed" against payloads that had just been archived.
 
-| Phase | Action | Failure behaviour |
+### 4.3 Dry run — no network, no quota
+
+```bash
+python3 run.py --config run_settings.json --dry-run
+```
+
+Expands the queue and writes a real run log without executing a phase. This is the cheap way
+to check that a settings file resolves to the universities you meant.
+
+### 4.4 Resuming
+
+```bash
+python3 run.py --resume c_7
+python3 run.py --resume s_42
+```
+
+Replays that run's university list and the settings it ran under, so a resume reproduces the
+original rather than picking up whatever `run_settings.json` says today. What to *skip* still
+comes from `state.sqlite`, which is the only authority on completion.
+
+### 4.5 What each phase does
+
+| Phase | Module | Output |
 | :--- | :--- | :--- |
-| 1 | Crawl, filter, tier, deduplicate links → `data/links/<slug>.jsonl` | Zero links → marked `failed`, university skipped |
-| 2 | Create notebook, pre-flight URLs, upload, wait for readiness | Individual sources may fail; the rest still proceed |
-| 3 | Reserve quota, run the 5-query suite, repair JSON, Exa fallback | A failed query yields an empty block, not a crash |
-| 4 | Aggregate master JSON, audit analytics | — |
+| 1 — Link harvesting | `src/extractor/linkers/` | `data/links/<slug>.jsonl`, one record per link with its tier |
+| 2 — NotebookLM ingestion | `src/ingestor/` | a notebook, its sources, and the url→source_id→tier map in `state.sqlite` |
+| 3 — Schema extraction | `src/extractor/crawlers/` | a validated `UniversityPayload` |
+| 4 — Audit & aggregation | `src/inspector/` | `data/outputs/`, the master array, and the health report |
 
-The notebook is deleted **only** after the payload validates and is written to disk.
-
----
-
-## 5. `src/extract_links.py` — Phase 1 Standalone
-
-Harvest links without touching NotebookLM. No quota cost.
-
-```bash
-python3 src/extract_links.py --help
-python3 src/extract_links.py --url https://itu.edu.pk
-python3 src/extract_links.py --url https://itu.edu.pk --max-links 40 --max-pages 10
-python3 src/extract_links.py --url https://itu.edu.pk --uptodate false
-python3 src/extract_links.py --hec --hec-limit 10
-python3 src/extract_links.py --url https://nust.edu.pk --exclude-keywords "news|events|tender|jobs"
-```
-
-| Flag | Type | Default | Meaning |
-| :--- | :--- | :--- | :--- |
-| `--url` | str | none | Target URL. If omitted and `--hec` is not set, defaults to `https://itu.edu.pk/admissions/` |
-| `--hec` | flag | off | Auto-discover universities from the HEC directory |
-| `--hec-limit` | int | `5` | Universities to process in HEC mode |
-| `--max-links` | int | `100` | Max links retained per university |
-| `--exclude-keywords` | str | `news\|events` | Pipe-separated exclusion patterns |
-| `--threshold` | float | `0.45` | Semantic similarity threshold, 0.0–1.0 |
-| `--max-pages` | int | `15` | Sub-pages crawled per site |
-| `--uptodate` | bool | `true` | Accepts `true/false/yes/no/1/0` |
-| `--output-links` | path | `extracted_links.txt` | Plain URL list |
-| `--output-detailed` | path | `extracted_links_detailed.txt` | Full metadata report |
-
-Exits with status **1** if every target produced zero links.
-
-Actual link count is `min(max(15, 45% of scored candidates), --max-links)`, then allocated
-across tiers proportionally (T1 45%, T2 30%, T3 15%, T4 10%) rather than by a flat top-N slice.
+Phase 3 issues its queries **serially** against a notebook. That is a correctness requirement,
+not a throughput choice: concurrent asks share a conversation and return each other's answers.
 
 ---
 
-## 6. `query_qdrant.py` — Vector Search
+## 5. Standalone module entry points
 
 ```bash
-python3 query_qdrant.py --help
-python3 query_qdrant.py -q "BS Computer Science tuition fee and admission portal"
-python3 query_qdrant.py --query "PhD scholarships in Lahore" --top-k 10
-python3 query_qdrant.py -q "data science" -k 3 -c education_counselor
+python3 -m src.orchestrator --help
+python3 -m src.inspector --help
 ```
 
-| Flag | Short | Type | Default | Meaning |
-| :--- | :--- | :--- | :--- | :--- |
-| `--query` | `-q` | str | none | Search query string |
-| `--top-k` | `-k` | int | `5` | Results to retrieve |
-| `--collection` | `-c` | str | `education_counselor` | Qdrant collection name |
+Phase 1 can be run alone through the linker package's own `__main__` block:
 
-Requires a populated collection — run `python3 cli.py export --format qdrant --sync` first.
+```bash
+python3 -m src.extractor.linkers.runner --help
+```
+
+---
+
+## 6. Maintenance
+
+### 6.1 Migrating the legacy notebook audit trail
+
+```bash
+python3 -m src.logger.migrate_audit --check
+python3 -m src.logger.migrate_audit
+```
+
+Converts the pre-C26 append-only `loggings/notebook_audit.jsonl` into one JSON document per
+notebook under `loggings/notebook_logs/`. Idempotent — it rebuilds each document from the
+source rather than appending — and it never deletes the source file.
 
 ---
 
@@ -353,7 +331,7 @@ pytest                                    # full suite — expect 116 passed
 pytest -q                                 # quiet
 pytest -v                                 # verbose, per-test names
 pytest tests/test_pipeline.py             # core pipeline suite
-pytest tests/test_json_io.py              # streaming/atomic JSON I/O (22 tests)
+pytest tests/test_utilities/test_json_io.py   # streaming/atomic JSON I/O
 pytest tests/test_ingest_resilience.py    # ingestion resilience
 pytest tests/test_cli_interactive.py      # interactive CLI
 pytest tests/test_notebook_logger.py      # lifecycle logging
@@ -368,7 +346,7 @@ The suite is fully offline — it makes no network calls and consumes no Noteboo
 
 ## 8. Configuration Reference
 
-### 8.1 `config.json` — batch targets and run settings
+### 8.1 `run_settings.json` — batch targets and run settings
 
 ```json
 {
@@ -381,7 +359,6 @@ The suite is fully offline — it makes no network calls and consumes no Noteboo
     "max_links": 80,
     "exclude_keywords": "news|events",
     "uptodate": true,
-    "sync_qdrant": true,
     "force_rerun_all": false,
     "clean_logging": true
   }
@@ -396,7 +373,6 @@ an explicit `name` produces a correct notebook title and registry lookup.
 | `max_links` | `60` | Links retained per university |
 | `exclude_keywords` | `news\|events` | Pipe-separated exclusion patterns |
 | `uptodate` | `true` | 2026 recency boosting |
-| `sync_qdrant` | `true` | Live Qdrant sync during the post-batch export |
 | `force_rerun_all` | `false` | Same as `--rerun-all`; **destructive** |
 | `clean_logging` | `true` | Suppress noisy HTTP/crawler logs |
 
@@ -460,7 +436,6 @@ Edit the `Config` dataclass to change these.
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
 | `embedding_model_name` | `BAAI/bge-base-en-v1.5` | 768-dim embedding model |
-| `qdrant_upsert_batch_size` | `64` | Points per upsert request |
 | `embedding_batch_size` | `32` | Texts per embedding forward pass |
 
 ---
@@ -476,7 +451,6 @@ Edit the `Config` dataclass to change these.
 | `data/outputs/university_counseling_data.json` | Phase 4 | Master array, aggregated once per run |
 | `data/outputs/uni_outputs/<slug>.json` | Phase 3 | Per-university pretty JSON |
 | `data/outputs/country_outputs/` | `export --format json` | Per-country groupings |
-| `data/outputs/qdrant_export.json` | `export --format qdrant` | 768-dim vector payload |
 | `data/outputs/result.json` | Batch end | Global analytics summary |
 | `data/state.sqlite` | All phases | Resumable state, source map, quota ledger, audit log |
 | `loggings/` | All phases | Notebook lifecycle logs |
@@ -498,7 +472,7 @@ Notes:
 ```bash
 pip install -r requirements.txt
 python3 -m playwright install chromium
-# populate config.json, then:
+# populate run_settings.json, then:
 python3 cli.py batch
 python3 cli.py analytics
 ```
@@ -506,14 +480,14 @@ python3 cli.py analytics
 ### Test one university before committing to a batch
 
 ```bash
-python3 src/pipeline.py --url https://itu.edu.pk --name "Information Technology University" --max-links 25
+python3 run.py --url https://itu.edu.pk --name "Information Technology University" --max-links 25
 python3 cli.py inspect itu
 ```
 
 ### Tune Phase 1 without spending quota
 
 ```bash
-python3 src/extract_links.py --url https://itu.edu.pk --max-links 40 --threshold 0.7
+python3 -m src.extractor.linkers.runner --url https://itu.edu.pk --max-links 40 --threshold 0.7
 head -40 extracted_links_detailed.txt
 ```
 
@@ -530,18 +504,20 @@ python3 cli.py batch          # completed universities are skipped automatically
 python3 cli.py retry failed
 ```
 
-### Rebuild the vector database
+### Check the corpus is fit to publish
 
 ```bash
-python3 cli.py export --format qdrant --sync
-python3 query_qdrant.py -q "BS Computer Science admission portal"
+python3 cli.py audit
 ```
+
+Exits non-zero when required-field coverage is below the floors in `src/config.py`, so it can
+gate a push script rather than only a human reading a table.
 
 ### Check remaining daily quota before a large batch
 
 ```bash
 python3 -c "
-from src.state import StateManager
+from src.utilities.state_management import StateManager
 sm = StateManager()
 print('used today:', sm.queries_used_today(), '| remaining:', sm.remaining_query_budget())
 sm.close()"
@@ -551,7 +527,7 @@ sm.close()"
 
 ```bash
 python3 -c "
-from src.pipeline import compile_master_json
+from src.orchestrator import compile_master_json
 compile_master_json()"
 ```
 
@@ -561,7 +537,8 @@ compile_master_json()"
 
 **`Phase 1 produced zero links` / exit code 1**
 The site blocked the crawler or the threshold is too strict. Retry Phase 1 standalone with a
-lower `--threshold` and more pages: `python3 src/extract_links.py --url <url> --threshold 0.5 --max-pages 20`.
+lower `--threshold` and more pages:
+`python3 -m src.extractor.linkers.runner --url <url> --threshold 0.5 --max-pages 20`.
 
 **`RPCError rpc_code=9` during upload**
 NotebookLM's server-side crawler could not fetch the URL. The pre-flight check
@@ -583,9 +560,10 @@ snippet in §10; wait for UTC rollover or raise `daily_query_budget` if your pla
 crashed run leaves its notebook behind by design, so the ingested sources can be reused.
 Audit with `python3 cli.py notebooks`.
 
-**`Qdrant Connection Notice: ...`**
-The vector payload is still saved locally to `data/outputs/qdrant_export.json`. Start a local
-instance with `docker run -p 6333:6333 qdrant/qdrant`, or check `QDRANT_URL` / `QDRANT_API_KEY`.
+**Two degree buckets holding identical programmes**
+One query received another's answer. The extractor refuses to file that and reports both
+blocks failed; `python3 cli.py audit` also detects it in payloads written before the guard
+existed. Re-extract the university.
 
 **HTTP/2 unavailable warning**
 The optional `h2` package is missing. The pooled client falls back to HTTP/1.1 keep-alive,
