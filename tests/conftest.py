@@ -29,6 +29,12 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
     they just override an already-safe value.
     """
     workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    # base_dir too, and not only for tidiness: the orchestrator's flat-file link
+    # fallback reads `config.base_dir / "extracted_links.txt"`, so without this a
+    # test that harvests zero links silently picks up the repo root's real file
+    # and provisions a notebook for it. Found writing the C27 e2e suite.
+    monkeypatch.setattr(config, "base_dir", workspace)
     for name, relative in [
         ("data_dir", "data"),
         ("data_links_dir", "data/links"),
