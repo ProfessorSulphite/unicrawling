@@ -1,5 +1,8 @@
 """
-Unit tests for Interactive CLI Expansion & Vector DB Exporter (src/inspect_cli.py)
+Unit tests for the inspector package (C20 split it out of src/inspect_cli.py).
+
+Imports point at the defining modules, not the shim: patching a name on a shim
+rebinds a copy the real callers never read. See tests/test_shim_hygiene.py.
 """
 import json
 import csv
@@ -8,13 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from src.inspect_cli import (
-    extract_numeric_fee,
-    find_university_record,
-    compare_universities,
-    search_programs,
-    export_dataset,
-)
+from src.inspector.dashboard import compare_universities, search_programs
+from src.inspector.formatting import extract_numeric_fee
+from src.inspector.records import find_university_record
+from src.inspector.sync import export_dataset
 
 
 @pytest.fixture
@@ -121,9 +121,9 @@ def mock_master_data(monkeypatch, tmp_path):
         with open(uni_outputs / f"{slug}.json", "w", encoding="utf-8") as f:
             json.dump(r, f)
 
-    monkeypatch.setattr("src.inspect_cli.config.output_jsonl_path", output_jsonl)
-    monkeypatch.setattr("src.inspect_cli.config.outputs_uni_outputs_dir", uni_outputs)
-    monkeypatch.setattr("src.inspect_cli.config.data_outputs_dir", tmp_path)
+    monkeypatch.setattr("src.inspector.records.config.output_jsonl_path", output_jsonl)
+    monkeypatch.setattr("src.inspector.records.config.outputs_uni_outputs_dir", uni_outputs)
+    monkeypatch.setattr("src.inspector.records.config.data_outputs_dir", tmp_path)
 
     return tmp_path, records
 
@@ -204,7 +204,7 @@ def test_export_offers_only_the_surviving_formats():
     """
     import argparse
 
-    import src.inspect_cli as cli
+    from src.inspector import cli
 
     parser_src = inspect.getsource(cli.main)
     assert "qdrant" not in parser_src.lower()

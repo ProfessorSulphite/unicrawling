@@ -27,7 +27,7 @@ try:
     from src.extract_links import run_pipeline as run_link_extractor, close_shared_crawler
     from src.ingest import ingest_university_sources, close_http_client
     from src.extract_data import extract_university_payload
-    from src.inspect_cli import audit_analytics
+    from src.inspector.analytics import audit_analytics
     from src.json_io import append_jsonl, atomic_write_json, iter_jsonl, stream_compile_master_json
 except ImportError:
     from config import config
@@ -35,7 +35,7 @@ except ImportError:
     from extract_links import run_pipeline as run_link_extractor, close_shared_crawler
     from ingest import ingest_university_sources, close_http_client
     from extract_data import extract_university_payload
-    from inspect_cli import audit_analytics
+    from inspector.analytics import audit_analytics
     from json_io import append_jsonl, atomic_write_json, iter_jsonl, stream_compile_master_json
 
 
@@ -441,9 +441,9 @@ async def run_batch_pipeline(
 
     # Post-processing: Universal Normalization & Export
     try:
-        from src.inspect_cli import export_dataset
+        from src.inspector.sync import export_dataset
     except ImportError:
-        from inspect_cli import export_dataset
+        from inspector.sync import export_dataset
 
     console.print("\n[bold cyan]🌐 Aggregating master JSON array (single streamed pass)...[/bold cyan]")
     compile_master_json()
@@ -459,9 +459,9 @@ async def run_batch_pipeline(
 def generate_result_analytics(config_path: Path) -> Path:
     """Generates result.json containing global dataset analytics."""
     try:
-        from src.inspect_cli import iter_all_records
+        from src.inspector.records import iter_all_records
     except ImportError:
-        from inspect_cli import iter_all_records
+        from inspector.records import iter_all_records
 
     country_counts = {}
     total_unis = 0
