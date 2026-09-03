@@ -6,10 +6,8 @@ retired bucket names, retired degree-level values and the pre-C18 singular
 deadline key are migrated on read. That is why a schema change has to keep a
 migration path: this is the door every stored file comes back through.
 
-`find_university_record` does NOT do that on its filename fast path -- it returns
-the file verbatim -- so a stored record in an older shape reads differently
-depending on which function found it. Carried over as-is by the C20 move; fixed
-next.
+Both lookup routes go through `_normalized`, so the same stored file reads the
+same way whether it was found by filename or by the fallback scan.
 
 Reads only. Nothing in this module writes, exports, or triggers a run.
 """
@@ -17,6 +15,20 @@ import json
 from typing import Any, Dict, Iterator, List, Optional
 
 from src.config import config
+from src.extractor.normalizers.runner import normalize_universal_payload
+
+
+def _normalized(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The single point every stored file passes through on its way back in.
+
+    Both lookup routes call it. They used to disagree: find_university_record's
+    filename fast path returned the file verbatim, so a pre-C17 payload reported
+    zero programmes to `inspect` and `diff` -- its programmes were still filed
+    under the retired bucket names -- while `search` and `export`, which stream
+    through iter_all_records, saw every one of them.
+    """
+    return normalize_universal_payload(data)
 
 
 def iter_all_records() -> Iterator[Dict[str, Any]]:
@@ -28,11 +40,6 @@ def iter_all_records() -> Iterator[Dict[str, Any]]:
     size of the corpus. `load_all_records()` remains the eager list form for
     callers that genuinely need random access.
     """
-    try:
-        from src.universal_normalizer import normalize_universal_payload
-    except ImportError:
-        from universal_normalizer import normalize_universal_payload
-
     seen_slugs = set()
 
     # 1. Stream the master JSONL ledger if it exists
@@ -48,7 +55,7 @@ def iter_all_records() -> Iterator[Dict[str, Any]]:
                 name = data.get("main_info", {}).get("name", "")
                 if name and name not in seen_slugs:
                     seen_slugs.add(name)
-                    yield normalize_universal_payload(data)
+                    yield _normalized(data)
 
     # 2. Check per-slug JSON files in uni_outputs directory
     if config.outputs_uni_outputs_dir.exists():
@@ -61,7 +68,7 @@ def iter_all_records() -> Iterator[Dict[str, Any]]:
             name = data.get("main_info", {}).get("name", "")
             if name and name not in seen_slugs:
                 seen_slugs.add(name)
-                yield normalize_universal_payload(data)
+                yield _normalized(data)
 
 
 def load_all_records() -> List[Dict[str, Any]]:
@@ -79,7 +86,7 @@ def find_university_record(query: str) -> Optional[Dict[str, Any]]:
             if query_clean in f.stem.lower():
                 try:
                     with open(f, "r", encoding="utf-8") as file_obj:
-                        return json.load(file_obj)
+                        return _normalized(json.load(file_obj))
                 except Exception:
                     pass
 
