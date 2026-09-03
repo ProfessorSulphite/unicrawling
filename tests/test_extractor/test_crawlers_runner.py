@@ -176,3 +176,97 @@ def test_registry_lookup_misses_are_non_fatal():
     out = apply_registry_facts(main, "unknown.edu.pk")
     assert out.name == "Unknown Uni"
     assert out.domain_verified is False
+
+
+# ------------------------------------------- concurrent asks cross-contaminate --
+#
+# Found on a live ITU run, notebook 029c9450, 2026-09-03. The `bachelors` ask was
+# in flight 10:38:21-10:43:35 and the `phd` ask 10:41:15-10:46:00; both returned
+# byte-identical 4617-byte payloads containing the PhD programmes, and the
+# bachelors bucket of the saved payload equalled the phd bucket element for
+# element. Two different prompts, one answer, no error raised.
+#
+# An unkeyed chat.ask() polls the notebook for its newest turn, so an ask still
+# waiting when a later ask's turn lands reads that turn instead of its own.
+
+_PHD_ANSWER = json.dumps([
+    {"name": "PhD Computer Science", "degree_level": "phd",
+     "department": "Department of Computer Science", "eligibility_requirements": {}},
+    {"name": "PhD Electrical Engineering", "degree_level": "phd",
+     "department": "Electrical Engineering Department", "eligibility_requirements": {}},
+])
+
+
+def test_the_query_suite_issues_one_ask_at_a_time():
+    """
+    The structural guarantee. A semaphore with a raised limit, or a stray
+    asyncio.gather, reintroduces the race -- so this reads the source rather
+    than trusting a comment.
+    """
+    import ast
+    import inspect as _inspect
+
+    from src.extractor.crawlers import runner as crawler_runner
+
+    tree = ast.parse(_inspect.getsource(crawler_runner.extract_university_payload))
+    called = {
+        n.func.attr
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+    }
+    assert "gather" not in called, "the suite must not fan the queries out concurrently"
+    assert "Semaphore" not in called, "a semaphore here means more than one ask is in flight"
+
+
+async def test_two_queries_returning_one_answer_are_both_dropped():
+    """
+    The safety net for the failure above. Neither block may be filed: there is
+    no way to tell which query the shared answer belonged to, and guessing is
+    exactly how the bug did its damage.
+    """
+    client = _extract_client([_Q1, _PHD_ANSWER, "[]", _PHD_ANSWER, "[]", "[]"])
+    payload, report = await extract_university_payload(client, "nb-1", "ITU", "itu.edu.pk")
+
+    assert payload.programs.bachelors == []
+    assert payload.programs.phd == []
+    assert not report.ok, "a duplicated answer must not report a clean extraction"
+    assert set(report.failed) == {"bachelors", "phd"}
+    assert "received the other's response" in report.failed["bachelors"]
+
+
+async def test_the_saved_payload_can_never_repeat_the_itu_shape():
+    """The exact assertion that would have caught it: no two buckets are equal."""
+    client = _extract_client([_Q1, _PHD_ANSWER, "[]", _PHD_ANSWER, "[]", "[]"])
+    payload, _ = await extract_university_payload(client, "nb-1", "ITU", "itu.edu.pk")
+
+    buckets = {
+        "bachelors": payload.programs.bachelors,
+        "masters": payload.programs.masters,
+        "phd": payload.programs.phd,
+        "diploma": payload.programs.diploma,
+    }
+    for a in buckets:
+        for b in buckets:
+            if a < b and buckets[a] and buckets[b]:
+                assert buckets[a] != buckets[b], f"{a} and {b} hold the same programmes"
+
+
+async def test_two_empty_queries_are_not_treated_as_contamination():
+    """Four empty arrays are the normal case for a small university, not a bug."""
+    client = _extract_client([_Q1, "[]", "[]", "[]", "[]", "[]"])
+    payload, report = await extract_university_payload(client, "nb-1", "ITU", "itu.edu.pk")
+    assert report.ok
+    assert payload.programs.bachelors == [] and payload.programs.phd == []
+
+
+async def test_genuinely_different_answers_are_left_alone():
+    bs = json.dumps([{"name": "BS Computer Science", "degree_level": "bachelors",
+                      "eligibility_requirements": {}}])
+    client = _extract_client([_Q1, bs, "[]", _PHD_ANSWER, "[]", "[]"])
+    payload, report = await extract_university_payload(client, "nb-1", "ITU", "itu.edu.pk")
+
+    assert [p.name for p in payload.programs.bachelors] == ["BS Computer Science"]
+    assert [p.name for p in payload.programs.phd] == [
+        "PhD Computer Science", "PhD Electrical Engineering",
+    ]
+    assert report.ok

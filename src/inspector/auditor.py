@@ -117,6 +117,16 @@ class ProgramGap:
     missing_fields: Tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class MisfiledProgram:
+    """A programme sitting in a bucket its own degree_level contradicts."""
+
+    university: str
+    program: str
+    bucket: str
+    declared_level: str
+
+
 @dataclass
 class CoverageReport:
     universities: int = 0
@@ -125,6 +135,8 @@ class CoverageReport:
     fields: Dict[str, FieldCoverage] = field(default_factory=dict)
     gaps: List[ProgramGap] = field(default_factory=list)
     universities_without_programs: List[str] = field(default_factory=list)
+    misfiled: List[MisfiledProgram] = field(default_factory=list)
+    duplicated_buckets: List[Tuple[str, str, str]] = field(default_factory=list)
 
     @property
     def complete_programs(self) -> int:
@@ -179,6 +191,19 @@ def audit_records(records: Iterable[Dict[str, Any]]) -> CoverageReport:
                 report.programs += 1
                 report.by_level[bucket] += 1
 
+                # A programme whose own degree_level contradicts the bucket it
+                # sits in was filed by something other than what it says it is.
+                declared = str(prog.get("degree_level") or "").strip().lower()
+                if declared and declared != bucket:
+                    report.misfiled.append(
+                        MisfiledProgram(
+                            university=uni,
+                            program=str(prog.get("name") or "Unnamed programme"),
+                            bucket=bucket,
+                            declared_level=declared,
+                        )
+                    )
+
                 missing = audit_program(prog)
                 for name in REQUIRED_PROGRAM_FIELDS:
                     if name not in missing:
@@ -195,6 +220,17 @@ def audit_records(records: Iterable[Dict[str, Any]]) -> CoverageReport:
 
         if not found_any:
             report.universities_without_programs.append(uni)
+
+        # Two buckets holding the same programmes means one query received
+        # another's answer. Detected at extraction since the 2026-09-03 ITU run,
+        # but a corpus already on disk predates that guard, so it is checked on
+        # read as well -- this is the check that would have reported the ITU
+        # payload without anyone reading the JSON by hand.
+        filled = [(b, programs.get(b) or []) for b in PROGRAM_BUCKETS]
+        for i, (bucket_a, items_a) in enumerate(filled):
+            for bucket_b, items_b in filled[i + 1:]:
+                if items_a and items_b and items_a == items_b:
+                    report.duplicated_buckets.append((uni, bucket_a, bucket_b))
 
     report.fields = {
         name: FieldCoverage(name=name, present=present_counts[name], total=report.programs)
@@ -260,6 +296,24 @@ def readiness_verdict(
                 f"'{coverage.name}' is answered for {coverage.ratio:.0%} of programmes, "
                 f"below the {min_field:.0%} floor ({coverage.missing} missing)."
             )
+
+    # Structural corruption, not a coverage shortfall: no threshold applies.
+    for uni, bucket_a, bucket_b in report.duplicated_buckets:
+        blocking.append(
+            f"{uni}: the '{bucket_a}' and '{bucket_b}' buckets hold identical "
+            f"programmes -- one query received the other's answer, so one of the "
+            f"two degree levels is wrong. Re-extract this university."
+        )
+
+    if report.misfiled:
+        shown = ", ".join(
+            f"{m.program!r} ({m.declared_level} filed under {m.bucket})"
+            for m in report.misfiled[:3]
+        )
+        blocking.append(
+            f"{len(report.misfiled)} programmes sit in a bucket their own "
+            f"degree_level contradicts: {shown}."
+        )
 
     if report.overall_ratio < min_overall:
         blocking.append(
@@ -341,6 +395,16 @@ def render_audit(report: CoverageReport, verdict: ReadinessVerdict) -> None:
         for uni, count in sorted(worst.items(), key=lambda kv: -kv[1])[:15]:
             offenders.add_row(uni, str(count))
         console.print(offenders)
+
+    if report.misfiled:
+        misfiled = Table(title="🚩 Programmes Filed Under the Wrong Degree Level", show_lines=True)
+        misfiled.add_column("University", style="bold cyan")
+        misfiled.add_column("Programme", style="bold yellow")
+        misfiled.add_column("Filed under", style="bold red")
+        misfiled.add_column("Says it is", style="green")
+        for m in report.misfiled[:15]:
+            misfiled.add_row(m.university, m.program, m.bucket, m.declared_level)
+        console.print(misfiled)
 
     for note in verdict.warnings:
         console.print(f"[yellow]⚠ {note}[/yellow]")

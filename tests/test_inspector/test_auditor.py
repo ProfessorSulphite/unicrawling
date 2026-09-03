@@ -297,3 +297,59 @@ def test_an_entirely_empty_degree_level_warns():
     warning = " ".join(verdict.warnings)
     for level in ("masters", "phd", "diploma"):
         assert level in warning
+
+
+# ------------------------------------- structural corruption, read from disk --
+#
+# The 2026-09-03 ITU payload: the bachelors bucket held the PhD programmes,
+# element for element, because concurrent asks against one notebook returned each
+# other's answers. The extractor now refuses to file that, but a corpus already
+# on disk predates the guard -- so the auditor has to catch it on read too.
+
+def test_two_buckets_holding_the_same_programmes_block_the_push():
+    phd = [_program("PhD Computer Science", "phd", degree_level="phd")]
+    corpus = [_record("ITU", {"bachelors": list(phd), "phd": list(phd)})]
+
+    report = audit_records(corpus)
+    assert report.duplicated_buckets == [("ITU", "bachelors", "phd")]
+
+    verdict = readiness_verdict(report, min_field_coverage=0.0, min_overall_coverage=0.0)
+    assert verdict.ready is False
+    assert any("identical programmes" in r for r in verdict.blocking)
+
+
+def test_a_programme_contradicting_its_bucket_is_named():
+    """degree_level comes from the programme's own name (C17); the bucket lost."""
+    corpus = [_record("ITU", {"bachelors": [_program("PhD Computer Science", degree_level="phd")]})]
+
+    report = audit_records(corpus)
+    assert len(report.misfiled) == 1
+    m = report.misfiled[0]
+    assert (m.program, m.bucket, m.declared_level) == ("PhD Computer Science", "bachelors", "phd")
+
+    verdict = readiness_verdict(report, min_field_coverage=0.0, min_overall_coverage=0.0)
+    assert verdict.ready is False
+    assert any("degree_level contradicts" in r for r in verdict.blocking)
+
+
+def test_correctly_filed_programmes_raise_nothing(gappy_corpus):
+    report = audit_records(gappy_corpus)
+    assert report.misfiled == []
+    assert report.duplicated_buckets == []
+
+
+def test_two_empty_buckets_are_not_duplicates():
+    """Most universities have an empty diploma bucket; that is not corruption."""
+    report = audit_records([_record("ITU", {"bachelors": [_program()], "phd": [], "diploma": []})])
+    assert report.duplicated_buckets == []
+
+
+def test_coincidentally_equal_single_programmes_are_still_flagged():
+    """
+    Two buckets holding an identical programme cannot be a coincidence: the same
+    degree cannot be both a bachelors and a PhD. Flagging it is correct even
+    though the check is cheap.
+    """
+    same = [_program("MS Data Science", "masters", degree_level="masters")]
+    report = audit_records([_record("ITU", {"masters": list(same), "diploma": list(same)})])
+    assert report.duplicated_buckets == [("ITU", "masters", "diploma")]

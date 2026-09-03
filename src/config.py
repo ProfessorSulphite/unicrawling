@@ -158,9 +158,13 @@ class Config:
     # ═══════════════════════════════════════════════════════════════════════
     chat_timeout_sec: int = 180              # Seconds to wait for a NotebookLM response before timing out
     max_query_retries: int = 2               # Retries per failing query before the university is marked failed
-    # Independent queries in the suite run concurrently. Kept low: the ceiling
-    # here is NotebookLM's per-notebook chat rate limit, not our CPU.
-    query_concurrency: int = 3               # Queries issued in parallel per notebook; raising it risks rate limiting
+    # NOT the query suite. The suite against one notebook is serial and must stay
+    # that way: concurrent unkeyed asks share a conversation, and an ask still
+    # waiting when a later ask's turn lands returns THAT turn's answer. Observed
+    # live on 2026-09-03 -- `bachelors` and `phd` came back byte-identical and the
+    # PhD programmes were filed as bachelors, with no error raised. This knob now
+    # governs notebook-level parallelism only, where no conversation is shared.
+    query_concurrency: int = 3               # Notebooks queried in parallel; the per-notebook suite is always serial
     # NotebookLM Pro daily ceiling. C17 added the 6th (diploma) query, so the
     # arithmetic is now 6 x 83 universities = 498 -- which clears the cap by two
     # queries and leaves no retry headroom at all. A full 83-university batch

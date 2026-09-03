@@ -105,6 +105,55 @@ def apply_registry_facts(main_info: MainInfo, domain: str) -> MainInfo:
 # Orchestration
 # ---------------------------------------------------------------------------
 
+PROGRAM_QUERY_KEYS = ("bachelors", "masters", "phd", "diploma")
+
+
+def _flag_cross_contaminated_buckets(
+    results: Dict[str, Any], uni_name: str, report: "ExtractionReport"
+) -> None:
+    """
+    Refuse to file two programme queries that came back with the same answer.
+
+    The suite runs serially precisely so this cannot happen (see the note in
+    extract_university_payload), but a duplicated answer is invisible in the
+    output -- a full, plausible programme list under the wrong degree level --
+    and it went undetected on a live run until the payload was read by hand. A
+    guard that costs one set comparison is worth having permanently.
+
+    Both offending blocks are dropped rather than one kept. There is no way to
+    tell from here which query the shared answer actually belonged to, and
+    filing it under a guess is how the bug did its damage in the first place.
+    The queries are recorded as failed, so report.ok is False and the caller
+    reports a partial extraction instead of a clean one.
+    """
+    seen: Dict[str, str] = {}
+    for key in PROGRAM_QUERY_KEYS:
+        value = results.get(key)
+        if not value:
+            continue
+        # Compare the answers themselves, not the objects: two parses of one
+        # response are distinct objects with identical content.
+        fingerprint = json.dumps(
+            [p.model_dump(mode="json") if hasattr(p, "model_dump") else p for p in value],
+            sort_keys=True,
+            default=str,
+        )
+        if fingerprint in seen:
+            other = seen[fingerprint]
+            msg = (
+                f"identical answer returned for '{key}' and '{other}' "
+                f"({len(value)} programmes) -- one query received the other's "
+                f"response; both blocks dropped"
+            )
+            logger.error(f"{uni_name}: {msg}")
+            report.failed[key] = msg
+            report.failed[other] = msg
+            results[key] = []
+            results[other] = []
+            continue
+        seen[fingerprint] = key
+
+
 async def extract_university_payload(
     client: NotebookLMClient,
     notebook_id: str,
@@ -136,38 +185,37 @@ async def extract_university_payload(
             ids.extend(source_ids_by_tier.get(tier, []))
         return ids or None
 
-    # The five queries share no data, so they are issued concurrently under a
-    # semaphore rather than in a serial loop.
+    # The suite runs SERIALLY, one ask at a time against this notebook. This is a
+    # correctness requirement, not a throughput choice.
     #
-    # IMPORTANT -- measured, not assumed: against a single notebook this does NOT
-    # currently reduce wall time. The notebooklm SDK takes a per-notebook_id lock
-    # for the full duration of any chat.ask() made without a conversation_id
-    # (_chat/api.py: `async with self._get_new_conversation_lock(notebook_id)`),
-    # because the server treats concurrent unkeyed asks as racing turn N+1. The
-    # SDK exposes no way to create independent conversations, so the suite
-    # serialises inside the client no matter what we do here.
+    # Concurrent asks against one notebook return each other's answers. Observed
+    # on a live ITU run (notebook 029c9450, 2026-09-03): the `bachelors` ask was
+    # in flight from 10:38:21 to 10:43:35 and the `phd` ask from 10:41:15 to
+    # 10:46:00; both returned byte-identical 4617-byte payloads, and the content
+    # was the PhD programmes. The bachelors bucket in that payload is equal to
+    # the phd bucket element for element. Two different prompts, one answer.
     #
-    # This structure is kept because it is correct, costs nothing when
-    # serialised, and is the piece that would have to exist anyway: the real
-    # win available today is running multiple *notebooks* concurrently, where
-    # the per-notebook lock no longer binds.
-    sem = asyncio.Semaphore(max(1, config.query_concurrency))
-
-    async def _run_one(spec: QuerySpec) -> Tuple[str, Any, ExtractionReport]:
-        # Each query accumulates into its own sub-report, which is merged back in
-        # QUERY_SUITE order below. Sharing one report across concurrent tasks
-        # would make report.succeeded ordering depend on which answer landed
-        # first, so identical inputs could produce different reports.
-        sub = ExtractionReport()
-        async with sem:
-            value = await run_query(client, notebook_id, spec, ids_for(spec), sub)
-        return spec.key, value, sub
-
-    completed = await asyncio.gather(*(_run_one(spec) for spec in QUERY_SUITE))
-
+    # The mechanism is last-write-wins on the conversation: an unkeyed
+    # chat.ask() polls the notebook for its newest turn, so an ask still waiting
+    # when a later ask's turn lands reads that turn instead of its own. The SDK's
+    # per-notebook lock guards conversation *creation*, not answer routing, so it
+    # does not prevent this.
+    #
+    # This is the worst failure shape available: no exception, no empty block, a
+    # full and plausible answer filed under the wrong degree level. It has been
+    # live since 4d531f0 and cost nothing in wall time to have -- the previous
+    # comment here recorded, correctly, that concurrency was already not reducing
+    # wall time against a single notebook. It was pure downside.
+    #
+    # The real parallelism available is across *notebooks*, where no conversation
+    # is shared. That stays open; config.query_concurrency now governs it and is
+    # deliberately not read here.
     results: Dict[str, Any] = {}
-    for key, value, sub in completed:   # gather preserves QUERY_SUITE order
-        results[key] = value
+    for spec in QUERY_SUITE:
+        # Each query accumulates into its own sub-report, merged back in
+        # QUERY_SUITE order so identical inputs produce identical reports.
+        sub = ExtractionReport()
+        results[spec.key] = await run_query(client, notebook_id, spec, ids_for(spec), sub)
         report.merge(sub)
 
     # --- Block 1 & 4: main_info + contact ---
@@ -195,6 +243,7 @@ async def extract_university_payload(
     # --- Block 2: programs ---
     # Bucket names, QuerySpec keys and DegreeLevel values are all the same four
     # strings since C17, so this is a straight fan-out with nothing to translate.
+    _flag_cross_contaminated_buckets(results, uni_name, report)
     programs = ProgramCategoryBlock(
         bachelors=results.get("bachelors") or [],
         masters=results.get("masters") or [],
