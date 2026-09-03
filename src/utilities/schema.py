@@ -215,6 +215,36 @@ class ProgramItem(BaseModel):
         return [str(v).strip()]
 
 
+# Plan section 5, "Per-program required fields". The canonical list lives here,
+# in the leaf layer, so the model that declares the fields and the auditor that
+# reports them missing cannot drift apart -- the auditor imports this rather than
+# keeping its own copy, and test_program_fields asserts every entry is a real
+# field on ProgramItem.
+#
+# "Required" here means *required to be answered*, not required by Pydantic.
+# Every one of these is Optional on the model on purpose: forcing them at
+# validation would reject a whole university's payload over one unanswered field,
+# and spend real NotebookLM budget on a repair re-ask that learns nothing. The
+# schema lets a gap through; the auditor is what refuses to ship it.
+REQUIRED_PROGRAM_FIELDS = (
+    "name",
+    "degree_level",
+    "duration",
+    "tuition_fee",
+    "currency",
+    "eligibility_requirements",
+    "admission_requirements",
+    "application_fee",
+    "application_deadlines",
+    "description",
+)
+
+# Without these a row is not a programme at all: name is what a student searches
+# and degree_level is which bucket it lives in. Everything else can be a
+# documented gap; these two cannot.
+CRITICAL_PROGRAM_FIELDS = ("name", "degree_level")
+
+
 class ProgramCategoryBlock(BaseModel):
     """One bucket per DegreeLevel; the key names match the enum values exactly.
 

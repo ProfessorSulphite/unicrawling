@@ -21,23 +21,19 @@ import pytest
 from src.extractor.crawlers.notebook_querying import QUERY_SUITE
 from src.extractor.normalizers.program_fields import apply_program_field_carryover
 from src.extractor.normalizers.runner import normalize_universal_payload
-from src.utilities.schema import SUMMARY_FALLBACK, ProgramItem, UniversityPayload
+from src.utilities.schema import (
+    REQUIRED_PROGRAM_FIELDS,
+    SUMMARY_FALLBACK,
+    ProgramItem,
+    UniversityPayload,
+)
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "normalizer"
 
 # Plan section 5, "Per-program required fields", one entry per bullet.
-REQUIRED_PROGRAM_FIELDS = [
-    "name",
-    "degree_level",
-    "duration",
-    "tuition_fee",
-    "currency",
-    "eligibility_requirements",
-    "admission_requirements",
-    "application_fee",
-    "application_deadlines",
-    "description",
-]
+# C21 moved the canonical list into the schema module, so the model that declares
+# these fields, the auditor that reports them missing, and this test all read one
+# definition. A copy here would let the auditor quietly stop checking a field.
 
 
 def _item(**over):

@@ -6,6 +6,7 @@ DEPRECATED compatibility shim -- inspect_cli.py was split into src/inspector/ in
   records.py     the read layer -- every command reaches the corpus through it
   dashboard.py   rendered views: one university, a diff, a search, the manifests
   analytics.py   dataset-wide counts, distributions and coverage
+  auditor.py     per-programme required-field coverage and the push verdict
   sync.py        the export seam: CSV and the country-grouped JSON tree
   cli.py         argparse table and TUI menu -- the entry surface
 
@@ -55,4 +56,4 @@ from src.inspector.records import (  # noqa: E402,F401
 from src.inspector.sync import export_dataset  # noqa: E402,F401
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

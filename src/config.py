@@ -163,6 +163,19 @@ class Config:
     queries_per_university: int = 6          # Queries in the suite; reserved up-front per university, so it must match QUERY_SUITE
 
     # ═══════════════════════════════════════════════════════════════════════
+    # AUDIT THRESHOLDS (plan section 5; consumed by inspector/auditor.py)
+    # The gate on "Local DB -> Supabase push only AFTER inspector validation
+    # passes". Knobs rather than constants so raising the bar is a recorded
+    # config change and not an edit buried in the auditor.
+    #
+    # Starting values are deliberately reachable rather than aspirational: at a
+    # 90% floor every real corpus fails on application_fee alone and the verdict
+    # stops carrying information. Raise them as extraction improves.
+    # ═══════════════════════════════════════════════════════════════════════
+    audit_min_field_coverage: float = 0.60    # Floor each non-critical required field must clear on its own
+    audit_min_overall_coverage: float = 0.70  # Floor for answered cells across the whole required-field grid
+
+    # ═══════════════════════════════════════════════════════════════════════
     # EXTERNAL API KEYS
     # ═══════════════════════════════════════════════════════════════════════
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete

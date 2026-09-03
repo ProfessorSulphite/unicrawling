@@ -12,12 +12,14 @@ it offers "retry", so anything holding it would inherit that dependency.
 """
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 from rich.prompt import Confirm, Prompt
 
 from src.config import config
 from src.inspector.analytics import audit_analytics
+from src.inspector.auditor import audit_corpus
 from src.inspector.dashboard import (
     compare_universities,
     inspect_notebooks,
@@ -108,6 +110,7 @@ def interactive_menu():
         console.print("3. 🔍 Search Degree Programs Globally")
         console.print("4. 🔄 Retry Failed / Pending Pipeline Runs")
         console.print("5. 📊 View Dataset Analytics Dashboard")
+        console.print("A. 🔬 Audit Per-Programme Required Fields (Supabase readiness)")
         console.print("6. 🗄️ Inspect SQLite State Manifest")
         console.print("7. 📜 Display Master JSON Schema")
         console.print("8. ☁️ List Active NotebookLM Notebooks")
@@ -115,7 +118,11 @@ def interactive_menu():
         console.print("0. 🚪 Exit")
         console.print("=" * 55, style="cyan")
 
-        choice = Prompt.ask("Select an option", choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], default="0")
+        choice = Prompt.ask(
+            "Select an option",
+            choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A"],
+            default="0",
+        ).upper()
 
         if choice == "0":
             console.print("[yellow]Exiting Developer Workstation. Goodbye![/yellow]")
@@ -141,6 +148,8 @@ def interactive_menu():
             retry_pipeline(tgt)
         elif choice == "5":
             audit_analytics()
+        elif choice == "A":
+            audit_corpus()
         elif choice == "6":
             inspect_state()
         elif choice == "7":
@@ -196,6 +205,12 @@ def main():
     analytics_parser = subparsers.add_parser("analytics", help="Audit dataset health & quality metrics")
     analytics_parser.add_argument("--file", type=Path, default=config.output_jsonl_path, help="Path to JSONL file")
 
+    # Command: audit
+    subparsers.add_parser(
+        "audit",
+        help="Audit per-programme required-field coverage and rule on push readiness",
+    )
+
     # Command: state
     subparsers.add_parser("state", help="Inspect SQLite pipeline execution state manifest")
 
@@ -233,6 +248,10 @@ def main():
         export_dataset(format_type=args.format, output_path=args.output)
     elif args.command == "analytics":
         audit_analytics(args.file)
+    elif args.command == "audit":
+        # The one command whose answer a caller may need to branch on: a
+        # non-zero exit is what stops a push script at the gate.
+        return 0 if audit_corpus().ready else 1
     elif args.command == "state":
         inspect_state()
     elif args.command == "schema":
@@ -243,7 +262,8 @@ def main():
         interactive_menu()
     else:
         parser.print_help()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
