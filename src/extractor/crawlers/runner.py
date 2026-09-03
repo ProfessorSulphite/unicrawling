@@ -16,6 +16,7 @@ from notebooklm import NotebookLMClient
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.config import config
+from src.utilities.registry import load_registry, lookup as registry_lookup
 from src.logger.notebook_logger import log_notebook_deleted
 from src.utilities.schema import (
     ContactInfo,
@@ -44,35 +45,11 @@ logger = logging.getLogger("ExtractData")
 # Deterministic reference data
 # ---------------------------------------------------------------------------
 
-_RANKINGS_CACHE: Optional[Dict[str, Any]] = None
-
-
-def load_rankings_registry() -> Dict[str, Any]:
-    """Load resources/rankings_pk.json once per process."""
-    global _RANKINGS_CACHE
-    if _RANKINGS_CACHE is None:
-        try:
-            with open(config.rankings_json_path, "r", encoding="utf-8") as f:
-                _RANKINGS_CACHE = json.load(f).get("universities", {})
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Rankings registry unavailable ({e}); proceeding without it.")
-            _RANKINGS_CACHE = {}
-    return _RANKINGS_CACHE
-
-
-def lookup_registry(domain: str) -> Optional[Dict[str, Any]]:
-    """Find a university registry entry by canonical domain or alias."""
-    registry = load_rankings_registry()
-    key = domain.lower().replace("www.", "").strip("/")
-    if key in registry:
-        return registry[key]
-    for canonical, entry in registry.items():
-        if key == canonical or key in entry.get("aliases", []):
-            return entry
-        # Subdomain of a known institution (seecs.nust.edu.pk -> nust.edu.pk).
-        if key.endswith("." + canonical):
-            return entry
-    return None
+# C25 moved the registry itself to utilities/registry.py -- one file, one loader,
+# one lookup, shared with the normalizer. These two names are kept as the
+# extractor's vocabulary for it.
+load_rankings_registry = load_registry
+lookup_registry = registry_lookup
 
 
 def apply_registry_facts(main_info: MainInfo, domain: str) -> MainInfo:
@@ -96,9 +73,18 @@ def apply_registry_facts(main_info: MainInfo, domain: str) -> MainInfo:
         except ValueError:
             pass
 
+    # Assigned UNCONDITIONALLY, including when the registry has no rankings for
+    # this university. That is the anti-hallucination rule and it is deliberate:
+    # a rank the model supplied for an institution nobody recorded a rank for is
+    # invented, and an empty list is the correct answer. What was broken before
+    # C25 was the data, not this line -- every rankings_pk.json entry held [],
+    # so this correctly-written assignment erased the sourced QS ranks that
+    # rankings_global.json carried (NUST 353, LUMS 540) on every run.
     main_info.rankings = [RankingItem(**r) for r in entry.get("rankings", [])]
     main_info.domain_verified = True
-    main_info.verification_note = "Identity fields sourced from resources/rankings_pk.json registry."
+    main_info.verification_note = (
+        f"Identity fields sourced from {config.rankings_json_path.name} registry."
+    )
     return main_info
 
 # ---------------------------------------------------------------------------

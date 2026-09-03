@@ -1,0 +1,5 @@
+CHANGE: changed HEC_Link_Extractor to Linker in constants.py logger (line 41).
+REASON: For better naming.
+
+CHANGE: removed EXCLUDED_DOMAINS constant in constant.py (line 56).
+REASON: Pipeline requires you to give it links, so it is logical to crawl those links only.

@@ -12,6 +12,7 @@ from src.extractor.normalizers.currency_tuition import apply_currency_and_tuitio
 from src.extractor.normalizers.degree_names import apply_degree_level
 from src.extractor.normalizers.eligibility import normalize_eligibility
 from src.extractor.normalizers.program_fields import apply_program_field_carryover
+from src.utilities.registry import load_registry
 from src.utilities.schema import DegreeLevel
 
 # Bucket names in ProgramCategoryBlock, derived from the enum so the two cannot
@@ -32,27 +33,12 @@ RETIRED_PROGRAM_BUCKETS = {
 # object per name.
 logger = logging.getLogger("UniversalNormalizer")
 
-# Known global university facts registry. Two directories deeper than
-# universal_normalizer.py, so parents[3] replaces parent.parent.
-GLOBAL_FACTS_FILE = Path(__file__).resolve().parents[3] / "resources" / "rankings_global.json"
-_GLOBAL_REGISTRY: Optional[Dict[str, Any]] = None
-
-
-def load_global_registry() -> Dict[str, Any]:
-    global _GLOBAL_REGISTRY
-    if _GLOBAL_REGISTRY is not None:
-        return _GLOBAL_REGISTRY
-
-    if GLOBAL_FACTS_FILE.exists():
-        try:
-            with open(GLOBAL_FACTS_FILE, "r", encoding="utf-8") as f:
-                _GLOBAL_REGISTRY = json.load(f).get("universities", {})
-                return _GLOBAL_REGISTRY
-        except Exception as e:
-            logger.warning(f"Could not load global registry {GLOBAL_FACTS_FILE}: {e}")
-
-    _GLOBAL_REGISTRY = {}
-    return _GLOBAL_REGISTRY
+# C25: the registry moved to utilities/registry.py -- one file, one loader, one
+# lookup, shared with the extractor. The former module-level GLOBAL_FACTS_FILE is
+# gone rather than repointed: binding config.rankings_json_path at import time
+# freezes it, so a test pointing Config at a fixture would never be seen. The
+# loader reads the path at call time.
+load_global_registry = load_registry
 
 
 def normalize_universal_program(

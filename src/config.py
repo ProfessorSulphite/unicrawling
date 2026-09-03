@@ -43,7 +43,11 @@ class Config:
     resources_dir: Path = BASE_DIR / "resources"                                 # Static inputs and planning documents
     resources_plans_dir: Path = BASE_DIR / "resources" / "plans"                 # Crawling and refactoring plans
     resources_analysis_dir: Path = BASE_DIR / "resources" / "analysis"           # Code, prompt and configuration analyses
-    rankings_json_path: Path = BASE_DIR / "resources" / "rankings_pk.json"       # University identity/ranking registry; consolidated into rankings_global.json in C25
+    # C25 merged rankings_pk.json into this file: two registries with different
+    # schemas, separate caches, and three domains in both. The pk one carried
+    # rankings: [] for all 15 entries and the extractor assigned that over the
+    # payload, so sourced QS ranks were written out empty on every run.
+    rankings_json_path: Path = BASE_DIR / "resources" / "rankings_global.json"   # Sourced university identity and rankings registry, keyed by canonical domain
 
     tests_dir: Path = BASE_DIR / "tests"                                         # Test tree, mirroring the src/ package layout
 

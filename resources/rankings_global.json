@@ -1,28 +1,114 @@
 {
   "_meta": {
-    "purpose": "Ground-truth global university identity and rankings registry, keyed by domain name. Sourced for deterministic identity completion across Pakistan, Germany, US, UK, and Europe.",
+    "purpose": "Ground-truth university identity and rankings registry, keyed by canonical domain. Supplies main_info identity fields deterministically so the model is never asked to guess them, and supplies rankings, which are otherwise the most confidently hallucinated field in the payload. Consolidated from rankings_pk.json and rankings_global.json in C25.",
     "schema": {
       "<domain>": {
-        "name": "str",
-        "abbreviation": "str",
+        "name": "str  -- official registered name",
+        "abbreviation": "str | null",
         "country": "str",
-        "city": "str",
-        "established_year": "int",
-        "accreditation_body": "str",
+        "city": "str | null",
+        "type": "public | private | other | null",
+        "established_year": "int | null",
+        "accreditation_body": "str | null",
+        "aliases": [
+          "alternate domains that resolve to the same institution"
+        ],
         "rankings": [
           {
             "source": "QS World University Rankings | THE | Webometrics",
             "scope": "Global | National",
-            "subject": "Overall",
-            "year": 2026,
+            "subject": "str",
+            "year": "int",
             "rank": "int",
             "source_url": "str"
           }
         ]
       }
-    }
+    },
+    "rules": [
+      "A domain absent from this file yields no facts; nothing is inferred from the name.",
+      "Rankings are never taken from the model -- an entry with no ranking reports none.",
+      "aliases resolve subdomains and alternate domains onto the canonical entry."
+    ]
   },
   "universities": {
+    "aku.edu": {
+      "name": "Aga Khan University",
+      "abbreviation": "AKU",
+      "city": "Karachi",
+      "type": "private",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "au.edu.pk": {
+      "name": "Air University",
+      "abbreviation": "AU",
+      "city": "Islamabad",
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "bahria.edu.pk": {
+      "name": "Bahria University",
+      "abbreviation": "BU",
+      "city": "Islamabad",
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "comsats.edu.pk": {
+      "name": "COMSATS University Islamabad",
+      "abbreviation": "CUI",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": [
+        "cuiatd.edu.pk",
+        "cuilahore.edu.pk"
+      ],
+      "country": "Pakistan",
+      "rankings": []
+    },
+    "gcu.edu.pk": {
+      "name": "Government College University Lahore",
+      "abbreviation": "GCU",
+      "city": "Lahore",
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "giki.edu.pk": {
+      "name": "Ghulam Ishaq Khan Institute of Engineering Sciences and Technology",
+      "abbreviation": "GIKI",
+      "city": "Topi",
+      "type": "private",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "iba.edu.pk": {
+      "name": "Institute of Business Administration Karachi",
+      "abbreviation": "IBA Karachi",
+      "city": "Karachi",
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "itu.edu.pk": {
+      "name": "Information Technology University",
+      "abbreviation": "ITU",
+      "country": "Pakistan",
+      "city": "Lahore",
+      "type": "public",
+      "established_year": 2012,
+      "accreditation_body": "Higher Education Commission (HEC)",
+      "aliases": [],
+      "rankings": []
+    },
     "lmu.de": {
       "name": "Ludwig-Maximilians-Universität München",
       "abbreviation": "LMU",
@@ -47,7 +133,85 @@
           "rank": 38,
           "source_url": "https://www.timeshighereducation.com/world-university-rankings/lmu-munich"
         }
+      ],
+      "aliases": []
+    },
+    "lums.edu.pk": {
+      "name": "Lahore University of Management Sciences",
+      "abbreviation": "LUMS",
+      "country": "Pakistan",
+      "city": "Lahore",
+      "type": "private",
+      "established_year": 1984,
+      "accreditation_body": "Higher Education Commission (HEC) / NBEAC",
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 540,
+          "source_url": "https://www.topuniversities.com/universities/lahore-university-management-sciences-lums"
+        }
+      ],
+      "aliases": []
+    },
+    "nu.edu.pk": {
+      "name": "National University of Computer and Emerging Sciences",
+      "abbreviation": "FAST-NUCES",
+      "city": "Multi-Campus",
+      "type": "private",
+      "aliases": [
+        "isb.nu.edu.pk",
+        "lhr.nu.edu.pk",
+        "khi.nu.edu.pk"
+      ],
+      "country": "Pakistan",
+      "rankings": []
+    },
+    "nust.edu.pk": {
+      "name": "National University of Sciences and Technology",
+      "abbreviation": "NUST",
+      "country": "Pakistan",
+      "city": "Islamabad",
+      "type": "public",
+      "established_year": 1991,
+      "accreditation_body": "Higher Education Commission (HEC) / PEC",
+      "aliases": [
+        "seecs.nust.edu.pk",
+        "sines.nust.edu.pk",
+        "ceme.nust.edu.pk",
+        "pnec.nust.edu.pk",
+        "mcs.nust.edu.pk"
+      ],
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 353,
+          "source_url": "https://www.topuniversities.com/universities/national-university-sciences-technology-nust-islamabad"
+        }
       ]
+    },
+    "pu.edu.pk": {
+      "name": "University of the Punjab",
+      "abbreviation": "PU",
+      "city": "Lahore",
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
+    },
+    "qau.edu.pk": {
+      "name": "Quaid-i-Azam University",
+      "abbreviation": "QAU",
+      "city": "Islamabad",
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
     },
     "tum.de": {
       "name": "Technical University of Munich",
@@ -65,52 +229,26 @@
           "rank": 28,
           "source_url": "https://www.topuniversities.com/universities/technical-university-munich"
         }
-      ]
+      ],
+      "aliases": []
     },
-    "nust.edu.pk": {
-      "name": "National University of Sciences and Technology",
-      "abbreviation": "NUST",
+    "uaf.edu.pk": {
+      "name": "University of Agriculture Faisalabad",
+      "abbreviation": "UAF",
+      "city": "Faisalabad",
+      "type": "public",
       "country": "Pakistan",
-      "city": "Islamabad",
-      "established_year": 1991,
-      "accreditation_body": "Higher Education Commission (HEC) / PEC",
-      "rankings": [
-        {
-          "source": "QS World University Rankings",
-          "scope": "Global",
-          "subject": "Overall",
-          "year": 2026,
-          "rank": 353,
-          "source_url": "https://www.topuniversities.com/universities/national-university-sciences-technology-nust-islamabad"
-        }
-      ]
-    },
-    "itu.edu.pk": {
-      "name": "Information Technology University",
-      "abbreviation": "ITU",
-      "country": "Pakistan",
-      "city": "Lahore",
-      "established_year": 2012,
-      "accreditation_body": "Higher Education Commission (HEC)",
+      "aliases": [],
       "rankings": []
     },
-    "lums.edu.pk": {
-      "name": "Lahore University of Management Sciences",
-      "abbreviation": "LUMS",
-      "country": "Pakistan",
+    "uet.edu.pk": {
+      "name": "University of Engineering and Technology Lahore",
+      "abbreviation": "UET Lahore",
       "city": "Lahore",
-      "established_year": 1984,
-      "accreditation_body": "Higher Education Commission (HEC) / NBEAC",
-      "rankings": [
-        {
-          "source": "QS World University Rankings",
-          "scope": "Global",
-          "subject": "Overall",
-          "year": 2026,
-          "rank": 540,
-          "source_url": "https://www.topuniversities.com/universities/lahore-university-management-sciences-lums"
-        }
-      ]
+      "type": "public",
+      "country": "Pakistan",
+      "aliases": [],
+      "rankings": []
     }
   }
 }

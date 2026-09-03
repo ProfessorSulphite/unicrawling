@@ -19,6 +19,7 @@ from src.extractor.crawlers.runner import (
 )
 from src.config import config
 from src.utilities.schema import (
+    RankingItem,
     DegreeLevel,
     KeyLinks,
     MainInfo,
@@ -55,7 +56,7 @@ async def test_extraction_builds_validated_payload():
     payload, report = await extract_university_payload(client, "nb-1", "NUST", "nust.edu.pk")
     assert isinstance(payload, UniversityPayload)
     # The registry's official name deliberately overrides the model's "NUST";
-    # identity facts come from resources/rankings_pk.json, not from the answer.
+    # identity facts come from the registry, not from the answer.
     assert payload.main_info.name == "National University of Sciences and Technology"
     assert payload.main_info.abbreviation == "NUST"
     assert payload.main_info.domain_verified is True
@@ -159,15 +160,32 @@ def test_registry_overrides_llm_identity_fields():
     assert out.domain_verified is True
 
 
-def test_registry_never_invents_rankings():
+def test_rankings_come_from_the_registry_not_the_answer():
     """
-    A numeric world rank is the most confidently hallucinated field in the payload.
-    Until rankings_pk.json is populated from Webometrics/QS, rankings stay empty
-    rather than being taken from the model's answer.
+    A numeric world rank is the most confidently hallucinated field in the
+    payload, so it is only ever the registry's to supply. C25 populated the
+    registry, so this now asserts the sourced rank arrives -- the previous
+    version asserted `== []`, which was true only because rankings_pk.json held
+    no rankings at all, and that emptiness was itself the bug.
     """
     main = MainInfo(name="X", website="https://nust.edu.pk", description="d",
                     key_links=KeyLinks())
-    assert apply_registry_facts(main, "nust.edu.pk").rankings == []
+    out = apply_registry_facts(main, "nust.edu.pk")
+    assert [r.rank for r in out.rankings] == [353]
+    assert out.rankings[0].source == "QS World University Rankings"
+
+
+def test_a_model_supplied_rank_is_erased_for_an_unranked_university():
+    """
+    The other half, and the one that matters: ITU has no recorded ranking, so a
+    rank in the model's answer is invented and must not survive. The assignment
+    is unconditional for exactly this reason.
+    """
+    main = MainInfo(
+        name="ITU", website="https://itu.edu.pk", description="d", key_links=KeyLinks(),
+        rankings=[RankingItem(source="QS", scope="Global", year=2026, rank=12)],
+    )
+    assert apply_registry_facts(main, "itu.edu.pk").rankings == []
 
 
 def test_registry_lookup_misses_are_non_fatal():
