@@ -1,8 +1,8 @@
 """
 Characterization tests for the universal normalizer.
 
-Written BEFORE the C16 split, against the unsplit module, so the split has a net
-to fall into. universal_normalizer.py had no tests at all despite sitting on a
+Written BEFORE the C16 split, against the unsplit module, so the split had a net
+to fall into; repointed at the new modules by that split. universal_normalizer.py had no tests at all despite sitting on a
 production read path -- inspect_cli normalizes every payload it yields, so every
 export and every dashboard row goes through this code.
 
@@ -20,10 +20,10 @@ import pathlib
 
 import pytest
 
-from src.universal_normalizer import (
+from src.extractor.normalizers.currency_tuition import resolve_universal_currency
+from src.extractor.normalizers.runner import (
     normalize_universal_payload,
     normalize_universal_program,
-    resolve_universal_currency,
 )
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "normalizer"
