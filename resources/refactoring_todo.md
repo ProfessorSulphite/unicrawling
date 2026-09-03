@@ -97,8 +97,12 @@ again at the commit it affects.
   backup. All 21 data files were deleted from git and disk in C1, and `data/` is now ignored
   wholesale. Recoverable from tag `pre-refactor`. `state.sqlite` was verified empty (0 universities)
   before removal, so no stale "completed" state survives pointing at deleted outputs.
-- **D2 — Strip the normalizer's fabricated defaults?** (Finding 7.) *Recommendation: yes, strip; nulls
-  are honest and auditable.* Affects C19.
+- ~~**D2 — Strip the normalizer's fabricated defaults?**~~ ✅ **ANSWERED: yes, strip.** (Finding 7.)
+  User's reasoning, 2026-09-03: *"We will be running this pipeline not only on German and Pakistani
+  Unis but all Unis. Do what is reliable and sustainable in this context."* Every fabricated default
+  encoded an assumption about Pakistan or western Europe — the eligibility `else` branch handed the
+  entire rest of the world Pakistan's HSSC formula, which 240 of 263 existing programmes carried,
+  including eight East African nursing degrees. Implemented in C19 (`1660fb5`).
 - ~~**D3 — What does `--resume s_42` actually resume?**~~ ✅ **ANSWERED: option A.** The log is a
   manifest plus audit trail; `state.sqlite` stays the single source of truth for per-university
   completion. Implemented and pinned by a test in C9. Option C was disqualified on a fact rather
@@ -161,8 +165,8 @@ again at the commit it affects.
   degree *levels* only. Canonicalising the titles themselves (`M.Phil.` / `MPhil` / `M Phil
   Management Sciences` → one form) is a real behaviour change and deserves its own commit.
 
-- Decisions **D2, D4, D5, D6** are still unanswered; each is due at the commit that needs it
-  (D2 → C19, D4 → C21, D5 → C29, D6 → C26).
+- Decisions **D4, D5, D6** are still unanswered; each is due at the commit that needs it
+  (D4 → C21, D5 → C29, D6 → C26). **D2 is answered** — see above.
 
 ---
 
@@ -561,15 +565,58 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   Suite 338 → **361**.
   `feat(extractor): request and model full per-program field set`
 
-- [ ] **C19 — Strip fabricated normalizer defaults** *(only if D2 = yes; Finding 7).*  ← **NEXT**
-  Remove the invented `"Standard University Application Fee"` / `"Refer to Official Tuition Portal"` /
-  HSSC-aggregate fallbacks; leave nulls for the auditor to report.
-  **Gate:** a test asserts a program with no published fee normalizes to `None`, not to prose.
+- [x] **C19 — Strip fabricated normalizer defaults.** *(D2 = yes; Finding 7.)* — `1660fb5`
+  **The deciding argument was scope.** Worldwide corpus, Pakistan/western-Europe assumptions. The
+  eligibility rules had three branches — western Europe, the anglophone countries, and an `else`
+  that gave **everywhere else** Pakistan's `"Intermediate / HSSC (60% Minimum)"` and
+  `"Matric (10%) + HSSC (40%) + Entry Test (50%)"`. **240 of the 263 programmes in the corpus
+  carried that formula**, including eight AKU nursing/midwifery degrees from Kenya, Tanzania and
+  Uganda — none of which have an HSSC. It was also the most dangerous value the pipeline emitted:
+  a specific admission calculation, unsourced, that a student could plan around.
+
+  **Removed from the normalizer:** the tuition and application-fee strings (including the claim that
+  four European countries are `"Tuition Free (Semester Contribution applies)"`) · the
+  country-selected eligibility criteria and formulae · `"Ministry of Higher Education (<country>)"` ·
+  the three name-substring-matched universities · `country` defaulting to Pakistan ·
+  `primary_instruction_language` defaulting to English.
+
+  **Removed from the schema, same reasoning one layer down:** `country="Pakistan"`,
+  `primary_instruction_language="English"`, `type=PUBLIC`, `currency="PKR"`,
+  `delivery_mode="On-Campus"`, `application_status=ROLLING`, `intake_terms=["Fall"]`,
+  `admission_cycles_offered=["Fall","Spring"]` (northern-hemisphere naming, wrong for anywhere
+  running Semester 1/2 from February), and the stand-in summary.
+
+  **Removed from the prompts:** Q1 and the programme template showed `"English"` and `"On-Campus"`
+  as example values, which primes the model to answer them.
+
+  **What survives, because it is evidence and not invention:** currency read from the fee text ·
+  currency from a known country (a *label* for a figure published in that country's currency — the
+  map grew 18 → 50 entries and now returns `None` outside them, instead of falling through to PKR
+  for every country on earth outside Europe) · the sourced registry lookup, which supplies exactly
+  the identity facts the hardcoded branch was faking · turning the extractor's `"null"` / `"N/A"` /
+  `""` into real nulls so the empty-field audit can see them.
+
+  **Bug fixed in passing** (in code this commit was already rewriting): currency markers were
+  substring-matched against an uppercased fee string, so `"RS" in s` hit inside **COURSE** and
+  labelled any fee mentioning a course as PKR. Now word-boundary matched — the *third* appearance of
+  the substring-versus-token defect, after the link filter and the degree mapper. Also, the HEC
+  directory scrape was writing `"Pakistan"` into a **city** field.
+
+  **`tests/test_extractor/test_no_fabrication.py` is the standing guard:** every removed string
+  checked against the string literals of every module under `src/` (parsed via `ast`, so the
+  comments *explaining* the removal do not trip it), plus one assertion per field that it does not
+  default to a claim. The single allowed survivor is the retired summary placeholder — recognised so
+  the normalizer can refuse to carry it into `description`, never written.
+
+  **Gates, all met:** full 8-payload diff C18 → C19 shows only the intended removals — 230
+  application fees, 113 tuition pointers, 240 eligibility blocks, 1 accreditation body — and nothing
+  else moved · a record of pure nulls still **validates**, because an audit can only report an empty
+  field on a record it could load.
+
+  Suite 374 → **401**.
   `fix(normalizers): stop fabricating values for missing fields`
 
-### Phase 8 — Inspector
-
-- [ ] **C20 — Split `inspect_cli.py` (52 KB) into `inspector/`.**
+- [ ] **C20 — Split `inspect_cli.py` (52 KB) into `inspector/`.**  ← **NEXT**
   `dashboard.py` (`inspect_university`, `compare_universities`, `search_programs`,
   `interactive_menu`, `inspect_state`, `inspect_schema`, `inspect_notebooks`) · `auditor.py`
   (empty/NaN field audits, coverage) · `analytics.py` (`audit_analytics`, `iter_all_records`,
