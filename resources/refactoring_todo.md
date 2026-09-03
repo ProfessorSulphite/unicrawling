@@ -109,9 +109,12 @@ again at the commit it affects.
   than taste: `state.sqlite` also holds the *daily* query ledger (`reserve_queries` /
   `queries_used_today`), which spans runs and cannot move into a per-run log without breaking
   quota enforcement across two runs on the same day. Still shapes C22.
-- **D4 — Root entrypoint after `cli.py` dies.** `python -m src.orchestrator`, or keep a 5-line root
-  `run.py`? *Recommendation: keep a thin root shim — every doc example and muscle-memory command
-  starts with `python3 cli.py`.* Affects C22 and C28.
+- ~~**D4 — Root entrypoint after `cli.py` dies.**~~ ✅ **ANSWERED: keep thin root shims**, per the
+  recommendation. Implemented in C22 (`59c6d4a`). Two root files, ten lines each, one job each:
+  `run.py` → `src.orchestrator.main` (the pipeline), `cli.py` → `src.inspector.cli.main` (the
+  inspector). `python -m src.orchestrator` and `python -m src.inspector` both work as well; making
+  the `-m` form the *only* way in would have broken every documented command for no gain.
+  **This amends C24, which had `cli.py` down for deletion — it stays.**
 - **D5 — Supabase table schema.** Nothing Supabase-related exists in the codebase yet (no client, no
   credentials, no DDL). `inspector/sync.py` is fully greenfield and depends on the final program
   schema. *Recommendation: defer to the last commit (C29) and design the tables after the schema
@@ -165,8 +168,8 @@ again at the commit it affects.
   degree *levels* only. Canonicalising the titles themselves (`M.Phil.` / `MPhil` / `M Phil
   Management Sciences` → one form) is a real behaviour change and deserves its own commit.
 
-- Decisions **D4, D5, D6** are still unanswered; each is due at the commit that needs it
-  (D4 → C21, D5 → C29, D6 → C26). **D2 is answered** — see above.
+- Decisions **D5, D6** are still unanswered; each is due at the commit that needs it
+  (D5 → C29, D6 → C26). **D1, D2, D3 and D4 are answered** — see above.
 
 ---
 
@@ -680,40 +683,112 @@ Legend: **Gate** = what must be green before the commit is made. Every commit ru
   `src/inspect_cli.py` 967 → **58** lines. Suite 401 → **410**.
   `refactor(inspector): split inspect_cli into dashboard/analytics/sync/cli`
 
-- [ ] **C21 — Auditor rules for the new schema.**  ← **NEXT**
-  Creates `inspector/auditor.py`, deferred from C20.
-  Empty/NaN reporting across the §5 required per-program fields; degree-level distribution counts;
-  a hard "not ready for Supabase" verdict when coverage is below threshold.
-  **Gate:** auditing a deliberately gappy fixture reports exactly the missing fields.
+- [x] **C21 — Auditor rules for the new schema.**  `61d558b`
+  Creates `inspector/auditor.py`, deferred from C20. Plan §5 ends with two rules that only mean
+  something together — *empty/NaN fields audited and reported by inspector*, and *Supabase push only
+  AFTER inspector validation passes*. C19 made the first possible; this is the second.
+
+  `is_missing()` · `audit_program()` · `audit_records()` · `readiness_verdict()`.
+
+  **The emptiness rule recurses into containers, which is the part that matters.**
+  `eligibility_requirements` always serialises as a three-key object, so a programme with no
+  eligibility data still ships a dict — counting that as present would have scored the corpus's most
+  frequently absent field at 100%. Zero and `False` stay *answers*: a fee of 0 is free tuition, and
+  truthiness is the wrong test.
+
+  **The verdict is deliberately not a score.** A number invites shipping at 0.62 "for now"; a verdict
+  makes that an explicit override. Two floors, both `Config` fields so raising them is a recorded
+  change rather than an edit in the auditor: `audit_min_field_coverage` (0.60, per field) and
+  `audit_min_overall_coverage` (0.70, across the grid). Per-field exists because an average hides a
+  single dead field — exactly what the smoke run showed, at **73% overall with
+  `admission_requirements` and `application_fee` both at 0%**. `name` and `degree_level` are
+  all-or-nothing regardless of threshold: a row with neither is not a programme.
+
+  Two warnings that do **not** block: a university that produced no programmes at all (an extraction
+  failure, not an empty university), and a degree level empty across the whole corpus (a query in the
+  suite failing).
+
+  `REQUIRED_PROGRAM_FIELDS` and `CRITICAL_PROGRAM_FIELDS` moved into `utilities/schema.py` — the leaf
+  layer — so the model, the auditor and `test_program_fields` read one definition. They were
+  duplicated in the test before; a copy is how an auditor quietly stops checking a field.
+
+  New `audit` subcommand and menu entry. `main()` now returns an exit code and `audit` returns
+  non-zero when not ready, so the verdict can gate a push script and not only a human reading a table.
+
+  **Gate met:** a fixture with gaps placed on purpose reports exactly those fields, in schema order,
+  attributed to the right programme and university. Suite 410 → **448**.
   `feat(inspector): audit per-program required-field coverage`
 
 ### Phase 9 — Orchestrator
 
-- [ ] **C22 — Write `src/orchestrator.py`, retire `pipeline.py`.**
-  Thin orchestration only — **if it starts accumulating logic, that logic belongs back in a module**
-  (plan §1 note 4). Absorbs `run_master_pipeline`, `run_batch_pipeline`, `compile_master_json`,
-  `derive_uni_info`, `backup_existing_outputs`, `generate_result_analytics`. Wires `pipeline_logger`
-  (C9) and implements `--resume s_42` / `--resume c_7` per D3. Applies D4 for the entrypoint.
-  `src/pipeline.py` becomes a shim.
-  **Gate:** a dry-run batch over 2 universities completes and writes a `c_{id}.json`; `--resume`
-  against that log resumes at the right university.
+- [x] **C22 — Write `src/orchestrator.py`, retire `pipeline.py`.**  `59c6d4a`
+  **Deviation from the plan, deliberate: not everything listed stayed.** Plan §1 note 4 says that if
+  the orchestrator accumulates logic, that logic belongs in a module — five things in `pipeline.py`
+  were not orchestration and moved out rather than in:
+
+  | was | now | why |
+  |---|---|---|
+  | `derive_uni_info` | `utilities/naming.py` | the one slug rule; everything is filed under it |
+  | `backup_existing_outputs` | `utilities/workspace.py` | destructive, deserves its own screen |
+  | `setup_clean_logging` | `logger/setup.py` | logging config, not orchestration |
+  | `generate_result_analytics` | `inspector/analytics.py` | it was always analytics |
+  | `_source_ids_by_tier` | `StateManager.source_ids_by_tier()` | a query over the state DB |
+
+  `backup_existing_outputs` was isolated on purpose: its `copytree`/`rmtree` pair and the
+  state-database reset are the two operations in this repo that can lose a completed run. Its
+  docstring now records **why the two must move together** — archiving the outputs while leaving the
+  state DB marks every university complete against payloads that just moved, so the next run produces
+  nothing.
+
+  **`--dry-run` is new and is what makes any of this testable.** The old `pipeline.py` was 557 lines
+  on the critical path with **zero test coverage**, because exercising it needed a live NotebookLM
+  account. A dry run expands the queue and writes a real run log without executing a phase or
+  spending a query.
+
+  **`--resume` per D3 option A.** Replays a run manifest's university list and settings;
+  `StateManager` alone decides what to skip. The manifest carries the **full** configured list
+  including what that run skipped — recording only the queue would narrow the list on every resume
+  until a later state reset had nothing left to re-run.
+
+  `PipelineLogger` (C9) wired for both kinds: batch → `c_{id}`, single → `s_{id}`, one audit event
+  per university. Recording "processed" there still does not make a university complete. The batch
+  loop already swallowed one university's exception to keep going; it now records the failure in the
+  manifest instead of only printing it.
+
+  **Gate met:** a dry-run batch over 2 universities completes and writes `c_1.json` with both in the
+  manifest; marking one complete in `state.sqlite` and resuming that token skips exactly that one —
+  verified through `run.py`, not only in pytest. `tests/test_orchestrator.py` is new: **18 tests over
+  a module that had none.** Suite 448 → **466**.
   `refactor(orchestrator): replace pipeline.py with thin orchestration entrypoint`
 
-- [ ] **C23 — `config.json` → `run_settings.json`.**
-  Rename the file; update the defaults in the orchestrator arg parser and the inspector `batch`
-  subcommand; `sync_qdrant` is already gone from C11.
-  **Gate:** `grep -rn "config\.json" src/ tests/` returns nothing.
+- [x] **C23 — `config.json` → `run_settings.json`.**  `4aae59e`
+  The old name collided with `src/config.py`: one file is the run's university list and per-run
+  settings, the other is the application's own configuration, and "the config" meant either one
+  depending on who was speaking.
+
+  **The default path moved onto `Config` as `run_settings_path`** rather than staying a literal in
+  the orchestrator, so the inspector's `batch` subcommand shares it without importing the orchestrator
+  at module scope — Finding 6 forbids that, and a duplicated literal is how the two would drift.
+
+  Also split `build_parser()` out of the inspector's `main()`, matching the orchestrator, so the
+  command table can be inspected without running it; the existing guard on the surviving export
+  formats now reads that function. README's five references renamed — its *other* staleness (qdrant
+  export flags, a `test_pipeline.py` that no longer exists) is C28's job, deliberately left.
+
+  **Gate met:** the grep returns nothing but a comment explaining the rename, reworded to avoid the
+  literal. Both root entrypoints and the pipeline shim still run. Suite 466 → **468**.
   `refactor: rename config.json to run_settings.json`
 
 ### Phase 10 — Cleanup and cutover
 
-- [ ] **C24 — Delete every shim; rewrite every import.**
-  The one deliberately large commit. Remove `src/{extract_links,extract_data,ingest,inspect_cli,json_io,state,schema,notebook_logger,universal_normalizer,pipeline}.py`
-  and `cli.py` (per D4). Every remaining import points at the real module.
+- [ ] **C24 — Delete every shim; rewrite every import.**  ← **NEXT**
+  The one deliberately large commit. Remove `src/{extract_links,extract_data,ingest,inspect_cli,json_io,state,schema,notebook_logger,universal_normalizer,pipeline}.py`.
+  **`cli.py` stays** — D4 was answered "keep thin root shims" in C22, so root `cli.py` and `run.py`
+  are the two supported entrypoints, not leftovers. Every remaining import points at the real module.
   **Gate:** `grep -rn "^from src\.\(extract\|ingest\|inspect_cli\|json_io\|state\|schema\|notebook_logger\|universal_normalizer\|pipeline\) " src/ tests/` empty; full suite green.
   `refactor: remove compatibility shims and flat modules`
 
-- [ ] **C25 — Registry consolidation** *(per D6; Finding 4).*
+- [ ] **C25 — Registry consolidation** *(per D6; Finding 4).*  ← after C24
   Merge `rankings_pk.json` entries into `rankings_global.json`, repoint `config.rankings_json_path`,
   delete `rankings_pk.json`, fix the `test_pipeline.py:685-687` assertions.
   **Gate:** `lookup_registry("nust.edu.pk")` still resolves after the merge.
