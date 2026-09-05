@@ -299,8 +299,16 @@ async def run_pipeline(
     print(f" -> Detailed Info File  : {Path(output_detailed).resolve()}")
     print("=" * 80 + "\n")
 
+    # Raised, never sys.exit()ed. SystemExit inherits from BaseException, so the
+    # batch driver's `except Exception` in _drain_queue does not catch it: one
+    # university whose crawl produced nothing terminated the whole process and
+    # every university queued behind it never ran. CrawlFailure is the same
+    # signal the per-target loop above already raises and callers already expect.
     if failed and not succeeded:
-        sys.exit(1)
+        raise CrawlFailure(
+            f"all {len(failed)} target(s) produced zero links: "
+            + "; ".join(f"{name}: {err}" for name, err in failed)
+        )
 
     return {"succeeded": succeeded, "failed": failed, "links": all_processed_results}
 
@@ -399,6 +407,11 @@ def main():
                 output_links=args.output_links,
                 output_detailed=args.output_detailed
             )
+        except CrawlFailure as e:
+            # The CLI keeps the exit code the shell contract documents; only the
+            # in-process callers are spared a SystemExit they cannot catch.
+            print(f"\nFAILED: {e}", file=sys.stderr)
+            raise SystemExit(1)
         finally:
             await close_shared_crawler()
 

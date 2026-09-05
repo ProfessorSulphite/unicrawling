@@ -363,6 +363,30 @@ async def test_zero_harvested_links_fails_before_a_notebook_is_created(pipeline,
         state.close()
 
 
+async def test_a_raising_phase_1_marks_the_university_failed(pipeline, monkeypatch):
+    """
+    Phase 1 raises CrawlFailure for a site that yields nothing. Uncaught, the
+    state row kept whatever the previous phase had written, so a university whose
+    crawl died looked merely unstarted and no error was ever recorded for it.
+    """
+    from src.extractor.linkers.crawling import CrawlFailure
+
+    async def crawl_explodes(**kwargs):
+        raise CrawlFailure("crawl of https://itu.edu.pk produced zero links")
+
+    monkeypatch.setattr("src.orchestrator.run_link_extractor", crawl_explodes)
+    await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
+
+    assert pipeline.created == [], "a notebook was provisioned after Phase 1 died"
+    state = StateManager()
+    try:
+        assert state.get_status("itu") == "failed"
+        row = state.get_state("itu")
+        assert "CrawlFailure" in (row["error_log"] or "")
+    finally:
+        state.close()
+
+
 # ------------------------------------------------- batch, resume, and audit --
 
 async def test_a_batch_run_writes_a_manifest_and_completes(pipeline, tmp_path):

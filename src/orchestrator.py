@@ -133,14 +133,23 @@ async def _run_master_pipeline(
     # --------------------------------------------------------------------------
     print(f"📌 [PHASE 1] Harvesting & Sanitizing Links for {uni_name}...")
 
-    await run_link_extractor(
-        url=url,
-        max_links=max_links,
-        exclude_keywords=exclude_keywords,
-        uptodate=uptodate,
-        output_links=str(config.base_dir / "extracted_links.txt"),
-        output_detailed=str(config.base_dir / "extracted_links_detailed.txt"),
-    )
+    # Phase 1 raises CrawlFailure when a site yields nothing. Caught here so the
+    # state row records the failure: uncaught, it left the row on whatever the
+    # previous phase wrote and the university looked merely unstarted.
+    try:
+        await run_link_extractor(
+            url=url,
+            max_links=max_links,
+            exclude_keywords=exclude_keywords,
+            uptodate=uptodate,
+            output_links=str(config.base_dir / "extracted_links.txt"),
+            output_detailed=str(config.base_dir / "extracted_links_detailed.txt"),
+        )
+    except Exception as e:
+        error_msg = f"Phase 1 failed: {type(e).__name__}: {e}"
+        state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+        print(f"❌ [PHASE 1 FAILED] {error_msg}")
+        return
 
     links_list = _read_harvested_links(uni_slug)
 
