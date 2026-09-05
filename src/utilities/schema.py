@@ -328,3 +328,14 @@ class UniversityPayload(BaseModel):
     faculties: List[FacultyItem] = []
     contact: ContactInfo
     programs_possibly_truncated: bool = False
+    # Which query blocks failed every retry, e.g. ["bachelors"]. A failed block
+    # yields an EMPTY bucket, not an error, so without this field a consumer
+    # cannot tell "this university offers no bachelors programmes" from "the
+    # bachelors query failed". ITU shipped with an empty bachelors bucket on
+    # 2026-09-03 and nothing in the payload recorded why.
+    failed_query_blocks: List[str] = []
+
+    @property
+    def extraction_complete(self) -> bool:
+        """True when every query block in the suite answered."""
+        return not self.failed_query_blocks

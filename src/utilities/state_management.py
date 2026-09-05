@@ -26,7 +26,13 @@ from src.config import config
 # Ordered lifecycle. Index in this tuple defines forward progress.
 STATUS_SEQUENCE = ("pending", "crawled", "ingested", "extracted", "completed")
 TERMINAL_FAILURE = "failed"
-VALID_STATUSES = set(STATUS_SEQUENCE) | {TERMINAL_FAILURE}
+# A payload was written, but at least one query block failed every retry, so a
+# degree bucket in it is empty for a reason that has nothing to do with the
+# university. Deliberately NOT in STATUS_SEQUENCE and deliberately not
+# "completed": a partial university has real data worth keeping and real data
+# still missing, so it must survive a rerun as work outstanding.
+PARTIAL_EXTRACTION = "partial"
+VALID_STATUSES = set(STATUS_SEQUENCE) | {TERMINAL_FAILURE, PARTIAL_EXTRACTION}
 
 
 class InvalidStatusError(ValueError):
@@ -189,10 +195,26 @@ class StateManager:
             return row["status"] if row else None
 
     def get_completed_slugs(self) -> List[str]:
-        """Retrieve list of university slugs that completed processing successfully."""
+        """
+        Slugs a resumed run may skip: fully extracted, nothing outstanding.
+
+        'partial' is excluded on purpose. Those universities have a payload, but
+        a query block in it failed every retry, and skipping them meant a
+        transient API failure permanently cost a degree level -- the next batch
+        saw "completed" and never asked again.
+        """
         with self._get_connection() as conn:
             rows = conn.execute(
                 "SELECT university_slug FROM pipeline_state WHERE status = 'completed'"
+            ).fetchall()
+            return [r["university_slug"] for r in rows]
+
+    def get_partial_slugs(self) -> List[str]:
+        """Slugs whose payload is real but incomplete, so a rerun should retry them."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT university_slug FROM pipeline_state WHERE status = ?",
+                (PARTIAL_EXTRACTION,),
             ).fetchall()
             return [r["university_slug"] for r in rows]
 
@@ -248,7 +270,9 @@ class StateManager:
                         # Clearing the error is explicit: advancing past 'failed'
                         # on a retry must not leave a stale error attached.
                         error_log if error_log is not None else (
-                            None if clean_status != TERMINAL_FAILURE else row["error_log"]
+                            None
+                            if clean_status not in (TERMINAL_FAILURE, PARTIAL_EXTRACTION)
+                            else row["error_log"]
                         ),
                         clean_slug,
                     ),

@@ -387,6 +387,67 @@ async def test_a_raising_phase_1_marks_the_university_failed(pipeline, monkeypat
         state.close()
 
 
+# ------------------------------------------ a partial extraction stays open --
+
+async def test_a_failed_query_block_is_recorded_on_the_payload_and_left_open(
+    pipeline, monkeypatch
+):
+    """
+    A query that fails every retry yields an empty bucket, not an error. Written
+    as "completed" it was indistinguishable from a university that genuinely
+    offers no bachelors programmes -- and the next batch skipped it forever, so
+    one transient API failure permanently cost a degree level.
+    """
+    from src.config import config
+
+    original_ask = pipeline.chat.ask.side_effect
+
+    async def ask_but_bachelors_always_fails(notebook_id, question, **kwargs):
+        if "BACHELORS" in question:
+            raise RuntimeError("chat.ask exploded")
+        return await original_ask(notebook_id, question, **kwargs)
+
+    pipeline.chat.ask = AsyncMock(side_effect=ask_but_bachelors_always_fails)
+
+    await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
+
+    record = json.loads(
+        (config.outputs_uni_outputs_dir / "itu.json").read_text(encoding="utf-8")
+    )
+    # The other blocks are real data and are kept.
+    assert [p["name"] for p in record["programs"]["masters"]] == ["MS Data Science"]
+    # The empty one says why it is empty.
+    assert record["programs"]["bachelors"] == []
+    assert record["failed_query_blocks"] == ["bachelors"]
+
+    state = StateManager()
+    try:
+        assert state.get_status("itu") == "partial"
+        assert "itu" not in state.get_completed_slugs(), (
+            "a partial university must stay queued for the next run"
+        )
+        assert "bachelors" in state.get_state("itu")["error_log"]
+    finally:
+        state.close()
+
+
+async def test_a_clean_run_records_no_failed_blocks(pipeline):
+    from src.config import config
+
+    await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
+
+    record = json.loads(
+        (config.outputs_uni_outputs_dir / "itu.json").read_text(encoding="utf-8")
+    )
+    assert record["failed_query_blocks"] == []
+
+    state = StateManager()
+    try:
+        assert state.get_status("itu") == "completed"
+    finally:
+        state.close()
+
+
 # ------------------------------------------------- batch, resume, and audit --
 
 async def test_a_batch_run_writes_a_manifest_and_completes(pipeline, tmp_path):

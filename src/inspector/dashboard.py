@@ -25,7 +25,7 @@ from src.inspector.formatting import (
 )
 from src.inspector.records import find_university_record, load_all_records
 from src.utilities.schema import UniversityPayload
-from src.utilities.state_management import StateManager
+from src.utilities.state_management import PARTIAL_EXTRACTION, StateManager
 
 
 # ------------------------------------------------------------------------------
@@ -69,23 +69,29 @@ def inspect_university(query: str):
 
     console.print(Panel(header_text, title="🏛️ Institution Profile", expand=False))
 
-    # A "completed" payload only means Phase 3 finished and wrote a file, not
-    # that every query block in it succeeded -- a block that failed every retry
-    # still yields a payload, just with that bucket silently empty (this is how
-    # ITU shipped with zero bachelors programmes despite 8 BS pages having been
-    # crawled: the bachelors query failed and nothing surfaced it here before).
-    # Resolve slug the same way find_university_record matches uni_outputs/.
-    slug_guess = query.lower().strip()
-    if config.outputs_uni_outputs_dir.exists():
-        for f in config.outputs_uni_outputs_dir.glob("*.json"):
-            if slug_guess in f.stem.lower():
-                slug_guess = f.stem.lower()
-                break
-    state_row = StateManager().get_state(slug_guess)
-    if state_row and state_row.get("error_log"):
+    # A payload that exists does not mean every query block in it succeeded -- a
+    # block that failed every retry still yields a payload, just with that bucket
+    # silently empty. This is how ITU shipped with zero bachelors programmes
+    # despite 8 BS pages having been crawled.
+    #
+    # The payload now carries the reason itself, so this needs no database at
+    # all; the state row is consulted only for the note attached to a partial or
+    # failed run.
+    warnings = []
+    failed_blocks = record.get("failed_query_blocks") or []
+    if failed_blocks:
+        warnings.append(
+            f"{len(failed_blocks)} query block(s) failed every retry: "
+            f"{', '.join(failed_blocks)}. Those buckets are empty because the "
+            f"query failed, NOT because the university offers none."
+        )
+    if record.get("programs_possibly_truncated"):
+        warnings.append("Programme list looks truncated against the ingested source count.")
+
+    if warnings:
         console.print(
             Panel(
-                f"[bold yellow]{state_row['error_log']}[/bold yellow]",
+                "[bold yellow]" + "\n".join(warnings) + "[/bold yellow]",
                 title="⚠️  Extraction Warning",
                 border_style="yellow",
                 expand=False,
@@ -427,12 +433,10 @@ def inspect_state():
             status_style = "bold green" if r['status'] == 'completed' else "yellow"
             if r['status'] == 'failed':
                 status_style = "bold red"
-            elif r['status'] == 'completed' and error_log:
-                # "completed" only means a payload was written, not that every
-                # query block in it succeeded -- a failed block still yields a
-                # payload, just with that bucket empty. Flagging it here is what
-                # would have caught ITU's empty bachelors bucket before it
-                # shipped silently as "completed".
+            elif r['status'] == PARTIAL_EXTRACTION:
+                # A payload was written, but a query block in it failed every
+                # retry, so a degree bucket is empty for a reason that has
+                # nothing to do with the university. A resumed run retries these.
                 status_style = "bold yellow"
                 status_label = f"{status_label} ⚠"
 

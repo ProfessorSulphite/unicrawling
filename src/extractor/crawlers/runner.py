@@ -258,6 +258,11 @@ async def extract_university_payload(
         faculties=results.get("faculties") or [],
         contact=contact_info,
         programs_possibly_truncated=truncated,
+        # Carried ON the payload, not only in the report: the report dies with
+        # the process, while the payload is what every downstream consumer -- the
+        # master JSON, the auditor, the Supabase push -- actually reads. An empty
+        # bucket and a failed query are indistinguishable without it.
+        failed_query_blocks=sorted(report.failed),
     )
     return payload, report
 

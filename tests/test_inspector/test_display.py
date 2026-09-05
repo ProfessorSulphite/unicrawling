@@ -114,3 +114,41 @@ def test_show_renders_missing_as_missing():
     assert show(None, "Unknown") == "Unknown"
     assert show(" Lahore ") == "Lahore"
     assert show(0) == "0"
+
+
+# =============================================================================
+# A partial extraction has to be visible where the payload is read
+# =============================================================================
+
+PARTIAL_RECORD = {
+    **NULL_RECORD,
+    "main_info": {**NULL_RECORD["main_info"], "name": "Partial University"},
+    "failed_query_blocks": ["bachelors"],
+}
+
+
+@pytest.fixture
+def partial_corpus(monkeypatch, tmp_path):
+    uni_outputs = tmp_path / "uni_outputs"
+    uni_outputs.mkdir(parents=True, exist_ok=True)
+    (uni_outputs / "ptu.json").write_text(json.dumps(PARTIAL_RECORD), encoding="utf-8")
+    monkeypatch.setattr("src.inspector.records.config.outputs_uni_outputs_dir", uni_outputs)
+    monkeypatch.setattr("src.inspector.records.config.output_jsonl_path", tmp_path / "absent.jsonl")
+    return tmp_path
+
+
+def test_inspect_warns_that_an_empty_bucket_came_from_a_failed_query(partial_corpus, capsys):
+    """
+    An empty bachelors bucket and a failed bachelors query look identical in the
+    payload body. ITU shipped one on 2026-09-03 and nothing said which it was.
+    """
+    inspect_university("ptu")
+    out = capsys.readouterr().out
+    assert "bachelors" in out
+    assert "NOT because the university offers none" in out
+
+
+def test_inspect_stays_quiet_when_every_block_answered(null_corpus, capsys):
+    inspect_university("ntu")
+    out = capsys.readouterr().out
+    assert "Extraction Warning" not in out

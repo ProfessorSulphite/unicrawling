@@ -61,7 +61,11 @@ from src.logger.pipeline_logger import PipelineLogger, RunKind, load_run  # noqa
 from src.logger.setup import setup_clean_logging  # noqa: E402
 from src.utilities.json_io import append_jsonl, atomic_write_json, stream_compile_master_json  # noqa: E402
 from src.utilities.naming import derive_uni_info  # noqa: E402
-from src.utilities.state_management import QuotaExceededError, StateManager  # noqa: E402
+from src.utilities.state_management import (  # noqa: E402
+    PARTIAL_EXTRACTION,
+    QuotaExceededError,
+    StateManager,
+)
 from src.utilities.workspace import backup_existing_outputs  # noqa: E402
 
 # Defined on Config (C23) so the inspector's `batch` subcommand can share the
@@ -269,9 +273,13 @@ async def _run_master_pipeline(
                 f"after retries: {sorted(report.failed)}"
                 if not report.ok else None
             )
+            # 'partial', not 'completed'. get_completed_slugs() drives what a
+            # resumed batch skips, so writing "completed" here meant one
+            # transient API failure cost a degree level permanently: the next
+            # run saw a completed university and never asked again.
             state_mgr.set_status(
                 uni_slug,
-                "completed",
+                PARTIAL_EXTRACTION if partial_note else "completed",
                 notebook_id=notebook_id,
                 queries_executed=report.queries_used,
                 error_log=partial_note,

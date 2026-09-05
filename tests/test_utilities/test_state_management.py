@@ -7,6 +7,7 @@ name for the genuine end-to-end orchestration suite written in C27.
 import pytest
 
 from src.utilities.state_management import (
+    PARTIAL_EXTRACTION,
     InvalidStatusError,
     QuotaExceededError,
     StateManager,
@@ -139,3 +140,39 @@ def test_tier_4_is_included(state):
     """The loop is hardcoded to tiers 1-4; a tier 4 source must not be dropped."""
     state.record_sources("itu", [("s1", "https://itu.edu.pk/news", 4)])
     assert state.source_ids_by_tier("itu") == {4: ["s1"]}
+
+
+# =============================================================================
+# A partial extraction is work outstanding, not a completion
+# =============================================================================
+
+def test_partial_is_a_valid_status_but_not_a_completion(state):
+    """
+    Writing "completed" for a university whose bachelors query failed meant the
+    next batch skipped it forever: one transient API failure permanently cost a
+    degree level. 'partial' keeps the payload and keeps the work queued.
+    """
+    state.set_status("itu", PARTIAL_EXTRACTION, error_log="bachelors failed after retries")
+
+    assert state.get_status("itu") == "partial"
+    assert "itu" not in state.get_completed_slugs()
+    assert state.get_partial_slugs() == ["itu"]
+
+
+def test_a_partial_status_keeps_its_error_log_across_an_untouched_update(state):
+    """The note survives the way a failure's does; it is the only record of why."""
+    state.set_status("itu", PARTIAL_EXTRACTION, error_log="bachelors failed after retries")
+    state.set_status("itu", PARTIAL_EXTRACTION, queries_executed=9)
+
+    row = state.get_state("itu")
+    assert row["error_log"] == "bachelors failed after retries"
+    assert row["queries_executed"] == 9
+
+
+def test_advancing_a_partial_to_completed_clears_the_note(state):
+    """A retry that answered every block must not leave a stale warning behind."""
+    state.set_status("itu", PARTIAL_EXTRACTION, error_log="bachelors failed after retries")
+    state.set_status("itu", "completed")
+
+    assert state.get_state("itu")["error_log"] is None
+    assert state.get_completed_slugs() == ["itu"]
