@@ -165,6 +165,12 @@ class Config:
     # ═══════════════════════════════════════════════════════════════════════
     chat_timeout_sec: int = 180              # Seconds to wait for a NotebookLM response before timing out
     max_query_retries: int = 2               # Retries per failing query before the university is marked failed
+    # An oversized response (RPCResponseTooLargeError, 50 MB ceiling) is not
+    # fixed by re-asking: the answer size tracks how much corpus the question is
+    # pointed at. The query is instead re-asked over halves of its source set and
+    # the answers merged. Each level doubles the sub-asks, so this trades daily
+    # query budget for coverage -- 2 allows at most 4 narrowed asks per query.
+    max_query_split_depth: int = 2           # How many times an oversized query may be halved over its sources; 0 disables narrowing
     # NOT the query suite. The suite against one notebook is serial and must stay
     # that way: concurrent unkeyed asks share a conversation, and an ask still
     # waiting when a later ask's turn lands returns THAT turn's answer. Observed

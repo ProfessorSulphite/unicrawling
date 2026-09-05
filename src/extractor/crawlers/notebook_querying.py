@@ -11,8 +11,9 @@ import logging
 
 from dataclasses import dataclass, field
 from notebooklm import NotebookLMClient
+from notebooklm.exceptions import RPCResponseTooLargeError
 from pydantic import BaseModel
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, get_origin
 
 from src.config import config
 from src.logger.notebook_logger import log_query_executed
@@ -225,24 +226,81 @@ async def _ask(
     return str(answer) if answer else str(res)
 
 
-async def run_query(
+def is_oversized_response_error(error: BaseException) -> bool:
+    """
+    True when a chat.ask failed because the ANSWER did not fit, not because it
+    was wrong.
+
+    This is the distinction the retry loop was missing. An oversized response is
+    a property of how much corpus the question was pointed at, so re-asking the
+    same question of the same sources fails again, deterministically -- observed
+    on every ITU run of 2026-09-03, three attempts landing within 60 KB of the
+    50 MB ceiling each time, ~6 minutes and 3 queries of daily budget spent to
+    arrive at the same wall.
+    """
+    if RPCResponseTooLargeError is not None and isinstance(error, RPCResponseTooLargeError):
+        return True
+    # Matched on the message too: the SDK wraps this error in a few places, and
+    # a missed match costs a whole degree bucket.
+    text = str(error).lower()
+    return "response exceeded" in text or "responsetoolarge" in type(error).__name__.lower()
+
+
+def _returns_a_list(model: Any) -> bool:
+    """Whether a QuerySpec's model is List[...] rather than a single object."""
+    return get_origin(model) is list
+
+
+def _merge_item_key(item: Any) -> str:
+    """Identity for merge-dedupe: the programme or faculty name, casefolded."""
+    for attr in ("name", "faculty_name"):
+        value = getattr(item, attr, None)
+        if value:
+            return str(value).strip().casefold()
+    return repr(item)
+
+
+def _merge_list_answers(parts: Sequence[Any]) -> List[Any]:
+    """
+    Concatenate the answers from split sub-asks, dropping repeats.
+
+    Two source halves can both surface the same programme when its pages are
+    split across them, and a duplicate row is worse than a missing one -- it
+    reaches the payload as two programmes with one name.
+    """
+    merged: List[Any] = []
+    seen: set = set()
+    for part in parts:
+        for item in part or []:
+            key = _merge_item_key(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+    return merged
+
+
+async def _attempt_query(
     client: NotebookLMClient,
     notebook_id: str,
     spec: QuerySpec,
     source_ids: Optional[Sequence[str]],
     report: ExtractionReport,
-) -> Any:
+) -> Tuple[Any, Optional[Exception]]:
     """
-    Execute one query with a bounded repair loop.
+    One bounded repair loop against one set of sources.
 
-    On a parse or validation failure the model is re-asked with its own broken
-    output and the exact error, which recovers the majority of malformed answers.
-    Each attempt is counted against the daily query budget by the caller.
+    Returns (value, None) on success or (None, last_error) on exhaustion. The
+    repair retry exists for answers that came back malformed; it is abandoned
+    immediately for an oversized response, which no amount of re-asking fixes.
     """
     last_error: Optional[Exception] = None
-    raw = ""
 
     for attempt in range(config.max_query_retries + 1):
+        # Reset per attempt: a stale answer from an earlier attempt must not be
+        # quoted back to the model as "your previous answer" after a transport
+        # failure that produced none.
+        raw = ""
         prompt = spec.prompt
         if attempt > 0:
             prompt = (
@@ -265,15 +323,118 @@ async def run_query(
                 duration_sec=dur,
             )
             value = repair_and_validate_json(raw, spec.model)
-            report.succeeded.append(spec.key)
-            return value
+            return value, None
         except ExtractionError as e:
+            # The ask itself succeeded and was already counted above; only the
+            # parse failed. Counting again here double-charged the ledger.
             last_error = e
             logger.warning(f"[{spec.key}] attempt {attempt + 1} failed: {e}")
         except Exception as e:
             last_error = e
             report.queries_used += 1
             logger.warning(f"[{spec.key}] attempt {attempt + 1} errored: {e}")
+            if is_oversized_response_error(e):
+                # Deterministic at this scope. Stop burning attempts and let the
+                # caller narrow the question instead.
+                break
 
-    report.failed[spec.key] = str(last_error)
+    return None, last_error
+
+
+async def _query_over_source_splits(
+    client: NotebookLMClient,
+    notebook_id: str,
+    spec: QuerySpec,
+    source_ids: Sequence[str],
+    report: ExtractionReport,
+    depth: int = 0,
+) -> Tuple[Any, Optional[Exception]]:
+    """
+    Re-ask the same question of halves of the source set, and merge the answers.
+
+    Narrowing the SOURCES rather than the prompt is what makes the response
+    smaller: the answer size tracks how much corpus the question is grounded in.
+    Splitting is what the identical retry should always have been -- ITU's 17
+    Tier-1 pages asked as two groups of 8 and 9 return two answers that each fit.
+
+    A half that is still too large is split again, to config.max_query_split_depth.
+    Below that, or with a single source left, the query genuinely cannot be
+    answered and the failure is reported rather than papered over.
+    """
+    ids = list(source_ids)
+    if depth >= config.max_query_split_depth or len(ids) < 2:
+        return None, None
+
+    mid = len(ids) // 2
+    halves = [ids[:mid], ids[mid:]]
+    logger.info(
+        f"[{spec.key}] response too large over {len(ids)} sources; "
+        f"re-asking as {len(halves)} narrower groups (depth {depth + 1})."
+    )
+
+    parts: List[Any] = []
+    errors: List[Exception] = []
+    for half in halves:
+        value, error = await _attempt_query(client, notebook_id, spec, half, report)
+        if value is None and error is not None and is_oversized_response_error(error):
+            value, error = await _query_over_source_splits(
+                client, notebook_id, spec, half, report, depth + 1
+            )
+        if value is not None:
+            parts.append(value)
+        elif error is not None:
+            errors.append(error)
+
+    if not parts:
+        return None, (errors[0] if errors else None)
+
+    if _returns_a_list(spec.model):
+        merged = _merge_list_answers(parts)
+        logger.info(
+            f"[{spec.key}] merged {len(merged)} distinct items from "
+            f"{len(parts)} narrowed sub-answers."
+        )
+        return merged, None
+
+    # A single-object query (main_info/contact) cannot be merged: the halves
+    # describe the same university, so the first complete answer is the answer.
+    return parts[0], None
+
+
+async def run_query(
+    client: NotebookLMClient,
+    notebook_id: str,
+    spec: QuerySpec,
+    source_ids: Optional[Sequence[str]],
+    report: ExtractionReport,
+) -> Any:
+    """
+    Execute one query, repairing malformed answers and narrowing oversized ones.
+
+    Two distinct failure modes, two distinct remedies:
+
+      - a malformed answer is re-asked with its own broken output and the exact
+        error, which recovers the majority of them;
+      - an oversized answer is re-asked over halves of the source set, because
+        the response size is a property of the corpus the question is pointed
+        at and an identical re-ask fails identically.
+
+    Every attempt, including a narrowed one, is counted against the daily budget.
+    """
+    value, error = await _attempt_query(client, notebook_id, spec, source_ids, report)
+
+    if error is not None and is_oversized_response_error(error) and source_ids:
+        value, split_error = await _query_over_source_splits(
+            client, notebook_id, spec, source_ids, report
+        )
+        if value is None:
+            error = split_error or error
+        else:
+            error = None
+
+    if error is None and value is not None:
+        report.succeeded.append(spec.key)
+        return value
+
+    report.failed[spec.key] = str(error) if error else "query returned no value"
     return None
