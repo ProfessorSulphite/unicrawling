@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from src.config import config
 from src.extractor.linkers.constants import (
     EXCLUDED_DOMAINS,
     EXCLUDED_EXTENSIONS,
@@ -183,6 +184,57 @@ def compute_year_decay_factor(text: str, now_year: Optional[int] = None) -> Tupl
     factor = max(0.25, 1.00 + 0.20 * delta)
     return round(factor, 2), f"{latest} Historical (Decayed x{factor:.2f})"
 
+# Second-level labels that are part of a public suffix rather than a name:
+# itu.edu.pk and ox.ac.uk are registrable domains three labels long, so cutting
+# at two would compare "edu.pk" against "edu.pk" and call every Pakistani
+# university one site.
+_PUBLIC_SECOND_LEVEL = {
+    "edu", "ac", "co", "com", "org", "net", "gov", "mil", "sch", "nic", "res",
+}
+
+
+def registrable_domain(host: str) -> str:
+    """
+    The part of a host that identifies the institution.
+
+    itu.edu.pk                 -> itu.edu.pk
+    application.itu.edu.pk     -> itu.edu.pk
+    eecs.berkeley.edu          -> berkeley.edu
+    collegereadiness.collegeboard.org -> collegeboard.org
+
+    A heuristic, not a public-suffix list: the alternative is a network-fetched
+    PSL, and the failure mode here (one extra or one missing subdomain on an
+    unusual TLD) costs a link, while a stale PSL download costs a run.
+    """
+    host = host.lower().strip().rstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    labels = [l for l in host.split(".") if l]
+    if len(labels) <= 2:
+        return ".".join(labels)
+    # "<name>.<public second level>.<cctld>" keeps three labels.
+    if labels[-2] in _PUBLIC_SECOND_LEVEL and len(labels[-1]) <= 3:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+def is_same_institution(url: str, base_url: str) -> bool:
+    """
+    Whether `url` belongs to the institution `base_url` identifies.
+
+    Subdomains count: application.itu.edu.pk is ITU's application portal and the
+    schema has a field for exactly that. Anything else does not, however
+    plausible the anchor text.
+    """
+    if not base_url:
+        return True
+    base = registrable_domain(urlparse(base_url).netloc)
+    if not base:
+        return True
+    host = registrable_domain(urlparse(url).netloc)
+    return bool(host) and host == base
+
+
 def preprocess_and_filter_links(
     links: List[Dict[str, str]],
     base_url: str = "",
@@ -197,6 +249,7 @@ def preprocess_and_filter_links(
     """
     clean_links = []
     seen_keys = set()
+    off_site = 0
 
     # Parse pipe-separated exclude keywords (e.g., 'news|events|convocation')
     exclude_list = [k.strip().lower() for k in exclude_keywords.split("|") if k.strip()]
@@ -213,6 +266,18 @@ def preprocess_and_filter_links(
         domain = parsed.netloc.lower()
 
         if any(exc_domain in domain for exc_domain in EXCLUDED_DOMAINS):
+            continue
+
+        # Sources must belong to the university being described. `base_url` was
+        # accepted here and passed to normalize_url, which ignores it entirely,
+        # so the only host rule in the whole filter was a social-media denylist.
+        # A live ITU notebook ingested https://collegereadiness.collegeboard.org/sat
+        # as a Tier 2 source: answers about ITU's admissions were grounded in
+        # College Board's SAT pages, and the link consumed one of 33 slots.
+        if config.restrict_links_to_university_domain and not is_same_institution(
+            normalized_url, base_url
+        ):
+            off_site += 1
             continue
 
         ext = os.path.splitext(parsed.path)[1].lower()
@@ -253,5 +318,10 @@ def preprocess_and_filter_links(
             "path_words": path_words,
         })
 
-    logger.info(f"Preprocessing complete: Retained {len(clean_links)} clean counseling-relevant links (filtered out {len(links) - len(clean_links)} noise/news/events links).")
+    logger.info(
+        f"Preprocessing complete: Retained {len(clean_links)} clean counseling-relevant "
+        f"links (filtered out {len(links) - len(clean_links)} noise/news/events links"
+        + (f", {off_site} off-site" if off_site else "")
+        + ")."
+    )
     return clean_links

@@ -6,12 +6,15 @@ for a defect that was actually present in the shipped code, not a smoke test.
 """
 import pytest
 
+from src.config import config
 from src.extractor.linkers.filteration import (
     compute_year_decay_factor,
     dedupe_key,
     is_excluded_path,
     normalize_url,
+    is_same_institution,
     preprocess_and_filter_links,
+    registrable_domain,
 )
 
 
@@ -178,3 +181,71 @@ def test_year_decay_is_not_hardcoded_to_2026():
     """Regression against re-introducing a fixed year window."""
     assert compute_year_decay_factor("intake-2030", now_year=2030)[0] > 1.0
     assert compute_year_decay_factor("intake-2026", now_year=2030)[0] < 1.0
+
+
+# =============================================================================
+# B5.4 -- sources must belong to the university being described
+# =============================================================================
+
+@pytest.mark.parametrize("host,expected", [
+    ("itu.edu.pk", "itu.edu.pk"),
+    ("www.itu.edu.pk", "itu.edu.pk"),
+    ("application.itu.edu.pk", "itu.edu.pk"),
+    ("eecs.berkeley.edu", "berkeley.edu"),
+    ("collegereadiness.collegeboard.org", "collegeboard.org"),
+    ("www.lmu.de", "lmu.de"),
+    ("hu-berlin.de", "hu-berlin.de"),
+    ("some.department.ox.ac.uk", "ox.ac.uk"),
+])
+def test_registrable_domain_cuts_at_the_institution(host, expected):
+    """
+    Two labels is the wrong cut for edu.pk and ac.uk: it would compare "edu.pk"
+    against "edu.pk" and call every Pakistani university one site.
+    """
+    assert registrable_domain(host) == expected
+
+
+def test_a_subdomain_is_the_same_institution():
+    """application.itu.edu.pk is ITU's portal; the schema has a field for it."""
+    assert is_same_institution("https://application.itu.edu.pk/", "https://itu.edu.pk")
+
+
+def test_a_third_party_domain_is_not():
+    assert not is_same_institution(
+        "https://collegereadiness.collegeboard.org/sat", "https://itu.edu.pk"
+    )
+
+
+def test_off_site_links_are_dropped_from_the_harvest():
+    """
+    base_url was accepted here and handed to normalize_url, which ignores it, so
+    the only host rule in the filter was a social-media denylist. A live ITU
+    notebook ingested College Board's SAT page as a Tier 2 source: answers about
+    ITU's admissions were grounded in a third party's pages, and the link
+    consumed one of 33 notebook slots.
+    """
+    links = [
+        {"href": "https://itu.edu.pk/admissions/bs-computer-science", "text": "BS CS"},
+        {"href": "https://application.itu.edu.pk/", "text": "Apply Online!"},
+        {"href": "https://collegereadiness.collegeboard.org/sat", "text": "Collegeboard website"},
+        {"href": "https://en.wikipedia.org/wiki/Information_Technology_University", "text": "Wikipedia"},
+    ]
+    out = preprocess_and_filter_links(links, base_url="https://itu.edu.pk")
+    urls = [l["href"] for l in out]
+
+    assert any("bs-computer-science" in u for u in urls)
+    assert any("application.itu.edu.pk" in u for u in urls), "the portal subdomain is ITU's own"
+    assert not any("collegeboard" in u for u in urls)
+    assert not any("wikipedia" in u for u in urls)
+
+
+def test_the_restriction_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(config, "restrict_links_to_university_domain", False)
+    links = [{"href": "https://collegereadiness.collegeboard.org/sat", "text": "SAT"}]
+    assert len(preprocess_and_filter_links(links, base_url="https://itu.edu.pk")) == 1
+
+
+def test_no_base_url_means_no_restriction():
+    """Callers that do not know the institution must not lose every link."""
+    links = [{"href": "https://anything.example.org/programs/bs-cs", "text": "BS CS"}]
+    assert len(preprocess_and_filter_links(links, base_url="")) == 1

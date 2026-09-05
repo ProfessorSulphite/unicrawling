@@ -78,6 +78,12 @@ class Config:
     max_sources_per_notebook: int = 150      # Hard ceiling on sources per notebook; raise to ingest more links per university, at the cost of upload time
     dynamic_link_ratio: float = 0.45         # Fraction of clean candidate links actually sent; lower = fewer but higher-quality sources
     max_crawl_pages: int = 15                # Pages Crawl4AI visits per domain; raise for deeper discovery, costs proportionally more time
+    # Sources must belong to the university being described. A live ITU notebook
+    # ingested collegereadiness.collegeboard.org as a Tier 2 source, so answers
+    # about ITU's admissions were partly grounded in College Board's SAT pages.
+    # Subdomains of the institution (application.itu.edu.pk) always count as
+    # on-site; only a genuinely different registrable domain is dropped.
+    restrict_links_to_university_domain: bool = True   # Drop harvested links outside the university's own registrable domain; disabling re-admits third-party pages as sources
 
     # Proportional share of the source budget per priority tier. Flat top-N
     # slicing after a tier-major sort starves Tiers 3/4 entirely, which makes
