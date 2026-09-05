@@ -15,7 +15,7 @@ import sys
 
 from bs4 import BeautifulSoup
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from src.config import config
@@ -209,8 +209,8 @@ async def run_pipeline(
     hec_mode: bool = False,
     hec_limit: int = 5,
     max_links: int = 100,
-    threshold: float = 0.45,
-    max_pages: int = 15,
+    threshold: Optional[float] = None,
+    max_pages: Optional[int] = None,
     uptodate: bool = True,
     exclude_keywords: str = "news|events",
     output_links: str = "extracted_links.txt",
@@ -218,7 +218,18 @@ async def run_pipeline(
 ):
     """
     Main orchestration function managing single site or HEC batch processing.
+
+    `threshold` and `max_pages` fall back to config.semantic_threshold and
+    config.max_crawl_pages. They were previously plain literal defaults, and the
+    orchestrator called this function without passing either -- so the two
+    calibrated Config fields were never read by anything and every batch ran at
+    the argparse default of 0.45. A live ITU crawl logged "78 links passed
+    quality threshold (0.45); 0 retained as tier reserve": every link cleared it,
+    the threshold filtered nothing, and tier quotas were doing all the selection.
     """
+    threshold = config.semantic_threshold if threshold is None else threshold
+    max_pages = config.max_crawl_pages if max_pages is None else max_pages
+
     targets = []
     
     if hec_mode:
@@ -245,10 +256,16 @@ async def run_pipeline(
             clean_links = preprocess_and_filter_links(raw_links, base_url=target_url, exclude_keywords=exclude_keywords)
             scored_links = classify_and_score_links(clean_links, threshold=threshold, uptodate=uptodate)
 
-            # Dynamic 45% link selection strategy (capped at 150 max_links)
+            # Dynamic link selection, ratio from config rather than a literal:
+            # config.dynamic_link_ratio documented this knob while the hardcoded
+            # 0.45 below ignored it, so changing the documented field did nothing.
             candidate_count = len(scored_links)
-            dynamic_target = min(max(15, int(candidate_count * 0.45)), max_links)
-            logger.info(f"Dynamic Link Allocation: Discovered {candidate_count} scored links -> selecting {dynamic_target} links (45% ratio, cap={max_links}).")
+            ratio = config.dynamic_link_ratio
+            dynamic_target = min(max(15, int(candidate_count * ratio)), max_links)
+            logger.info(
+                f"Dynamic Link Allocation: Discovered {candidate_count} scored links -> "
+                f"selecting {dynamic_target} links ({ratio:.0%} ratio, cap={max_links})."
+            )
 
             # Tier-proportional selection, not a flat top-N slice.
             top_quality_links = allocate_proportional_tier_quotas(scored_links, total_cap=dynamic_target)
@@ -359,14 +376,20 @@ def main():
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.45,
-        help="Semantic similarity score threshold between 0.0 and 1.0 (default: 0.45)."
+        default=None,
+        help=(
+            "Semantic similarity score threshold between 0.0 and 1.0 "
+            f"(default: config.semantic_threshold, currently {config.semantic_threshold})."
+        )
     )
     parser.add_argument(
         "--max-pages",
         type=int,
-        default=15,
-        help="Maximum number of sub-pages to crawl per site (default: 15)."
+        default=None,
+        help=(
+            "Maximum number of sub-pages to crawl per site "
+            f"(default: config.max_crawl_pages, currently {config.max_crawl_pages})."
+        )
     )
     parser.add_argument(
         "--uptodate",

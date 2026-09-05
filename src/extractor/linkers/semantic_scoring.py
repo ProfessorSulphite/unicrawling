@@ -96,7 +96,7 @@ def _get_embedding_model() -> SentenceTransformer:
 
 def classify_and_score_links(
     links: List[Dict[str, str]],
-    threshold: float = 0.45,
+    threshold: Optional[float] = None,
     uptodate: bool = True
 ) -> List[Dict[str, str]]:
     """
@@ -107,6 +107,11 @@ def classify_and_score_links(
     """
     if not links:
         return []
+
+    # None means "the calibrated value", not "0.45". The old literal default
+    # silently overrode config.semantic_threshold for every caller that did not
+    # pass one, which was all of them.
+    threshold = config.semantic_threshold if threshold is None else threshold
 
     model = _get_embedding_model()
 

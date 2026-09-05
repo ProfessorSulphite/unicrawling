@@ -146,6 +146,11 @@ async def _run_master_pipeline(
             max_links=max_links,
             exclude_keywords=exclude_keywords,
             uptodate=uptodate,
+            # Passed explicitly. Omitting them took the linker CLI's argparse
+            # defaults instead of the calibrated Config fields, so every batch
+            # ran at threshold 0.45 and 15 pages no matter what config said.
+            threshold=config.semantic_threshold,
+            max_pages=config.max_crawl_pages,
             output_links=str(config.base_dir / "extracted_links.txt"),
             output_detailed=str(config.base_dir / "extracted_links_detailed.txt"),
         )
