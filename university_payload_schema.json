@@ -723,6 +723,14 @@
       "default": false,
       "title": "Programs Possibly Truncated",
       "type": "boolean"
+    },
+    "failed_query_blocks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Failed Query Blocks",
+      "type": "array"
     }
   },
   "required": [

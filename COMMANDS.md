@@ -207,6 +207,11 @@ python3 cli.py state
 Shows each university's slug, status (`pending` → `crawled` → `ingested` → `extracted` →
 `completed`, or `failed`), notebook ID, sources ingested, queries executed, and last update.
 
+A university whose payload was written but had a query block fail every retry is `partial`,
+flagged ⚠ with the failed blocks in the Notes column. `partial` is deliberately not a
+completion: a resumed batch retries those universities rather than skipping them, because the
+empty bucket is an artefact of the failure and not a fact about the university.
+
 ### 3.9 `schema` — display the master JSON schema
 
 ```bash
@@ -388,6 +393,7 @@ Edit the `Config` dataclass to change these.
 | `dynamic_link_ratio` | `0.45` | Fraction of scored candidates selected |
 | `semantic_threshold` | `0.68` | Minimum similarity to survive scoring |
 | `max_crawl_pages` | `15` | Pages crawled per site |
+| `restrict_links_to_university_domain` | `True` | Drop harvested links outside the university's own registrable domain |
 | `crawler_reuse_browser` | `True` | Reuse one browser across universities |
 | `crawler_headless` | `True` | Headless mode |
 | `crawler_text_mode` | `True` | Skip images/CSS/fonts (large memory saving) |
@@ -421,22 +427,30 @@ Edit the `Config` dataclass to change these.
 | :--- | :--- | :--- |
 | `chat_timeout_sec` | `180` | Per-query timeout |
 | `max_query_retries` | `2` | Repair retries per query |
-| `query_concurrency` | `3` | Concurrent queries in the suite (see note below) |
+| `max_query_split_depth` | `2` | Times an oversized query may be halved over its sources (see note below) |
+| `query_concurrency` | `3` | Notebooks queried in parallel (see note below) |
 | `daily_query_budget` | `500` | NotebookLM Pro daily ceiling — **enforced** |
-| `queries_per_university` | `5` | Reserved per university before querying |
+| `queries_per_university` | `6` | Reserved per university before querying |
 
-> **Note on `query_concurrency`:** the suite is issued concurrently, but against a *single*
-> notebook this does not reduce wall time. The `notebooklm` SDK holds a per-`notebook_id` lock
-> for the full duration of any `chat.ask()` made without a `conversation_id`, and exposes no
-> API to create independent conversations — so the five queries serialise inside the client
-> regardless of this setting.
+> **Note on `query_concurrency`:** the suite against one notebook is **serial**, and must stay
+> that way. Concurrent unkeyed asks share a conversation, and an ask still waiting when a later
+> ask's turn lands returns *that* turn's answer — observed live on 2026-09-03, where `bachelors`
+> and `phd` came back byte-identical and the PhD programmes were filed as bachelors with no
+> error raised. This setting governs notebook-level parallelism only, where no conversation is
+> shared.
+
+> **Note on `max_query_split_depth`:** a `RPCResponseTooLargeError` means the answer did not
+> fit, not that it was wrong, so re-asking the same question of the same sources fails
+> identically. Such a query is re-asked over halves of its source set and the answers merged.
+> Each level doubles the sub-asks, so this trades daily query budget for coverage; `0` disables
+> narrowing entirely.
 
 **Phase 4 — vectors**
 
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
-| `embedding_model_name` | `BAAI/bge-base-en-v1.5` | 768-dim embedding model |
-| `embedding_batch_size` | `32` | Texts per embedding forward pass |
+| `embedding_model_name` | `BAAI/bge-small-en-v1.5` | 384-dim embedding model |
+| `embedding_batch_size` | `64` | Texts per embedding forward pass |
 
 ---
 

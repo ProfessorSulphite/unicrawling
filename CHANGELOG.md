@@ -225,3 +225,73 @@ All pre-existing, none introduced by the refactor; each was invisible to a green
 - `tests/test_docs.py` executes the commands this documentation shows, so it cannot silently rot.
 - A live single-university run against ITU exercised all four phases; it is what surfaced the
   concurrency bug.
+
+---
+
+## 5. Data-Collection Reliability Pass (2026-09-05)
+
+Prompted by a review of the five ITU runs of 2026-09-03, which produced 0, 0, 0, 2 and 8
+bachelors programmes from an identical 33-link corpus. Every defect below is evidenced by
+`loggings/extract_links.log` or by the payloads those runs wrote; none was hypothetical.
+
+### 5.1 The variance, and its cause
+
+`RPCResponseTooLargeError` on every programme query of every run — three attempts each, all
+landing within 60 KB of the 50 MB ceiling. The retry loop treated an oversized *response* as a
+malformed *answer* and re-issued the same prompt against the same sources, so the failure was
+deterministic: ~6 minutes and 3 queries of daily budget to reach the same wall, after which the
+bucket shipped empty.
+
+Response size tracks how much corpus a question is grounded in, so an oversized query is now
+re-asked over halves of its source set and the answers merged, deduped by name. A half that
+still does not fit is split again, bounded by `config.max_query_split_depth`. The repair retry
+is kept in full for genuinely malformed answers and abandoned immediately for this error class.
+
+Also corrected there: a parse failure was charged to the daily ledger twice, and a stale answer
+from an earlier attempt could be quoted back to the model as "your previous answer" after a
+transport failure that produced none.
+
+### 5.2 Silent loss made visible, and retryable
+
+A failed query yields an empty bucket, not an error, and nothing distinguished that from a
+university that genuinely offers no bachelors programmes. `UniversityPayload.failed_query_blocks`
+now travels with the payload, where every downstream consumer reads it; the report it was
+previously confined to dies with the process.
+
+The state row said `completed` regardless, and `get_completed_slugs()` drives what a resumed
+batch skips — so one transient API failure cost a degree level permanently. Those runs now write
+the new `partial` status, which keeps the payload, keeps the note, and keeps the university
+queued until every block answers.
+
+### 5.3 One dead site no longer ends the batch
+
+`run_pipeline` called `sys.exit(1)` when every target produced zero links. `SystemExit` inherits
+from `BaseException`, so it slipped past the batch driver's `except Exception`: one unreachable
+university terminated the process and every university queued behind it never ran. It raises
+`CrawlFailure` now; the CLI catches it and keeps the documented exit code.
+
+### 5.4 Knobs that were documentation only
+
+`semantic_threshold`, `max_crawl_pages` and `dynamic_link_ratio` were published in `Config` and
+in this documentation and read by nothing — the orchestrator called Phase 1 without them, so the
+linker CLI's argparse defaults won. The calibrated `0.68` had never been applied; runs used
+`0.45`, which on this pipeline's score distribution passed every link and filtered nothing.
+
+Checked against the ITU corpus before switching: raw similarity there runs min 0.558, p25 0.676,
+median 0.727, max 0.898. At 0.68, ten of 33 links become tier reserve rather than passes and only
+the 0.558 outlier falls under the hard floor, so every tier quota stays fillable.
+
+### 5.5 Off-site sources
+
+`preprocess_and_filter_links` accepted `base_url` and handed it to `normalize_url`, which ignores
+it, so the only host rule in the filter was a social-media denylist. A live ITU notebook ingested
+`collegereadiness.collegeboard.org/sat` as a Tier 2 source: answers about ITU's admissions were
+partly grounded in College Board's pages, and the link consumed one of 33 notebook slots.
+Harvested links are now restricted to the university's own registrable domain, subdomains
+included — `application.itu.edu.pk` is ITU's portal and the schema has a field for it.
+
+### 5.6 Verification
+
+Suite grew from 581 to 622 tests. Every fix above is pinned by a regression test named for the
+defect, and the domain filter was replayed against the real 2026-09-03 ITU harvest: it drops
+exactly the College Board link and nothing else.
