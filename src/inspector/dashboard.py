@@ -69,6 +69,29 @@ def inspect_university(query: str):
 
     console.print(Panel(header_text, title="🏛️ Institution Profile", expand=False))
 
+    # A "completed" payload only means Phase 3 finished and wrote a file, not
+    # that every query block in it succeeded -- a block that failed every retry
+    # still yields a payload, just with that bucket silently empty (this is how
+    # ITU shipped with zero bachelors programmes despite 8 BS pages having been
+    # crawled: the bachelors query failed and nothing surfaced it here before).
+    # Resolve slug the same way find_university_record matches uni_outputs/.
+    slug_guess = query.lower().strip()
+    if config.outputs_uni_outputs_dir.exists():
+        for f in config.outputs_uni_outputs_dir.glob("*.json"):
+            if slug_guess in f.stem.lower():
+                slug_guess = f.stem.lower()
+                break
+    state_row = StateManager().get_state(slug_guess)
+    if state_row and state_row.get("error_log"):
+        console.print(
+            Panel(
+                f"[bold yellow]{state_row['error_log']}[/bold yellow]",
+                title="⚠️  Extraction Warning",
+                border_style="yellow",
+                expand=False,
+            )
+        )
+
     # Programs Tables
     ug_list = progs.get("bachelors", [])
     gr_list = progs.get("masters", [])
@@ -396,19 +419,31 @@ def inspect_state():
         table.add_column("Sources", style="green")
         table.add_column("Queries", style="magenta")
         table.add_column("Last Updated", style="dim")
+        table.add_column("Notes", style="dim")
 
         for r in records:
+            error_log = r.get('error_log')
+            status_label = r['status']
             status_style = "bold green" if r['status'] == 'completed' else "yellow"
             if r['status'] == 'failed':
                 status_style = "bold red"
+            elif r['status'] == 'completed' and error_log:
+                # "completed" only means a payload was written, not that every
+                # query block in it succeeded -- a failed block still yields a
+                # payload, just with that bucket empty. Flagging it here is what
+                # would have caught ITU's empty bachelors bucket before it
+                # shipped silently as "completed".
+                status_style = "bold yellow"
+                status_label = f"{status_label} ⚠"
 
             table.add_row(
                 show(r.get('university_slug')).upper(),
-                f"[{status_style}]{r['status']}[/{status_style}]",
+                f"[{status_style}]{status_label}[/{status_style}]",
                 r.get('notebook_id') or "N/A",
                 str(r.get('sources_ingested', 0)),
                 str(r.get('queries_executed', 0)),
-                str(r.get('updated_at', 'N/A'))
+                str(r.get('updated_at', 'N/A')),
+                (error_log[:80] + "…") if error_log and len(error_log) > 80 else (error_log or "—"),
             )
         console.print(table)
     except Exception as e:

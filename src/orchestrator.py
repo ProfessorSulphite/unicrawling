@@ -244,14 +244,31 @@ async def _run_master_pipeline(
             # Free the notebook workspace slot now that the payload is durable.
             await delete_notebook_after_success(client, notebook_id)
 
+            # A query block that failed every retry does not fail the pipeline --
+            # the other five blocks are still real data worth keeping -- but it
+            # must not vanish silently either. Before this, `report.failed` was
+            # only ever printed to stdout: nothing captured it, `set_status`
+            # always wrote a bare "completed", and the run log recorded no
+            # error. A university could ship with an entire degree-level bucket
+            # empty from a transient API failure and nothing downstream -- not
+            # `cli.py state`, not the run manifest, not the payload itself --
+            # could distinguish that from "this university genuinely offers
+            # none". Persisting it here is what let ITU's missing bachelors
+            # bucket (query failed silently, 2026-09-03) go unnoticed.
+            partial_note = (
+                f"Partial extraction: {len(report.failed)} query block(s) failed "
+                f"after retries: {sorted(report.failed)}"
+                if not report.ok else None
+            )
             state_mgr.set_status(
                 uni_slug,
                 "completed",
                 notebook_id=notebook_id,
                 queries_executed=report.queries_used,
+                error_log=partial_note,
             )
-            if not report.ok:
-                print(f"⚠️  [PHASE 3] {len(report.failed)} query block(s) failed: {sorted(report.failed)}")
+            if partial_note:
+                print(f"⚠️  [PHASE 3] {partial_note}")
 
     except Exception as e:
         error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
