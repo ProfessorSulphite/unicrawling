@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from src.config import config
 from src.extractor.normalizers.runner import normalize_universal_payload
+from src.utilities.json_io import iter_jsonl, record_key
 
 
 def _normalized(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -33,42 +34,69 @@ def _normalized(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def iter_all_records() -> Iterator[Dict[str, Any]]:
     """
-    Yield normalized university payloads one at a time.
+    Yield the CURRENT normalized payload for each university, one at a time.
 
-    Streaming generator: only the current record plus the set of seen names is
-    resident, so dataset-wide analytics no longer scale their peak RAM with the
-    size of the corpus. `load_all_records()` remains the eager list form for
-    callers that genuinely need random access.
+    The ledger is append-only: re-running a university appends a row rather than
+    replacing one, so a university with seven runs has seven rows and only the
+    last is current. This function used to keep the FIRST row per name while
+    stream_compile_master_json keeps the LAST -- two opposite rules over one
+    file. The master JSON therefore held the newest payload while every
+    inspector command reading through here held the oldest.
+
+    Observed on 2026-09-05: ITU's newest run extracted 20 programmes and wrote
+    them to the master JSON, while `cli.py audit` reported 13 and flagged a
+    bucket-contamination bug fixed two days earlier -- it was auditing the run of
+    2026-09-03. The Supabase readiness gate reads the same door, so the push was
+    being judged on a superseded payload.
+
+    Identity comes from utilities.json_io.record_key, the same function the
+    compiler uses, so the two cannot drift apart again.
+
+    Still streaming. Two passes over the ledger, mirroring the compiler: the
+    first records only the last line number per identity, the second yields the
+    records at those lines. Peak memory stays proportional to the number of
+    universities rather than the size of the corpus, which is the guarantee this
+    generator exists for. `load_all_records()` remains the eager list form.
     """
-    seen_slugs = set()
+    seen: set = set()
 
-    # 1. Stream the master JSONL ledger if it exists
+    # 1. The master JSONL ledger, last row per university.
     if config.output_jsonl_path.exists():
-        with open(config.output_jsonl_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    data = json.loads(line)
-                except Exception:
-                    continue
-                name = data.get("main_info", {}).get("name", "")
-                if name and name not in seen_slugs:
-                    seen_slugs.add(name)
-                    yield _normalized(data)
+        current_at: Dict[str, int] = {}
+        unkeyed: set = set()
+        for index, record in enumerate(iter_jsonl(config.output_jsonl_path)):
+            key = record_key(record)
+            if key is None:
+                # Never drop a record we cannot identify -- the same rule the
+                # compiler applies, for the same reason.
+                unkeyed.add(index)
+            else:
+                current_at[key] = index
 
-    # 2. Check per-slug JSON files in uni_outputs directory
+        keep = set(current_at.values()) | unkeyed
+        for index, record in enumerate(iter_jsonl(config.output_jsonl_path)):
+            if index not in keep:
+                continue
+            key = record_key(record)
+            if key is not None:
+                seen.add(key)
+            yield _normalized(record)
+
+    # 2. Per-slug JSON files, for universities the ledger has no row for.
+    # Sorted so the corpus reads in a stable order regardless of the filesystem.
     if config.outputs_uni_outputs_dir.exists():
-        for f in config.outputs_uni_outputs_dir.glob("*.json"):
+        for path in sorted(config.outputs_uni_outputs_dir.glob("*.json")):
             try:
-                with open(f, "r", encoding="utf-8") as file_obj:
+                with open(path, "r", encoding="utf-8") as file_obj:
                     data = json.load(file_obj)
             except Exception:
                 continue
-            name = data.get("main_info", {}).get("name", "")
-            if name and name not in seen_slugs:
-                seen_slugs.add(name)
-                yield _normalized(data)
+            key = record_key(data)
+            if key is not None and key in seen:
+                continue
+            if key is not None:
+                seen.add(key)
+            yield _normalized(data)
 
 
 def load_all_records() -> List[Dict[str, Any]]:

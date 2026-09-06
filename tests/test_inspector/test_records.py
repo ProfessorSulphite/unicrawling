@@ -87,3 +87,146 @@ def test_a_current_shape_record_is_unchanged(legacy_corpus):
     twice = load_all_records()
     assert len(twice) == 1
     assert twice[0]["programs"] == once["programs"]
+
+
+# =============================================================================
+# The ledger is append-only: the LAST row for a university is the current one
+# =============================================================================
+
+def _payload(name, programme, extra=None):
+    """A minimal current-shape payload with one bachelors programme."""
+    doc = {
+        "main_info": {
+            "name": name,
+            "abbreviation": "X",
+            "type": "public",
+            "city": "Lahore",
+            "country": "Pakistan",
+            "website": "https://x.edu.pk",
+            "key_links": {},
+        },
+        "programs": {"bachelors": [{"name": programme, "degree_level": "bachelors"}],
+                     "masters": [], "phd": [], "diploma": []},
+        "faculties": [],
+        "contact": {},
+    }
+    doc.update(extra or {})
+    return doc
+
+
+@pytest.fixture
+def ledger_corpus(monkeypatch, tmp_path):
+    """A ledger holding three runs of one university, oldest first."""
+    uni_outputs = tmp_path / "uni_outputs"
+    uni_outputs.mkdir(parents=True, exist_ok=True)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("\n".join(json.dumps(r) for r in [
+        _payload("Information Technology University", "BS Oldest"),
+        _payload("Information Technology University", "BS Middle"),
+        _payload("Information Technology University", "BS Newest"),
+    ]) + "\n", encoding="utf-8")
+
+    monkeypatch.setattr("src.inspector.records.config.outputs_uni_outputs_dir", uni_outputs)
+    monkeypatch.setattr("src.inspector.records.config.output_jsonl_path", ledger)
+    return tmp_path, ledger, uni_outputs
+
+
+def test_a_re_run_university_reads_back_as_its_newest_row(ledger_corpus):
+    """
+    Re-running a university APPENDS to the ledger. This reader kept the first row
+    per name while stream_compile_master_json keeps the last -- two opposite
+    rules over one file, so the master JSON held the newest payload and every
+    inspector command held the oldest.
+
+    Observed 2026-09-05: ITU's newest run extracted 20 programmes into the master
+    JSON while `cli.py audit` reported 13 and flagged a bucket-contamination bug
+    that had been fixed two days earlier. It was auditing the older run.
+    """
+    records = load_all_records()
+    assert len(records) == 1, "three runs of one university are one university"
+    assert [p["name"] for p in records[0]["programs"]["bachelors"]] == ["BS Newest"]
+
+
+def test_the_audit_door_and_the_master_compiler_pick_the_same_row(ledger_corpus):
+    """
+    The regression that matters is the disagreement, not either rule alone: the
+    Supabase readiness gate reads through iter_all_records while the file it
+    gates the push of is built by stream_compile_master_json.
+    """
+    from src.utilities.json_io import stream_compile_master_json
+
+    _, ledger, _ = ledger_corpus
+    master = ledger.with_name("master.json")
+    stream_compile_master_json(ledger, master)
+
+    compiled = json.loads(master.read_text(encoding="utf-8"))
+    streamed = load_all_records()
+    assert len(compiled) == len(streamed) == 1
+    assert ([p["name"] for p in compiled[0]["programs"]["bachelors"]]
+            == [p["name"] for p in streamed[0]["programs"]["bachelors"]])
+
+
+def test_identity_is_case_insensitive_like_the_compilers(ledger_corpus):
+    """Both readers key on the casefolded name; a shouted name is not a new university."""
+    _, ledger, _ = ledger_corpus
+    ledger.write_text("\n".join(json.dumps(r) for r in [
+        _payload("Information Technology University", "BS Oldest"),
+        _payload("INFORMATION TECHNOLOGY UNIVERSITY", "BS Newest"),
+    ]) + "\n", encoding="utf-8")
+
+    records = load_all_records()
+    assert len(records) == 1
+    assert [p["name"] for p in records[0]["programs"]["bachelors"]] == ["BS Newest"]
+
+
+def test_a_university_only_on_disk_is_still_read(ledger_corpus):
+    """uni_outputs covers universities the ledger has no row for."""
+    _, _, uni_outputs = ledger_corpus
+    (uni_outputs / "lums.json").write_text(
+        json.dumps(_payload("Lahore University of Management Sciences", "BS Accounting")),
+        encoding="utf-8",
+    )
+    names = sorted(r["main_info"]["name"] for r in load_all_records())
+    assert names == [
+        "Information Technology University",
+        "Lahore University of Management Sciences",
+    ]
+
+
+def test_a_per_slug_file_does_not_re_add_a_university_the_ledger_already_gave(ledger_corpus):
+    """One university, one record, however many places hold a copy of it."""
+    _, _, uni_outputs = ledger_corpus
+    (uni_outputs / "itu.json").write_text(
+        json.dumps(_payload("Information Technology University", "BS From Disk")),
+        encoding="utf-8",
+    )
+    records = load_all_records()
+    assert len(records) == 1
+    assert [p["name"] for p in records[0]["programs"]["bachelors"]] == ["BS Newest"]
+
+
+def test_an_unidentifiable_record_is_never_dropped(ledger_corpus):
+    """
+    The compiler keeps rows it cannot key rather than silently losing them, and
+    this reader now does the same. A payload with no name is broken data, but
+    invisible broken data is worse.
+    """
+    _, ledger, _ = ledger_corpus
+    nameless = _payload("Information Technology University", "BS Nameless")
+    nameless["main_info"]["name"] = ""
+    ledger.write_text("\n".join(json.dumps(r) for r in [
+        _payload("Information Technology University", "BS Newest"),
+        nameless,
+    ]) + "\n", encoding="utf-8")
+
+    assert len(load_all_records()) == 2
+
+
+def test_a_torn_final_line_costs_only_itself(ledger_corpus):
+    """A crash mid-append must not make the whole ledger unreadable."""
+    _, ledger, _ = ledger_corpus
+    with open(ledger, "a", encoding="utf-8") as f:
+        f.write('{"main_info": {"name": "Truncated Uni"')
+
+    records = load_all_records()
+    assert [p["name"] for p in records[0]["programs"]["bachelors"]] == ["BS Newest"]

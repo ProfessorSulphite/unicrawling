@@ -26,6 +26,7 @@ __all__ = [
     "atomic_write_json",
     "append_jsonl",
     "iter_jsonl",
+    "record_key",
     "stream_compile_master_json",
 ]
 
@@ -104,8 +105,14 @@ def iter_jsonl(path: Path, skip_malformed: bool = True) -> Iterator[Dict[str, An
                 logger.warning(f"{path.name}:{line_no}: skipping malformed JSONL record ({e}).")
 
 
-def _default_record_key(record: Dict[str, Any]) -> Optional[str]:
-    """Identity of a university payload, used for last-write-wins dedupe."""
+def record_key(record: Dict[str, Any]) -> Optional[str]:
+    """
+    Identity of a university payload, used for last-write-wins dedupe.
+
+    Public because the master compiler is not the only reader of the ledger: the
+    inspector reads it too, and the two disagreeing on identity is what let
+    `cli.py audit` and the master JSON describe different runs of one university.
+    """
     main = record.get("main_info") or {}
     name = (main.get("name") or "").strip().lower()
     return name or None
@@ -116,7 +123,7 @@ def stream_compile_master_json(
     master_path: Path,
     indent: int = 2,
     dedupe: bool = True,
-    key_fn: Callable[[Dict[str, Any]], Optional[str]] = _default_record_key,
+    key_fn: Callable[[Dict[str, Any]], Optional[str]] = record_key,
 ) -> int:
     """
     Compile the JSONL ledger into the master JSON array in a single streamed pass.

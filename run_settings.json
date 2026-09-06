@@ -95,7 +95,7 @@
     "max_links": 80,
     "exclude_keywords": "news|events",
     "uptodate": true,
-    "force_rerun_all": false,
+    "force_rerun_all": true,
     "clean_logging": true
   }
 }
