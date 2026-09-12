@@ -135,13 +135,25 @@ async def _crawler_scope():
             logger.warning(f"Per-run browser did not close cleanly: {e}")
 
 
-async def crawl_site_links(start_url: str, max_pages: int = 15) -> List[Dict[str, str]]:
+async def crawl_site_links(
+    start_url: str,
+    max_pages: Optional[int] = None,
+    max_depth: Optional[int] = None,
+) -> List[Dict[str, str]]:
     """
     Uses Crawl4AI BestFirstCrawlingStrategy with KeywordRelevanceScorer
     to discover internal and external links across high-relevance pages.
     Automatically retries with alternative URL candidates (e.g. https:// vs http://)
     if the initial URL times out or fails.
+
+    `max_pages` and `max_depth` fall back to config. `max_depth` was a hardcoded
+    2, which on most university sites reaches the landing page and the pages its
+    top-level menu links to, and stops -- individual programme pages usually sit
+    one hop further in, behind a faculty or department index.
     """
+    max_pages = config.max_crawl_pages if max_pages is None else max_pages
+    max_depth = config.crawl_max_depth if max_depth is None else max_depth
+
     # Build candidate URLs to try in priority order (http vs https, www vs non-www)
     candidates = [start_url]
     parsed_start = urlparse(start_url)
@@ -170,7 +182,7 @@ async def crawl_site_links(start_url: str, max_pages: int = 15) -> List[Dict[str
         run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, score_links=True)
         scorer = KeywordRelevanceScorer(keywords=CRAWL4AI_SCORER_KEYWORDS, weight=1.0)
         strategy = BestFirstCrawlingStrategy(
-            max_depth=2,
+            max_depth=max_depth,
             max_pages=max_pages,
             url_scorer=scorer
         )
@@ -182,7 +194,10 @@ async def crawl_site_links(start_url: str, max_pages: int = 15) -> List[Dict[str
         crawl_error: Optional[str] = None
 
         async with _crawler_scope() as crawler:
-            logger.info(f"Starting Crawl4AI BestFirstCrawlingStrategy for {target_candidate} (max_pages={max_pages})...")
+            logger.info(
+                f"Starting Crawl4AI BestFirstCrawlingStrategy for {target_candidate} "
+                f"(max_pages={max_pages}, max_depth={max_depth})..."
+            )
             try:
                 results = await strategy.arun(start_url=target_candidate, crawler=crawler, config=run_config)
                 for res in results:

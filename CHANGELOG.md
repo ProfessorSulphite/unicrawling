@@ -295,3 +295,116 @@ included — `application.itu.edu.pk` is ITU's portal and the schema has a field
 Suite grew from 581 to 622 tests. Every fix above is pinned by a regression test named for the
 defect, and the domain filter was replayed against the real 2026-09-03 ITU harvest: it drops
 exactly the College Board link and nothing else.
+
+---
+
+## 6. Batch Survivability Pass (2026-09-06)
+
+Post-mortem of run `c_1` (2026-09-05 15:31 → 2026-09-06 02:29 UTC, status `failed`,
+`CancelledError`). The run reached 9 of 21 configured universities in 11 hours and produced 6
+payloads. Every item below is a defect the run log, `state.sqlite` or the notebook audit trail
+proved had actually occurred.
+
+### 6.1 The 7-hour hang
+
+`config.chat_timeout_sec` was declared, documented in COMMANDS.md, and **read by nothing**. The
+`await client.chat.ask(...)` in `_ask()` had no deadline of any kind.
+
+The audit trail stops dead at `19:20:40`, two attempts into the COMSATS `main_info_contact`
+block — both parsed badly, both retried, and the third ask never returned. It sat there for
+**7h 11m** until the process was killed, consuming 65% of the batch window. The twelve
+universities behind it (GCU, Minhaj, all five German and all five American entries) were never
+attempted.
+
+Every ask now runs under `asyncio.wait_for(..., config.chat_timeout_sec)` and raises
+`QueryTimeoutError` on expiry, which the existing retry loop treats as an ordinary failed
+attempt. A new `config.university_timeout_sec` (4200s) bounds everything a per-ask deadline
+cannot — a wedged crawl, a stuck upload, a readiness poll that never converges — so no single
+university can consume a batch window again.
+
+### 6.2 A leaked notebook, and why a `finally` could not have caught it
+
+COMSATS notebook `714feb18-841a-4f22-888e-91b69e5b075e` was created at 19:18:45 and has no
+`NOTEBOOK_DELETED` event. Every other notebook in the run was cleaned up; this one still holds a
+workspace slot, because deletion lives only on the success path.
+
+Two mechanisms now cover it. `_release_notebook()` deletes the notebook when an extraction
+raises — shielded, since the usual caller is a task that is itself being cancelled and a plain
+`await` in that state never sends the request. And `reap_orphaned_notebooks()` runs before every
+batch, reading `pipeline_state` for rows holding a notebook id in a non-terminal status. The
+second exists because the first cannot help: run `c_1` was killed outright, and no in-process
+handler survives that. SQLite does, which is why the reaper reads from there.
+
+### 6.3 A ledger that only ever grew
+
+`reserve_queries()` claims the whole 6-query suite up front; only the *overage* was ever settled
+afterwards, never the shortfall. COMSATS is billed 6 queries in `query_ledger` having issued 2,
+and a run killed mid-suite returned nothing at all. Every failure pushed the recorded daily total
+further above the real one, so the 500/day budget would exhaust early and refuse work the quota
+would have allowed.
+
+`StateManager.release_queries()` hands unspent reservations back, floored at zero. Phase 3 now
+reconciles in both directions, and the failure path releases the reservation whole.
+
+### 6.4 "processed" for a university that produced nothing
+
+Phases 1 and 2 report failure by *returning*, not raising — a dead site must not abort an
+83-university batch. `_drain_queue` read "did not raise" as success and wrote `processed` into
+the manifest for all of them. LUMS is recorded as processed in `c_1` with no notebook, no
+payload and no error; the manifest claimed the run went fine and only sqlite disagreed.
+
+`_run_master_pipeline` now returns a `PipelineOutcome(status, detail)` and the manifest records
+what actually happened.
+
+### 6.5 A whole university lost to a 5-second deadline
+
+NUST was skipped at `0/8 sampled links reachable`. The probe carried its own literal `5.0`s
+timeout while the pooled client it borrows was built for `10.0`s, making it the strictest
+deadline in the pipeline and the only one that can discard a university outright.
+
+It now reads `config.preflight_probe_timeout_sec` (12s) and accepts any 2xx rather than only
+`200`. Separately, `run_health_check` re-probes failed sample links once under a longer deadline
+(`health_check_recheck_timeout_sec`, 25s) before condemning a university — paid for only when the
+verdict is already lost, and able only to promote failures to passes.
+
+### 6.6 Wider discovery, sharper selection
+
+Discovery spends no NotebookLM quota, so it is the cheapest place to buy coverage — and it was
+the tightest: `max_crawl_pages` 15 at a hardcoded depth of 2 reaches the landing page and what
+its top-level menu links to, and stops. Programme pages generally sit one hop further in.
+`max_crawl_pages` is now 35, depth is `config.crawl_max_depth` (3), and `max_links` in
+`run_settings.json` is 100.
+
+A bigger candidate pool only pays if selection gets sharper with it:
+
+- **The crawler's own score is no longer discarded.** Crawl4AI scores every href it discovers
+  and `crawl_site_links` harvested it, but `preprocess_and_filter_links` built a fresh dict
+  without it — the work was paid for on every page of every crawl and dropped one function
+  later. It is now min-maxed per batch and applied as a bounded ranking factor
+  (`crawl_score_weight`, ≤ +15%): a second, independent opinion that breaks ties the embedding
+  cannot. It ranks; it does not decide.
+- **On-site search pages are not sources.** A search URL renders a query, not a page. The
+  COMSATS notebook spent two of its 41 slots on `/search.aspx?q=research` and
+  `/search.aspx?q=academic+programs` — two lists of titles ingested as if they were content.
+  `search` and its neighbours join the token denylist, and any URL whose query carries a
+  `SEARCH_QUERY_PARAMS` key is dropped. Token-matched as always, so `/research/centres` and
+  `/researchers` are untouched.
+- **Pre-flight casualties are refilled instead of subtracted.** Phase 2 drops links that no
+  longer resolve and the notebook simply ended up smaller — COMSATS ingested 41 of the 80 links
+  chosen for it. Phase 1 now exports a ranked reserve alongside the selection
+  (`link_reserve_ratio`, 0.35), tier-proportional so a backfill preserves the tier balance, and
+  Phase 2 draws on it only to replace a dead selected link. A healthy university probes nothing
+  extra. Links the per-notebook cap displaces join the reserve rather than being discarded.
+- **Tier shares** shift slightly toward programmes and admissions (0.48/0.30/0.13/0.09): the two
+  query blocks that failed in `c_1` were `bachelors` and `masters`, and
+  `max_query_split_depth` rises to 3 to give an oversized programme query more room to narrow.
+
+### 6.7 Verification
+
+Suite grew from 629 to 667 tests. Each defect above is pinned by a regression test named for it —
+`tests/test_reliability.py` for the five run-`c_1` failures,
+`tests/test_ingestor/test_reserve_backfill.py` for the backfill, and
+`tests/test_extractor/test_linkers_selection_quality.py` for search-page exclusion and the crawl
+score. Two quota tests were rewritten to derive their expectations from `config.tier_quotas()`
+rather than transcribing the old shares as literals, which pinned one setting rather than the
+allocation behaviour.

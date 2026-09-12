@@ -421,3 +421,62 @@ async def test_phase_1_hands_phase_2_tiered_records_not_bare_urls(
         "https://itu.edu.pk/programs",
         "https://itu.edu.pk/news",
     ]
+
+
+# ---------------------------------------------------------- the reserve --
+
+def test_a_reserve_link_is_carried_through_flagged(links_dir):
+    """
+    Phase 1 exports the links that lost the quota after the ones that won it,
+    marked `selected: false`. Phase 2 ingests a reserve link only to replace a
+    selected link that fails pre-flight, so the flag has to survive the read.
+    """
+    _write_partition(links_dir, "itu", [
+        {**PARTITION_RECORD, "rank": 1, "url": "https://itu.edu.pk/a", "selected": True},
+        {**PARTITION_RECORD, "rank": 2, "url": "https://itu.edu.pk/b", "selected": False},
+    ])
+
+    links = _read_harvested_links("itu")
+    assert [l["selected"] for l in links] == [True, False]
+
+
+def test_a_partition_predating_the_reserve_is_all_selection(links_dir):
+    """
+    Records written before the flag existed, and the flat-file fallback, must
+    behave exactly as they did then: everything is the selection.
+    """
+    _write_partition(links_dir, "itu", [PARTITION_RECORD])
+    assert all(l["selected"] for l in _read_harvested_links("itu"))
+
+
+def test_the_flat_file_fallback_is_all_selection(links_dir, tmp_path):
+    (tmp_path / "extracted_links.txt").write_text(
+        "https://itu.edu.pk/a\n", encoding="utf-8"
+    )
+    assert all(l["selected"] for l in _read_harvested_links("itu"))
+
+
+def test_phase_1_writes_the_reserve_after_the_selection(tmp_path, monkeypatch):
+    """The export contract Phase 2's backfill reads: selection first, then reserve."""
+    import json as _j
+    from src.config import config as _c
+    from src.extractor.linkers.runner import export_partitioned_links
+
+    monkeypatch.setattr(_c, "data_links_dir", tmp_path / "links")
+
+    def _item(href, tier):
+        return {"href": href, "text": "t", "priority_tier_num": tier,
+                "category": f"Tier {tier}", "weighted_score": 0.9,
+                "raw_similarity_score": 0.8, "matched_keyword": "k"}
+
+    path = export_partitioned_links(
+        [_item("https://itu.edu.pk/win", 1)], "itu", "ITU", "https://itu.edu.pk",
+        reserve=[_item("https://itu.edu.pk/spare", 2)],
+    )
+
+    rows = [_j.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert [r["url"] for r in rows] == ["https://itu.edu.pk/win", "https://itu.edu.pk/spare"]
+    assert [r["selected"] for r in rows] == [True, False]
+    # Rank is continuous across the boundary: it is one ranking, not two lists.
+    assert [r["rank"] for r in rows] == [1, 2]
+

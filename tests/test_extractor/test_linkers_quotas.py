@@ -39,8 +39,13 @@ def test_tier_quotas_guarantee_faculty_and_contact_sources():
     assert len(selected) == 60
     for t in (1, 2, 3, 4):
         assert tiers.count(t) > 0, f"tier {t} was starved"
-    assert tiers.count(1) == 27 and tiers.count(2) == 18
-    assert tiers.count(3) == 9 and tiers.count(4) == 6
+    # Derived from config, not transcribed from it. These numbers used to be
+    # written out as literals (27/18/9/6), which pinned one particular setting of
+    # tier_quota_shares rather than the allocation behaviour, and turned any
+    # retuning of the shares into a test failure with nothing wrong behind it.
+    expected = Config().tier_quotas(60)
+    for tier, quota in expected.items():
+        assert tiers.count(tier) == quota, f"tier {tier} got {tiers.count(tier)}, not {quota}"
 
 
 def test_tier_quotas_redistribute_unfilled_budget():
@@ -65,7 +70,9 @@ def test_tier_reserve_prevents_threshold_starving_a_tier():
 
     selected = allocate_proportional_tier_quotas(links, total_cap=60)
     tiers = [i["priority_tier_num"] for i in selected]
-    assert tiers.count(3) == 9, "tier 3 must backfill from its own reserve"
+    tier3_quota = Config().tier_quotas(60)[3]
+    assert tier3_quota > 4, "the fixture only tests backfill if the quota exceeds the 4 passing links"
+    assert tiers.count(3) == tier3_quota, "tier 3 must backfill from its own reserve"
     # The 4 above-threshold tier-3 links must all be chosen ahead of the reserve.
     t3 = [i for i in selected if i["priority_tier_num"] == 3]
     assert sum(1 for i in t3 if i["passed_threshold"]) == 4

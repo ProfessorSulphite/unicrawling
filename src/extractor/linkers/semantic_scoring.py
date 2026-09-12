@@ -94,6 +94,39 @@ def _get_embedding_model() -> SentenceTransformer:
     return _EMBEDDING_MODEL
 
 
+def _crawl_score_normaliser(links: List[Dict[str, str]]):
+    """
+    Build the per-link Crawl4AI boost factor for this batch.
+
+    Min-maxed across the batch rather than used raw, because KeywordRelevanceScorer's
+    scale depends on the keyword list and on how many of them a URL happens to
+    contain -- it is meaningful as a ranking within one crawl and meaningless as
+    an absolute number across crawls. A link the crawler never scored, and a batch
+    where every link scored the same, both come back as 1.0: no opinion, no
+    adjustment. The factor spans [1.0, 1.0 + config.crawl_score_weight].
+    """
+    weight = config.crawl_score_weight
+    values = [
+        float(l["crawl_score"]) for l in links
+        if isinstance(l.get("crawl_score"), (int, float))
+    ]
+    if weight <= 0 or not values:
+        return lambda link: 1.0
+
+    low, high = min(values), max(values)
+    span = high - low
+    if span <= 0:
+        return lambda link: 1.0
+
+    def boost(link: Dict[str, str]) -> float:
+        raw = link.get("crawl_score")
+        if not isinstance(raw, (int, float)):
+            return 1.0
+        return 1.0 + weight * ((float(raw) - low) / span)
+
+    return boost
+
+
 def classify_and_score_links(
     links: List[Dict[str, str]],
     threshold: Optional[float] = None,
@@ -135,6 +168,8 @@ def classify_and_score_links(
 
     similarity_matrix = model.similarity(link_embeddings, keyword_embeddings)
 
+    crawl_boost = _crawl_score_normaliser(links)
+
     scored_results = []
     for idx, link in enumerate(links):
         scores = similarity_matrix[idx]
@@ -168,7 +203,9 @@ def classify_and_score_links(
             combined_str = f"{link['href']} {link['text']} {link['path_words']}"
             recency_factor, year_tag = compute_year_decay_factor(combined_str)
 
-        weighted_score = round(max_score * tier_weight * recency_factor, 4)
+        weighted_score = round(
+            max_score * tier_weight * recency_factor * crawl_boost(link), 4
+        )
 
         scored_results.append({
             "href": link["href"],

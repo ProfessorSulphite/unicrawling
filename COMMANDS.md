@@ -361,7 +361,7 @@ The suite is fully offline — it makes no network calls and consumes no Noteboo
     ]
   },
   "pipeline_settings": {
-    "max_links": 80,
+    "max_links": 100,
     "exclude_keywords": "news|events",
     "uptodate": true,
     "force_rerun_all": false,
@@ -375,7 +375,7 @@ an explicit `name` produces a correct notebook title and registry lookup.
 
 | Setting | Default | Meaning |
 | :--- | :--- | :--- |
-| `max_links` | `60` | Links retained per university |
+| `max_links` | `60` | Links retained per university (a reserve of `link_reserve_ratio` more is exported alongside them) |
 | `exclude_keywords` | `news\|events` | Pipe-separated exclusion patterns |
 | `uptodate` | `true` | 2026 recency boosting |
 | `force_rerun_all` | `false` | Same as `--rerun-all`; **destructive** |
@@ -390,9 +390,12 @@ Edit the `Config` dataclass to change these.
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
 | `max_sources_per_notebook` | `150` | Hard ceiling on sources per notebook |
-| `dynamic_link_ratio` | `0.45` | Fraction of scored candidates selected |
+| `dynamic_link_ratio` | `0.50` | Fraction of scored candidates selected |
 | `semantic_threshold` | `0.68` | Minimum similarity to survive scoring |
-| `max_crawl_pages` | `15` | Pages crawled per site |
+| `max_crawl_pages` | `35` | Pages crawled per site |
+| `crawl_max_depth` | `3` | Link hops followed from the start URL; `2` rarely leaves the top-level menu |
+| `link_reserve_ratio` | `0.35` | Extra ranked links exported to backfill pre-flight casualties; `0` disables backfill |
+| `crawl_score_weight` | `0.15` | How far Crawl4AI's own link score may adjust the ranking |
 | `restrict_links_to_university_domain` | `True` | Drop harvested links outside the university's own registrable domain |
 | `crawler_reuse_browser` | `True` | Reuse one browser across universities |
 | `crawler_headless` | `True` | Headless mode |
@@ -409,7 +412,10 @@ Edit the `Config` dataclass to change these.
 | `concurrent_uploads` | `2` | Simultaneous source uploads |
 | `source_ready_timeout_sec` | `600` | Per-source readiness timeout |
 | `preflight_http_check` | `True` | Drop dead/403 URLs before upload |
-| `preflight_concurrency` | `15` | Simultaneous pre-flight probes |
+| `preflight_concurrency` | `24` | Simultaneous pre-flight probes |
+| `preflight_probe_timeout_sec` | `12.0` | Per-URL deadline for a reachability probe |
+| `health_check_recheck_failures` | `True` | Re-probe failed sample links once before condemning a university |
+| `health_check_recheck_timeout_sec` | `25.0` | Deadline for that second, patient probe |
 | `http_timeout_sec` | `10.0` | Shared client request timeout |
 | `http_connect_timeout_sec` | `5.0` | Connect timeout |
 | `http_max_connections` | `50` | Pool ceiling |
@@ -425,12 +431,20 @@ Edit the `Config` dataclass to change these.
 
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
-| `chat_timeout_sec` | `180` | Per-query timeout |
+| `chat_timeout_sec` | `180` | Per-query timeout — **enforced** on every `chat.ask` |
+| `university_timeout_sec` | `4200` | Wall-clock ceiling for one university across all phases |
 | `max_query_retries` | `2` | Repair retries per query |
-| `max_query_split_depth` | `2` | Times an oversized query may be halved over its sources (see note below) |
+| `max_query_split_depth` | `3` | Times an oversized query may be halved over its sources (see note below) |
 | `query_concurrency` | `3` | Notebooks queried in parallel (see note below) |
 | `daily_query_budget` | `500` | NotebookLM Pro daily ceiling — **enforced** |
 | `queries_per_university` | `6` | Reserved per university before querying |
+
+> **Note on `chat_timeout_sec` and `university_timeout_sec`:** these are the two deadlines that
+> bound a batch. `chat_timeout_sec` bounds one `chat.ask`; `university_timeout_sec` bounds
+> everything else for one university — a wedged crawl, a stuck upload, a readiness poll that never
+> converges. Both exist because run `c_1` on 2026-09-05 had neither: a single COMSATS ask hung for
+> 7h11m of an 11-hour window, and the twelve universities queued behind it never ran. A timed-out
+> ask is now an ordinary failed attempt; a timed-out university fails and the batch moves on.
 
 > **Note on `query_concurrency`:** the suite against one notebook is **serial**, and must stay
 > that way. Concurrent unkeyed asks share a conversation, and an ask still waiting when a later

@@ -92,7 +92,7 @@
     ]
   },
   "pipeline_settings": {
-    "max_links": 80,
+    "max_links": 100,
     "exclude_keywords": "news|events",
     "uptodate": true,
     "force_rerun_all": true,

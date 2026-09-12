@@ -45,19 +45,30 @@ def sanitize_url(url: str) -> str:
 
 async def check_url_accessible(
     url: str,
-    timeout: float = 5.0,
+    timeout: Optional[float] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> bool:
     """
-    Fast async pre-flight check to ensure URL returns HTTP 200 OK before sending to NotebookLM.
+    Fast async pre-flight check that a URL is fetchable before sending it to NotebookLM.
 
     Filters out dead 404 links, 403 Forbidden bot blocks, or unreachable subdomains that would
     cause Google NotebookLM's server-side crawler to fail with RPCError rpc_code=9.
 
     Uses the shared HTTP/2 pool unless an explicit `client` is supplied.
+
+    `timeout` defaults to config.preflight_probe_timeout_sec rather than to a
+    literal. The literal was 5.0 while the pooled client was built for 10.0, so
+    this probe was the strictest deadline in the pipeline and the only one that
+    could discard a university outright -- NUST failed 8 of 8 sampled links on
+    2026-09-05 and never reached Phase 2.
+
+    Any 2xx counts as reachable. Only 200 did before, which failed a page served
+    as 203 or 206 that NotebookLM would have ingested without complaint.
+    Redirects never appear here: the pooled client follows them.
     """
     if not url:
         return False
+    timeout = config.preflight_probe_timeout_sec if timeout is None else timeout
     parsed = urlparse(url)
     netloc = parsed.netloc.lower()
     # Synthetic test hosts & paths in pipeline unit tests
@@ -68,14 +79,28 @@ async def check_url_accessible(
     try:
         try:
             resp = await http_client.head(url, headers=BROWSER_HEADERS, timeout=timeout)
-            if resp.status_code == 200:
+            if 200 <= resp.status_code < 300:
                 return True
         except Exception:
             pass
+        # Not an else: plenty of university servers answer HEAD with 403 or 405
+        # and serve the same page perfectly well on GET.
         resp = await http_client.get(url, headers=BROWSER_HEADERS, timeout=timeout)
-        return resp.status_code == 200
+        return 200 <= resp.status_code < 300
     except Exception:
         return False
+
+
+async def check_url_accessible_patiently(url: str) -> bool:
+    """
+    The same probe under the longer health-recheck deadline.
+
+    Bound as a named function rather than a lambda or partial so the injected
+    probe still has a readable name in logs and in a traceback.
+    """
+    return await check_url_accessible(
+        url, timeout=config.health_check_recheck_timeout_sec
+    )
 
 
 async def fetch_and_extract_text(
@@ -197,15 +222,30 @@ async def ingest_university_sources(
     cap = resolve_source_cap(max_sources)
     result = IngestResult()
 
-    # Normalise input records, sanitize URLs, and apply the per-notebook cap.
+    # Normalise input records and sanitize URLs, keeping Phase 1's rank order.
+    # A record flagged `selected: False` is reserve: ranked, scored and vetted
+    # like any other, but held back from the notebook unless a selected link
+    # fails pre-flight. A record with no flag is a selection (older partitions,
+    # the flat-file fallback, and the bare-string form all predate the reserve).
     normalised: List[Dict[str, Any]] = []
-    for item in links[:cap]:
+    reserve: List[Dict[str, Any]] = []
+    for item in links:
         if isinstance(item, str):
-            clean_u = sanitize_url(item)
-            normalised.append({"url": clean_u, "tier": 1})
+            rec = {"url": sanitize_url(item), "tier": 1}
+            is_selected = True
         elif item.get("url"):
-            clean_u = sanitize_url(item["url"])
-            normalised.append({"url": clean_u, "tier": int(item.get("tier", 1))})
+            rec = {"url": sanitize_url(item["url"]), "tier": int(item.get("tier", 1))}
+            is_selected = item.get("selected", True)
+        else:
+            continue
+        (normalised if is_selected else reserve).append(rec)
+
+    # The cap applies to what actually reaches the notebook. Anything the cap
+    # displaces joins the reserve rather than being discarded, so it is still
+    # available to backfill a pre-flight casualty.
+    if len(normalised) > cap:
+        reserve = normalised[cap:] + reserve
+        normalised = normalised[:cap]
 
     if not normalised:
         result.skipped = True
@@ -217,7 +257,10 @@ async def ingest_university_sources(
     # created: provisioning first and sampling second would leave an orphaned
     # notebook behind for every university we then decide to skip.
     result.health = await run_health_check(
-        normalised, probe=check_url_accessible, label=uni_slug
+        normalised,
+        probe=check_url_accessible,
+        label=uni_slug,
+        recheck_probe=check_url_accessible_patiently,
     )
     if not result.health.healthy:
         result.skipped = True
@@ -233,8 +276,6 @@ async def ingest_university_sources(
     # Links already probed by the health sample carry their verdict over rather
     # than being fetched a second time.
     if getattr(config, "preflight_http_check", True) and normalised:
-        accessible_links = []
-        inaccessible_urls = []
         check_sem = asyncio.Semaphore(config.preflight_concurrency)
         known = result.health.results
 
@@ -245,19 +286,47 @@ async def ingest_university_sources(
                 is_ok = await check_url_accessible(rec["url"])
                 return rec, is_ok
 
-        check_results = await asyncio.gather(*(_check(rec) for rec in normalised))
-        for rec, is_ok in check_results:
-            if is_ok:
-                accessible_links.append(rec)
-            else:
-                inaccessible_urls.append(rec["url"])
+        async def _probe_all(records):
+            """Split a batch of records into (reachable records, dead urls), order kept."""
+            live, dead = [], []
+            for rec, is_ok in await asyncio.gather(*(_check(r) for r in records)):
+                if is_ok:
+                    live.append(rec)
+                else:
+                    dead.append(rec["url"])
+            return live, dead
+
+        target = len(normalised)
+        accessible_links, inaccessible_urls = await _probe_all(normalised)
+
+        # Backfill. Every link the pre-flight kills is a notebook slot that
+        # Phase 1 paid to find and score, and losing it silently shrinks the
+        # corpus every later query is grounded in -- COMSATS ingested 41 of the
+        # 80 links selected for it. The reserve is drawn on in rank order, and
+        # only in batches the size of the actual shortfall, so a healthy
+        # university probes nothing extra at all.
+        backfilled = 0
+        cursor = 0
+        while reserve and cursor < len(reserve) and len(accessible_links) < target:
+            shortfall = target - len(accessible_links)
+            batch = reserve[cursor:cursor + shortfall]
+            cursor += len(batch)
+            live, dead = await _probe_all(batch)
+            accessible_links.extend(live)
+            inaccessible_urls.extend(dead)
+            backfilled += len(live)
 
         if inaccessible_urls:
             logger.warning(
-                f"[{uni_slug}] Pre-flight HTTP check filtered out {len(inaccessible_urls)}/{len(normalised)} "
+                f"[{uni_slug}] Pre-flight HTTP check filtered out {len(inaccessible_urls)} "
                 f"inaccessible/blocked URLs (preventing RPC code 9 failures)."
             )
             result.failed_urls.extend(inaccessible_urls)
+        if backfilled:
+            logger.info(
+                f"[{uni_slug}] Backfilled {backfilled} notebook slot(s) from the "
+                f"link reserve; {len(accessible_links)}/{target} selected slots filled."
+            )
         normalised = accessible_links
 
     if not normalised:

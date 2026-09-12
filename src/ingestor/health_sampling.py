@@ -109,6 +109,7 @@ async def run_health_check(
     concurrency: Optional[int] = None,
     rng: Optional[random.Random] = None,
     label: str = "",
+    recheck_probe: Optional[LinkProbe] = None,
 ) -> HealthReport:
     """
     Probe a random sample of `records` and decide whether the batch is worth ingesting.
@@ -117,6 +118,13 @@ async def run_health_check(
     one return path and can record the verdict either way. A probe that itself
     raises counts as a failed link, not a failed check -- one unreachable host
     must not abort the sample.
+
+    `recheck_probe` is a second, patient probe applied only to links the first
+    pass failed, and only when the verdict would otherwise be "unhealthy". The
+    stake here is the whole university: NUST scored 0/8 on 2026-09-05 and was
+    dropped from the batch on a single round of 5-second probes. Re-probing is
+    bounded (one extra pass over the failures alone) and cannot make a verdict
+    worse -- it only ever promotes failures to passes.
     """
     report = HealthReport()
 
@@ -151,6 +159,36 @@ async def run_health_check(
         config.health_check_min_pass_ratio if min_pass_ratio is None else min_pass_ratio
     )
     report.healthy = report.pass_ratio >= threshold
+
+    # Second chance, spent only when the university is about to be abandoned.
+    if not report.healthy and report.failed and config.health_check_recheck_failures:
+        retry_probe = recheck_probe or probe
+
+        async def _reprobe(url: str) -> bool:
+            async with sem:
+                try:
+                    return bool(await retry_probe(url))
+                except Exception as e:
+                    logger.debug(f"health re-probe raised for {url}: {e}")
+                    return False
+
+        retried = list(report.failed)
+        logger.info(
+            f"{f'[{label}] ' if label else ''}Link health check failed on first pass "
+            f"({report.pass_ratio:.0%}); re-probing {len(retried)} failed link(s) patiently."
+        )
+        second = await asyncio.gather(*(_reprobe(url) for url in retried))
+        recovered = [url for url, ok in zip(retried, second) if ok]
+        if recovered:
+            for url in recovered:
+                report.results[url] = True
+                report.passed.append(url)
+                report.failed.remove(url)
+            report.healthy = report.pass_ratio >= threshold
+            logger.info(
+                f"{f'[{label}] ' if label else ''}Re-probe recovered "
+                f"{len(recovered)}/{len(retried)} link(s)."
+            )
 
     prefix = f"[{label}] " if label else ""
     report.reason = (

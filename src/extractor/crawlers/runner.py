@@ -147,6 +147,7 @@ async def extract_university_payload(
     uni_domain: str,
     source_ids_by_tier: Optional[Dict[int, List[str]]] = None,
     tier1_source_count: int = 0,
+    report: Optional[ExtractionReport] = None,
 ) -> Tuple[UniversityPayload, ExtractionReport]:
     """
     Execute the 5-query suite and assemble a validated UniversityPayload.
@@ -157,11 +158,17 @@ async def extract_university_payload(
     transient chat timeout destroyed all 60 ingested sources with no way to retry
     short of re-crawling and re-ingesting the whole university.
 
+    `report` may be supplied by the caller, which is the only way to learn what a
+    *failed* extraction spent. `queries_used` is the basis for reconciling the
+    up-front query reservation, and when this function raises, a report it owns
+    privately dies with the call -- leaving the caller to refund the whole suite
+    including the queries that really were issued.
+
     Returns:
         (payload, report). Inspect report.ok / report.failed before trusting the
         payload: a query that failed yields an empty block, not an error.
     """
-    report = ExtractionReport()
+    report = ExtractionReport() if report is None else report
 
     def ids_for(spec: QuerySpec) -> Optional[List[str]]:
         if not source_ids_by_tier:
@@ -201,7 +208,16 @@ async def extract_university_payload(
         # Each query accumulates into its own sub-report, merged back in
         # QUERY_SUITE order so identical inputs produce identical reports.
         sub = ExtractionReport()
-        results[spec.key] = await run_query(client, notebook_id, spec, ids_for(spec), sub)
+        try:
+            results[spec.key] = await run_query(client, notebook_id, spec, ids_for(spec), sub)
+        except BaseException:
+            # A cancellation lands mid-spec, and without this the asks that spec
+            # had already issued are absent from `report.queries_used` -- so the
+            # orchestrator's refund would credit back queries that were spent.
+            # `_attempt_query` swallows ordinary Exceptions, so in practice this
+            # is the CancelledError path: the watchdog, or a Ctrl-C.
+            report.merge(sub)
+            raise
         report.merge(sub)
 
     # --- Block 1 & 4: main_info + contact ---

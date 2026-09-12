@@ -154,6 +154,7 @@ def export_partitioned_links(
     uni_slug: str,
     uni_name: str,
     uni_url: str,
+    reserve: Optional[List[Dict[str, str]]] = None,
 ) -> Path:
     """
     Write one JSONL file per university to data/links/<slug>.jsonl.
@@ -164,6 +165,12 @@ def export_partitioned_links(
     which university a given URL belonged to. Phase 2 provisions one notebook per
     university and therefore needs the partition, plus the tier of each URL so
     Phase 3 can scope its queries with source_ids.
+
+    `reserve` is written after the selection with `"selected": false`. Those links
+    were crawled, filtered, scored and tiered exactly like the rest; they simply
+    lost the quota. Phase 2 ingests them only to replace a selected link that
+    fails its pre-flight check, which used to leave the notebook permanently
+    short -- COMSATS was ingested with 41 of the 80 links chosen for it.
     """
     config.data_links_dir.mkdir(parents=True, exist_ok=True)
     out_path = config.data_links_dir / f"{uni_slug}.jsonl"
@@ -172,8 +179,11 @@ def export_partitioned_links(
     # ingest as if it were the complete link partition.
     tmp_path = out_path.with_name(out_path.name + ".tmp")
 
+    reserve = reserve or []
     with open(tmp_path, "w", encoding="utf-8") as f:
-        for rank, item in enumerate(results, start=1):
+        rank = 0
+        for item, selected in [(i, True) for i in results] + [(i, False) for i in reserve]:
+            rank += 1
             f.write(json.dumps({
                 "university_slug": uni_slug,
                 "university_name": uni_name,
@@ -187,12 +197,17 @@ def export_partitioned_links(
                 "raw_similarity_score": item["raw_similarity_score"],
                 "matched_keyword": item["matched_keyword"],
                 "year_tag": item.get("year_tag", "N/A"),
+                "selected": selected,
             }, ensure_ascii=False) + "\n")
         f.flush()
         os.fsync(f.fileno())
 
     os.replace(tmp_path, out_path)
-    logger.info(f"Exported {len(results)} partitioned links to '{out_path}'")
+    logger.info(
+        f"Exported {len(results)} partitioned links"
+        + (f" (+{len(reserve)} reserve)" if reserve else "")
+        + f" to '{out_path}'"
+    )
     return out_path
 
 
@@ -270,6 +285,21 @@ async def run_pipeline(
             # Tier-proportional selection, not a flat top-N slice.
             top_quality_links = allocate_proportional_tier_quotas(scored_links, total_cap=dynamic_target)
 
+            # The reserve is the next slice of the same ranking, chosen the same
+            # tier-proportional way so a backfill preserves the tier balance
+            # rather than quietly refilling every dead Tier 3 slot with Tier 1.
+            reserve_links: List[Dict[str, str]] = []
+            reserve_target = int(dynamic_target * config.link_reserve_ratio)
+            if reserve_target > 0:
+                chosen = {id(i) for i in top_quality_links}
+                remaining = [i for i in scored_links if id(i) not in chosen]
+                reserve_links = allocate_proportional_tier_quotas(
+                    remaining, total_cap=reserve_target
+                )
+                logger.info(
+                    f"Reserve: held back {len(reserve_links)} ranked links to backfill "
+                    f"pre-flight casualties in Phase 2."
+                )
 
             if not top_quality_links:
                 raise CrawlFailure(
@@ -278,7 +308,9 @@ async def run_pipeline(
                     f"threshold={threshold})"
                 )
 
-            export_partitioned_links(top_quality_links, uni_slug, uni_name, target_url)
+            export_partitioned_links(
+                top_quality_links, uni_slug, uni_name, target_url, reserve=reserve_links
+            )
             all_processed_results.extend(top_quality_links)
             succeeded.append((uni_name, uni_slug, len(top_quality_links)))
             logger.info(f"Retained {len(top_quality_links)} canonical quality links for {uni_name} (cap={max_links}).")

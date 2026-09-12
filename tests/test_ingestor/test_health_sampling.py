@@ -278,3 +278,82 @@ def test_reservation_refuses_to_overrun_the_daily_budget(tmp_path, monkeypatch):
         mgr.reserve_queries("uni-b", 5)
     # The refused reservation is not partially applied.
     assert mgr.queries_used_today() == 5
+
+
+# ------------------------------------------------------ the second chance --
+
+@pytest.mark.asyncio
+async def test_a_transient_failure_does_not_cost_the_whole_university():
+    """
+    The verdict discards an entire university, so one bad minute on the network
+    must not decide it. NUST scored 0/8 on 2026-09-05 against a probe whose
+    deadline was half the pooled client's, and never reached Phase 2.
+    """
+    records = [{"url": f"https://nust.edu.pk/{i}"} for i in range(8)]
+
+    async def always_fails(url):
+        return False
+
+    async def patient(url):
+        return True
+
+    report = await run_health_check(
+        records, probe=always_fails, recheck_probe=patient, label="nust"
+    )
+
+    assert report.healthy is True
+    assert not report.failed
+    assert report.pass_ratio == 1.0
+
+
+@pytest.mark.asyncio
+async def test_the_recheck_is_only_paid_for_when_the_verdict_is_already_lost():
+    """A university that passes first time must not pay for a second pass."""
+    records = [{"url": f"https://itu.edu.pk/{i}"} for i in range(8)]
+    rechecked = []
+
+    async def always_passes(url):
+        return True
+
+    async def patient(url):
+        rechecked.append(url)
+        return True
+
+    report = await run_health_check(
+        records, probe=always_passes, recheck_probe=patient
+    )
+    assert report.healthy is True
+    assert rechecked == [], "a healthy sample was re-probed for nothing"
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_dead_site_is_still_refused():
+    """The second chance promotes failures to passes; it never invents one."""
+    records = [{"url": f"https://gone.edu.pk/{i}"} for i in range(8)]
+
+    async def dead(url):
+        return False
+
+    report = await run_health_check(records, probe=dead, recheck_probe=dead)
+    assert report.healthy is False
+    assert len(report.failed) == report.sample_size
+    assert not report.passed
+
+
+@pytest.mark.asyncio
+async def test_the_recheck_can_be_switched_off(monkeypatch):
+    monkeypatch.setattr(config, "health_check_recheck_failures", False)
+    records = [{"url": f"https://x/{i}"} for i in range(8)]
+    rechecked = []
+
+    async def dead(url):
+        return False
+
+    async def patient(url):
+        rechecked.append(url)
+        return True
+
+    report = await run_health_check(records, probe=dead, recheck_probe=patient)
+    assert report.healthy is False
+    assert rechecked == []
+

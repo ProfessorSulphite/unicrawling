@@ -26,6 +26,7 @@ from src.extractor.linkers.constants import (
     OPEN_ENDED_YEAR_REGEX,
     PATH_SEPARATOR_REGEX,
     PATH_TOKEN_SPLIT_REGEX,
+    SEARCH_QUERY_PARAMS,
     TRACKING_PARAMS,
     YEAR_TOKEN_REGEX,
     logger,
@@ -52,6 +53,12 @@ def is_excluded_path(url: str) -> bool:
     parsed = urlparse(url)
     path = parsed.path.lower()
     host = parsed.netloc.lower()
+
+    # A URL carrying a search term is a rendering of a query, not a page: it has
+    # no stable content to ground an answer in, and two different queries against
+    # the same endpoint look like two distinct sources to the deduper.
+    if any(k.lower() in SEARCH_QUERY_PARAMS for k, _ in parse_qsl(parsed.query)):
+        return True
 
     # Exclude video hosts and social media URLs (cannot be ingested as NotebookLM web documents)
     if any(h in host for h in ("youtu.be", "youtube.com", "vimeo.com", "facebook.com", "twitter.com", "instagram.com", "linkedin.com")):
@@ -257,6 +264,7 @@ def preprocess_and_filter_links(
 
     for link in links:
         raw_text = link.get("text", "").strip()
+        crawl_score = link.get("crawl_score")
 
         normalized_url = normalize_url(link.get("href", ""), base_url=base_url)
         if not normalized_url:
@@ -316,6 +324,11 @@ def preprocess_and_filter_links(
             "text": effective_text,
             "raw_text": raw_text,
             "path_words": path_words,
+            # Crawl4AI's own keyword relevance score for this href, already paid
+            # for during discovery and, until now, dropped on the floor right
+            # here: the crawler computed it, crawling.py harvested it, and this
+            # function built a new dict without it. The scorer blends it in.
+            "crawl_score": crawl_score,
         })
 
     logger.info(

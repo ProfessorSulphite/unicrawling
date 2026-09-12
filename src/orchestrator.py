@@ -34,7 +34,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 # Kept ahead of the src imports: `python src/orchestrator.py` still has to work,
 # and run that way sys.path[0] is src/, so the `src` package is not importable yet.
@@ -45,6 +45,7 @@ from rich.panel import Panel  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
 from src.config import config  # noqa: E402
+from src.extractor.crawlers.notebook_querying import ExtractionReport  # noqa: E402
 from src.extractor.crawlers.runner import (  # noqa: E402
     delete_notebook_after_success,
     extract_university_payload,
@@ -73,6 +74,21 @@ from src.utilities.workspace import backup_existing_outputs  # noqa: E402
 DEFAULT_RUN_SETTINGS_PATH = config.run_settings_path
 
 
+class PipelineOutcome(NamedTuple):
+    """
+    What actually happened to one university, for the run manifest.
+
+    Phases 1 and 2 report failure by returning early rather than raising -- a
+    dead site must not abort an 83-university batch. But `_drain_queue` treated
+    "did not raise" as success and wrote "processed" into the manifest for every
+    one of them. LUMS is recorded as processed in run c_1 on 2026-09-05 having
+    produced no notebook, no payload and no error; the manifest said the run
+    went fine and only sqlite disagreed.
+    """
+    status: str          # processed | failed | skipped
+    detail: str = ""
+
+
 def compile_master_json() -> Path:
     """
     Rebuild the master JSON array from the JSONL ledger.
@@ -85,6 +101,30 @@ def compile_master_json() -> Path:
     count = stream_compile_master_json(config.output_jsonl_path, master_path)
     print(f"  └─ Master : {master_path} ({count} records)")
     return master_path
+
+
+async def _release_notebook(client, state_mgr, uni_slug: str, notebook_id: str) -> None:
+    """
+    Give a notebook back after a failed or abandoned extraction.
+
+    Shielded, because the most common caller is a task that is itself being
+    cancelled -- a watchdog timeout or a Ctrl-C. A plain `await` in that state
+    raises CancelledError before the request is ever sent; the shield lets the
+    delete run to completion on the loop while this coroutine unwinds.
+
+    Best-effort by design: whatever happens here, the exception that brought us
+    in is the one the caller re-raises. A notebook that survives anyway is caught
+    on the next run by reap_orphaned_notebooks(), which reads from sqlite and so
+    also covers the case no handler can -- a process killed outright.
+    """
+    try:
+        await asyncio.shield(
+            delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
+        )
+        state_mgr.clear_notebook(uni_slug)
+        print(f"  └─ Released notebook {notebook_id} after a failed extraction.")
+    except BaseException as e:  # noqa: BLE001 -- must never mask the real failure
+        print(f"⚠️  Could not release notebook {notebook_id}: {type(e).__name__}: {e}")
 
 
 # ------------------------------------------------------------ one university --
@@ -158,18 +198,23 @@ async def _run_master_pipeline(
         error_msg = f"Phase 1 failed: {type(e).__name__}: {e}"
         state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
         print(f"❌ [PHASE 1 FAILED] {error_msg}")
-        return
+        return PipelineOutcome("failed", error_msg)
 
     links_list = _read_harvested_links(uni_slug)
+    selected_count = sum(1 for l in links_list if l.get("selected", True))
 
-    print(f"✓ [PHASE 1 COMPLETE] Retained {len(links_list)} clean canonical links.")
+    print(
+        f"✓ [PHASE 1 COMPLETE] Retained {selected_count} clean canonical links"
+        + (f" (+{len(links_list) - selected_count} reserve)."
+           if len(links_list) > selected_count else ".")
+    )
     state_mgr.set_status(uni_slug, "crawled", sources_ingested=0)
 
     if not links_list:
         error_msg = "Phase 1 produced zero links."
         state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
         print(f"❌ [PHASE 1 FAILED] {error_msg}")
-        return
+        return PipelineOutcome("failed", error_msg)
 
     # --------------------------------------------------------------------------
     # PHASE 2: NOTEBOOKLM INGESTION
@@ -191,7 +236,7 @@ async def _run_master_pipeline(
                 error_msg = f"Phase 2 skipped: {ingest_res.skip_reason}."
                 state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
                 print(f"⏭️  [PHASE 2 SKIPPED] {error_msg}")
-                return
+                return PipelineOutcome("skipped", error_msg)
 
             notebook_id = ingest_res.notebook_id
             ingested_count = ingest_res.ingested_count
@@ -224,29 +269,53 @@ async def _run_master_pipeline(
                 f"Schema Extraction & Exa Fallback..."
             )
 
-            # Reserve the suite against today's budget BEFORE issuing any query.
-            # The suite runs concurrently, so an unreserved run could put six
-            # simultaneous queries over the 500/day ceiling and leave the
-            # notebook ingested but never extracted.
+            # Reserve the whole suite against today's budget BEFORE issuing any
+            # query. The suite itself is serial (see config.query_concurrency --
+            # concurrent unkeyed asks share a conversation and return each
+            # other's answers), but universities are not: reserving up front is
+            # what stops a run walking into the 500/day ceiling mid-suite and
+            # leaving a notebook ingested but never extracted.
             state_mgr.reserve_queries(uni_slug, config.queries_per_university)
+            reserved = config.queries_per_university
 
-            payload, report = await extract_university_payload(
-                client=client,
-                notebook_id=notebook_id,
-                uni_name=uni_name,
-                uni_domain=uni_domain,
-                source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
-                tier1_source_count=ingest_res.tier_histogram().get(1, 0),
-            )
+            # Owned here, not inside the extractor, so that a failed extraction
+            # still reports what it spent. A report the extractor keeps privately
+            # dies with the call, and the refund below would then hand back the
+            # whole suite including the queries that really were issued.
+            report = ExtractionReport()
+            try:
+                payload, report = await extract_university_payload(
+                    client=client,
+                    notebook_id=notebook_id,
+                    uni_name=uni_name,
+                    uni_domain=uni_domain,
+                    source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
+                    tier1_source_count=ingest_res.tier_histogram().get(1, 0),
+                    report=report,
+                )
+            except BaseException:
+                # Includes CancelledError and the university watchdog's timeout.
+                # Two things are owed back here and neither was ever returned:
+                # the unspent part of the reservation, and the notebook itself.
+                # COMSATS was billed all 6 queries for the 2 it issued, and its
+                # notebook 714feb18 is still holding a workspace slot.
+                state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
+                await _release_notebook(client, state_mgr, uni_slug, notebook_id)
+                raise
 
-            # Repair retries cost real queries beyond the reserved suite; charge
-            # the overage so the ledger reflects actual consumption.
-            overage = report.queries_used - config.queries_per_university
-            if overage > 0:
+            # Reconcile the reservation against what the suite actually spent.
+            # Repair retries and narrowed re-asks cost real queries beyond the
+            # suite; a run that ended early spent fewer. Only the overage was
+            # ever settled, so the ledger drifted upward and the daily budget
+            # ran out earlier than the real quota did.
+            delta = report.queries_used - reserved
+            if delta > 0:
                 try:
-                    state_mgr.reserve_queries(uni_slug, overage)
+                    state_mgr.reserve_queries(uni_slug, delta)
                 except QuotaExceededError as qe:
                     print(f"⚠️  [QUOTA] Retry overage exceeded the daily budget: {qe}")
+            elif delta < 0:
+                state_mgr.release_queries(uni_slug, -delta)
 
             output_file = config.output_jsonl_path
             append_jsonl(output_file, payload.model_dump_json())
@@ -258,9 +327,6 @@ async def _run_master_pipeline(
             print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
             print(f"  └─ JSONL  : {output_file}")
             print(f"  └─ Slug   : {uni_json_path}")
-
-            # Free the notebook workspace slot now that the payload is durable.
-            await delete_notebook_after_success(client, notebook_id)
 
             # A query block that failed every retry does not fail the pipeline --
             # the other five blocks are still real data worth keeping -- but it
@@ -292,6 +358,13 @@ async def _run_master_pipeline(
             if partial_note:
                 print(f"⚠️  [PHASE 3] {partial_note}")
 
+            # Free the notebook workspace slot now that the payload is durable
+            # and the terminal status is written. The id stays on the row on
+            # purpose -- it is the only thing tying this university to its
+            # loggings/notebook_logs/<id>.json audit document, and the reaper
+            # never looks at rows in a terminal status.
+            await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
+
     except Exception as e:
         error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
         print(f"❌ [PIPELINE ERROR] {error_msg}")
@@ -310,12 +383,19 @@ async def _run_master_pipeline(
     print(f"\n================================================================================")
     print(f"🎉 MASTER RAG PIPELINE COMPLETED SUCCESSFULLY FOR {uni_name}!")
     print(f"================================================================================\n")
+    return PipelineOutcome("processed")
 
 
 def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
     """
     Phase 1's output for one university, in the shape Phase 2 documents:
     records of at least {"url": str, "tier": int}, in Phase 1's rank order.
+
+    `selected` is carried through where the partition records it. A false value
+    marks a reserve link -- ranked and tiered like any other, held back from the
+    notebook unless a selected link fails Phase 2's pre-flight. Older partitions
+    and the flat-file fallback record no flag at all, and default to selected,
+    which is exactly their pre-reserve behaviour.
 
     Reads data/links/<slug>.jsonl -- the per-university partition, written
     atomically with a tier per link. Falls back to the shared extracted_links.txt
@@ -351,7 +431,11 @@ def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
                 # by an older build still loads; nothing writes it today.
                 url = item.get("url") or item.get("href")
                 if url:
-                    records.append({"url": url, "tier": int(item.get("tier", 1) or 1)})
+                    records.append({
+                        "url": url,
+                        "tier": int(item.get("tier", 1) or 1),
+                        "selected": bool(item.get("selected", True)),
+                    })
 
     if not records:
         txt_path = config.base_dir / "extracted_links.txt"
@@ -359,9 +443,68 @@ def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
             with open(txt_path, "r", encoding="utf-8") as f:
                 # No tier was ever recorded for these; 1 is what Phase 2 assumes.
                 records = [
-                    {"url": line.strip(), "tier": 1} for line in f if line.strip()
+                    {"url": line.strip(), "tier": 1, "selected": True}
+                    for line in f if line.strip()
                 ]
     return records
+
+
+# ------------------------------------------------------------ orphan reaper --
+
+async def reap_orphaned_notebooks() -> int:
+    """
+    Delete notebooks left behind by runs that never reached a terminal state.
+
+    A notebook is created in Phase 2 and deleted at the end of Phase 3, so a
+    university sitting at 'crawled' or 'ingested' while still holding a
+    notebook_id is holding a workspace slot nothing will ever free. Run c_1 was
+    killed mid-extraction on 2026-09-05 and leaked COMSATS notebook
+    714feb18-841a-4f22-888e-91b69e5b075e; no in-process cleanup handler can cover
+    that case, because the process does not survive to run one.
+
+    Runs before the queue for exactly that reason -- the slots have to be free
+    before this batch starts asking for more. Returns the number reaped, and
+    never raises: a workspace it cannot reach is not a reason to refuse the run.
+    """
+    state_mgr = StateManager()
+    try:
+        orphans = state_mgr.get_orphaned_notebooks()
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[yellow]Could not read orphaned notebooks: {e}[/yellow]")
+        state_mgr.close()
+        return 0
+
+    if not orphans:
+        state_mgr.close()
+        return 0
+
+    console.print(
+        f"\n[bold cyan]🧹 Reaping {len(orphans)} notebook(s) left behind by an "
+        f"earlier run...[/bold cyan]"
+    )
+    reaped = 0
+    try:
+        async with NotebookLMClient.from_storage() as client:
+            for row in orphans:
+                slug, notebook_id = row["university_slug"], row["notebook_id"]
+                if await delete_notebook_after_success(client, notebook_id, uni_slug=slug):
+                    state_mgr.clear_notebook(slug)
+                    reaped += 1
+                    console.print(f"  └─ freed {notebook_id} ({slug}, was '{row['status']}')")
+                else:
+                    # Already gone is the common case, and indistinguishable from
+                    # a transient API error at this layer. Dropping the id either
+                    # way stops the reaper retrying a ghost on every future run.
+                    state_mgr.clear_notebook(slug)
+                    console.print(
+                        f"  └─ [yellow]{notebook_id} ({slug}) could not be deleted; "
+                        f"clearing the stale reference[/yellow]"
+                    )
+    except Exception as e:  # noqa: BLE001 -- never block a batch on cleanup
+        console.print(f"[yellow]Notebook reaping stopped early: {e}[/yellow]")
+    finally:
+        state_mgr.close()
+    return reaped
 
 
 # ------------------------------------------------------------------- batch --
@@ -498,6 +641,8 @@ async def run_batch_pipeline(
                 "Run with --rerun-all to re-extract.[/bold green]"
             )
         else:
+            if not dry_run:
+                await reap_orphaned_notebooks()
             await _drain_queue(queue, settings, dry_run, run_log)
 
         if dry_run:
@@ -549,22 +694,63 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                 pbar.update(1)
                 continue
             try:
-                await run_master_pipeline(
-                    url=entry["url"],
-                    uni_name_override=entry["name"],
-                    max_links=settings.get("max_links", 60),
-                    exclude_keywords=settings.get("exclude_keywords", "news|events"),
-                    uptodate=settings.get("uptodate", True),
-                    # Aggregated once after the queue drains, not per university.
-                    compile_master=False,
+                # The watchdog. Every individual await inside has its own bound
+                # now, but "every part is bounded" is not the same claim as "the
+                # whole is bounded", and the whole is what a batch window is made
+                # of. Run c_1 spent 7h11m of an 11-hour window inside one
+                # university and never reached the twelve queued behind it.
+                outcome = await asyncio.wait_for(
+                    run_master_pipeline(
+                        url=entry["url"],
+                        uni_name_override=entry["name"],
+                        max_links=settings.get("max_links", 60),
+                        exclude_keywords=settings.get("exclude_keywords", "news|events"),
+                        uptodate=settings.get("uptodate", True),
+                        # Aggregated once after the queue drains, not per university.
+                        compile_master=False,
+                    ),
+                    timeout=config.university_timeout_sec,
                 )
-                run_log.record(entry["slug"], "processed", url=entry["url"])
+                # What actually happened, not merely "nothing was raised".
+                # Phases 1 and 2 report failure by returning, so recording
+                # "processed" for every non-raising call put LUMS in run c_1's
+                # manifest as a success with no notebook and no payload.
+                outcome = outcome or PipelineOutcome("processed")
+                run_log.record(
+                    entry["slug"], outcome.status, url=entry["url"],
+                    **({"error": outcome.detail} if outcome.detail else {}),
+                )
+            except asyncio.TimeoutError:
+                msg = (
+                    f"exceeded the per-university ceiling of "
+                    f"{config.university_timeout_sec}s and was abandoned"
+                )
+                console.print(f"[bold red]⏱️  {entry['name']} {msg}.[/bold red]")
+                run_log.record(entry["slug"], "failed", error=f"TimeoutError: {msg}")
+                _record_timeout(entry["slug"], msg)
             except Exception as e:
                 # One university's failure must not end the batch. The state row
                 # records the failure; this only keeps the loop alive.
                 console.print(f"[bold red]❌ Failed to process {entry['name']}: {e}[/bold red]")
                 run_log.record(entry["slug"], "failed", error=f"{type(e).__name__}: {e}")
             pbar.update(1)
+
+
+def _record_timeout(uni_slug: str, msg: str) -> None:
+    """
+    Mark a timed-out university failed in its own StateManager.
+
+    Its own, because the cancelled pipeline closed the one it owned on the way
+    out of `run_master_pipeline`'s finally block, and writing through a closed
+    handle is how a timeout would turn into a second, more confusing error.
+    """
+    state_mgr = StateManager()
+    try:
+        state_mgr.set_status(uni_slug, "failed", error_log=f"Watchdog: {msg}.")
+    except Exception as e:  # noqa: BLE001 -- the timeout is the news, not this
+        console.print(f"[yellow]Could not record timeout for {uni_slug}: {e}[/yellow]")
+    finally:
+        state_mgr.close()
 
 
 def _universities_to_dict(universities: List[Dict[str, Any]]) -> Dict[str, List[Any]]:

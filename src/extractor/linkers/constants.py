@@ -83,7 +83,19 @@ EXCLUDED_PATH_TOKENS = {
     "qec", "audit", "advancement", "notifications", "archive",
     # Legal / footer
     "disclaimer", "sitemap", "feed", "rss",
+    # On-site search and taxonomy pages. A search result page has no content of
+    # its own -- it is a rendering of a query -- so ingesting one grounds an
+    # answer in a list of titles. The 2026-09-05 COMSATS notebook spent two of
+    # its 41 slots on /search.aspx?q=research and /search.aspx?q=academic+programs.
+    # Safe as tokens: "research" and "researcher" are distinct tokens from
+    # "search", which is the whole reason this set is token-matched.
+    "search", "tag", "tags", "print", "share", "comment", "comments",
+    "cart", "checkout", "unsubscribe", "captcha",
 }
+
+# Query keys that make a URL a search result rather than a page. Matched on the
+# key alone: the value is the user's query and can be anything.
+SEARCH_QUERY_PARAMS = {"q", "s", "query", "keyword", "keywords", "search", "term"}
 
 # Multi-token noise matched as a substring of the normalised path. Reserved for
 # phrases that are unambiguous, so no legitimate academic URL can collide.

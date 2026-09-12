@@ -451,6 +451,69 @@ class StateManager:
             )
             conn.commit()
 
+    def release_queries(self, slug: str, count: int) -> None:
+        """
+        Hand back queries reserved but never issued, floored at zero.
+
+        The suite is reserved whole and up front, before the first ask. When the
+        extraction then ends early -- a timeout, a cancelled run, a notebook that
+        never answered -- the unspent remainder stayed charged against the day.
+        COMSATS was billed the full 6 on 2026-09-05 having issued 2, and the
+        reservation for a run killed mid-suite was never given back at all, so
+        the ledger drifted further from the real quota with every failure.
+        """
+        if count <= 0:
+            return
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE query_ledger SET queries = MAX(0, queries - ?)
+                WHERE day = ? AND university_slug = ?
+                """,
+                (int(count), self._today(), slug.lower().strip()),
+            )
+            conn.commit()
+
+    # --------------------------------------------------- orphaned notebooks --
+
+    def get_orphaned_notebooks(self) -> List[Dict[str, str]]:
+        """
+        Notebooks recorded against a university that never reached a terminal state.
+
+        A notebook is deleted only after its payload is written, so a university
+        still sitting at 'crawled' or 'ingested' while holding a notebook_id is
+        holding a live workspace slot that nothing will ever free. An in-process
+        `finally` cannot cover this: the run that leaked COMSATS notebook
+        714feb18 was killed outright, and no cleanup handler survives that. The
+        record in SQLite does, which is why the reaper reads from here.
+        """
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT university_slug, notebook_id, status FROM pipeline_state
+                WHERE notebook_id IS NOT NULL AND notebook_id != ''
+                  AND status NOT IN ('completed', ?, 'failed')
+                """,
+                (PARTIAL_EXTRACTION,),
+            ).fetchall()
+            return [
+                {
+                    "university_slug": r["university_slug"],
+                    "notebook_id": r["notebook_id"],
+                    "status": r["status"],
+                }
+                for r in rows
+            ]
+
+    def clear_notebook(self, slug: str) -> None:
+        """Forget a university's notebook id, once that notebook is actually gone."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE pipeline_state SET notebook_id = NULL WHERE university_slug = ?",
+                (slug.lower().strip(),),
+            )
+            conn.commit()
+
     # ----------------------------------------------------- notebook audit log --
 
     def record_notebook_audit(

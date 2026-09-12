@@ -76,8 +76,19 @@ class Config:
     # CRAWLING LIMITS & THRESHOLDS (Phase 1)
     # ═══════════════════════════════════════════════════════════════════════
     max_sources_per_notebook: int = 150      # Hard ceiling on sources per notebook; raise to ingest more links per university, at the cost of upload time
-    dynamic_link_ratio: float = 0.45         # Fraction of clean candidate links actually sent; lower = fewer but higher-quality sources
-    max_crawl_pages: int = 15                # Pages Crawl4AI visits per domain; raise for deeper discovery, costs proportionally more time
+    dynamic_link_ratio: float = 0.50         # Fraction of clean candidate links actually sent; lower = fewer but higher-quality sources
+    # 15 pages at depth 2 reached little beyond the landing page's own menu: the
+    # 2026-09-05 batch harvested 41 usable links for COMSATS and 36 for BNU, and
+    # the sparse tiers were being filled from a candidate pool that barely had
+    # any. Discovery is the cheapest stage in the pipeline -- it spends no
+    # NotebookLM quota -- so it is the right place to spend time.
+    max_crawl_pages: int = 35                # Pages Crawl4AI visits per domain; raise for deeper discovery, costs proportionally more time
+    crawl_max_depth: int = 3                 # Link hops Crawl4AI follows from the start URL; 2 rarely leaves the top-level menu, 4+ reaches leaf programme pages at a steep time cost
+    # Phase 2's pre-flight drops every link that no longer resolves, and the
+    # notebook simply ended up smaller -- COMSATS ingested 41 of 80 selected
+    # links. The reserve is exported alongside the selection so those slots can
+    # be refilled from the next-best candidates instead of being lost.
+    link_reserve_ratio: float = 0.35         # Extra ranked links exported beyond the selection, as a fraction of it, to backfill pre-flight casualties; 0 disables backfill
     # Sources must belong to the university being described. A live ITU notebook
     # ingested collegereadiness.collegeboard.org as a Tier 2 source, so answers
     # about ITU's admissions were partly grounded in College Board's SAT pages.
@@ -89,7 +100,7 @@ class Config:
     # slicing after a tier-major sort starves Tiers 3/4 entirely, which makes
     # the faculties and contact queries unanswerable.
     tier_quota_shares: Dict[int, float] = field(
-        default_factory=lambda: {1: 0.45, 2: 0.30, 3: 0.15, 4: 0.10}
+        default_factory=lambda: {1: 0.48, 2: 0.30, 3: 0.13, 4: 0.09}
     )                                        # Per-tier slice of the source budget; shift weight toward 1/2 for programs, 3/4 for faculty and contact coverage
 
     # Calibrated against the prefixed + L2-normalised BGE distribution actually
@@ -99,6 +110,13 @@ class Config:
     # threshold filtered nothing and tier quotas were doing all the selection.
     # 0.68 trims roughly the bottom quartile while leaving quotas fillable.
     semantic_threshold: float = 0.68         # BGE cosine cutoff; raise to be stricter on relevance, lower to admit more links
+    # Crawl4AI scores every href it discovers against CRAWL4AI_SCORER_KEYWORDS,
+    # and that score was harvested and then discarded by the filter. It is a
+    # second, independent opinion on the same link -- keyword-and-structure based
+    # where BGE is semantic -- so it breaks ties the embedding cannot: two links
+    # whose anchor text reads alike but one of which sits under /admissions/.
+    # Kept deliberately small; it ranks, it does not decide.
+    crawl_score_weight: float = 0.15         # How much Crawl4AI's own link score adjusts the final ranking, as a max fractional boost; 0 ignores it entirely
 
     # ═══════════════════════════════════════════════════════════════════════
     # BROWSER POOL (Phase 1)
@@ -142,7 +160,11 @@ class Config:
     preflight_http_check: bool = True        # Probe each URL before uploading; disabling is faster but wastes notebook slots on dead links
     # Pre-flight is pure network wait, so it parallelises far wider than the
     # upload path, which is bounded by NotebookLM's own write rate limits.
-    preflight_concurrency: int = 15          # Parallel pre-flight probes; safe to raise, it is network-bound not API-bound
+    preflight_concurrency: int = 24          # Parallel pre-flight probes; safe to raise, it is network-bound not API-bound
+    # The probe carried its own literal 5.0s deadline while the pooled client was
+    # built for 10.0s, so a merely slow university failed a check the pool would
+    # have survived. NUST scored 0/8 on 2026-09-05 and was skipped for the batch.
+    preflight_probe_timeout_sec: float = 12.0    # Per-URL deadline for a reachability probe; raise for slow or distant university servers
 
     # ═══════════════════════════════════════════════════════════════════════
     # LINK HEALTH PRE-FLIGHT (plan section 6; consumed by C13)
@@ -153,6 +175,11 @@ class Config:
     health_check_sample_ratio: float = 0.10  # Fraction of candidate links sampled; raise for a more confident verdict at higher cost
     health_check_min_sample: int = 5         # Floor on sample size, so small link sets are still meaningfully tested
     health_check_min_pass_ratio: float = 0.5 # Fraction of the sample that must succeed to proceed with the full batch
+    # A whole university is abandoned on this verdict, so a single bad minute on
+    # the network must not decide it. Failures are probed once more, patiently,
+    # before the batch is refused.
+    health_check_recheck_failures: bool = True   # Re-probe failed sample links once with a longer deadline before condemning a university; disabling makes the first verdict final
+    health_check_recheck_timeout_sec: float = 25.0   # Deadline for that second, patient probe; only paid for links that already failed
 
     # ═══════════════════════════════════════════════════════════════════════
     # SOURCE READINESS POLLING
@@ -169,14 +196,23 @@ class Config:
     # ═══════════════════════════════════════════════════════════════════════
     # QUERY & EXTRACTION (Phase 3)
     # ═══════════════════════════════════════════════════════════════════════
-    chat_timeout_sec: int = 180              # Seconds to wait for a NotebookLM response before timing out
+    # Wired into _ask() in C31. It was declared here and read by nothing: the
+    # chat.ask await had no deadline at all, and on 2026-09-05 a single COMSATS
+    # call hung for 7h11m, taking the remaining 12 universities of the batch with
+    # it. Every ask now runs under this deadline.
+    chat_timeout_sec: int = 180              # Seconds to wait for a NotebookLM response before timing out; a stalled ask fails and retries instead of hanging the batch
+    # Bounds the whole of Phases 1-4 for one university. chat_timeout_sec bounds a
+    # single ask; this bounds everything else -- a wedged crawl, a stuck upload, a
+    # readiness poll that never converges -- so no one university can consume a
+    # batch window. Sized for the worst observed healthy university (AKU, 51 min).
+    university_timeout_sec: int = 4200       # Wall-clock ceiling for one university across all phases; exceeding it fails that university and the batch moves on
     max_query_retries: int = 2               # Retries per failing query before the university is marked failed
     # An oversized response (RPCResponseTooLargeError, 50 MB ceiling) is not
     # fixed by re-asking: the answer size tracks how much corpus the question is
     # pointed at. The query is instead re-asked over halves of its source set and
     # the answers merged. Each level doubles the sub-asks, so this trades daily
     # query budget for coverage -- 2 allows at most 4 narrowed asks per query.
-    max_query_split_depth: int = 2           # How many times an oversized query may be halved over its sources; 0 disables narrowing
+    max_query_split_depth: int = 3           # How many times an oversized query may be halved over its sources; 0 disables narrowing
     # NOT the query suite. The suite against one notebook is serial and must stay
     # that way: concurrent unkeyed asks share a conversation, and an ask still
     # waiting when a later ask's turn lands returns THAT turn's answer. Observed

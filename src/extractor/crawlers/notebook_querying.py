@@ -26,6 +26,10 @@ from src.extractor.crawlers.json_repairing import ExtractionError, repair_and_va
 logger = logging.getLogger("ExtractData")
 
 
+class QueryTimeoutError(TimeoutError):
+    """A single chat.ask exceeded config.chat_timeout_sec and was abandoned."""
+
+
 class Q1Payload(BaseModel):
     main_info: MainInfo
     contact: ContactInfo
@@ -215,13 +219,33 @@ async def _ask(
     source_ids: Optional[Sequence[str]] = None,
     conversation_id: Optional[str] = None,
 ) -> str:
-    """Issue one chat.ask and return the answer text."""
-    res = await client.chat.ask(
-        notebook_id=notebook_id,
-        question=prompt,
-        source_ids=list(source_ids) if source_ids else None,
-        conversation_id=conversation_id,
-    )
+    """
+    Issue one chat.ask, under a deadline, and return the answer text.
+
+    The deadline is the whole point of this wrapper. `config.chat_timeout_sec`
+    was declared and documented but read by nothing, and this await had no bound
+    of any kind: when a COMSATS ask stopped responding on 2026-09-05 the call sat
+    there for 7 hours 11 minutes until the operator killed the process, and the
+    twelve universities queued behind it never ran. A hung ask is now an ordinary
+    failed attempt -- retried by the loop above, and fatal to nothing but itself.
+    """
+    try:
+        res = await asyncio.wait_for(
+            client.chat.ask(
+                notebook_id=notebook_id,
+                question=prompt,
+                source_ids=list(source_ids) if source_ids else None,
+                conversation_id=conversation_id,
+            ),
+            timeout=config.chat_timeout_sec,
+        )
+    except asyncio.TimeoutError as e:
+        # Re-raised as our own type so the retry loop's log line says what
+        # happened. A bare TimeoutError here is indistinguishable from an HTTP
+        # read timeout raised several layers down.
+        raise QueryTimeoutError(
+            f"NotebookLM did not answer within {config.chat_timeout_sec}s"
+        ) from e
     answer = getattr(res, "answer", None)
     return str(answer) if answer else str(res)
 
