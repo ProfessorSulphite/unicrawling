@@ -38,7 +38,17 @@ def _tokenize_path(path: str) -> List[str]:
     return [t for t in PATH_TOKEN_SPLIT_REGEX.split(path.lower()) if t]
 
 
-def is_excluded_path(url: str) -> bool:
+# Phrases that mark a CMS asset directory rather than noisy content. They are
+# on the denylist because they hold themes, scripts and stylesheets -- all of
+# which the extension denylist already removes. A PDF uploaded to one is an
+# ordinary document, and on WordPress it is where the document always lives:
+# `/wp-content/uploads/` is the default upload path, so this rule silently
+# discarded every fee schedule and admission calendar on every WordPress
+# university site, ITU included (C32).
+_ASSET_DIR_PHRASES = {"wp-content", "wp-json"}
+
+
+def is_excluded_path(url: str, is_document: bool = False) -> bool:
     """
     Decide whether a URL is administrative noise, using EXACT PATH TOKEN matching.
 
@@ -64,7 +74,10 @@ def is_excluded_path(url: str) -> bool:
     if any(h in host for h in ("youtu.be", "youtube.com", "vimeo.com", "facebook.com", "twitter.com", "instagram.com", "linkedin.com")):
         return True
 
-    for phrase in EXCLUDED_PATH_PHRASES:
+    phrases = EXCLUDED_PATH_PHRASES
+    if is_document:
+        phrases = phrases - _ASSET_DIR_PHRASES
+    for phrase in phrases:
         if phrase in path or phrase in host:
             return True
 
@@ -288,11 +301,15 @@ def preprocess_and_filter_links(
             off_site += 1
             continue
 
+        # A harvested document survives the extension denylist (C32): it was
+        # collected deliberately, and `.pdf` is on that list only because a PDF
+        # cannot be crawled for links -- not because it is a bad source.
+        is_document = bool(link.get("is_document"))
         ext = os.path.splitext(parsed.path)[1].lower()
-        if ext in EXCLUDED_EXTENSIONS:
+        if ext in EXCLUDED_EXTENSIONS and not is_document:
             continue
 
-        if is_excluded_path(normalized_url):
+        if is_excluded_path(normalized_url, is_document=is_document):
             continue
 
         # User-supplied exclude keywords, matched against path tokens and anchor
@@ -329,6 +346,7 @@ def preprocess_and_filter_links(
             # here: the crawler computed it, crawling.py harvested it, and this
             # function built a new dict without it. The scorer blends it in.
             "crawl_score": crawl_score,
+            "is_document": is_document,
         })
 
     logger.info(

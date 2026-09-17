@@ -11,7 +11,12 @@ plan's original assignment would have created.
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 
-from src.extractor.linkers.constants import DEDUP_STOPWORDS, DEGREE_LEVEL_TOKENS, logger
+from src.extractor.linkers.constants import (
+    DEDUP_STOPWORDS,
+    DEDUP_STRIPPED_SEGMENT_REGEX,
+    DEGREE_LEVEL_TOKENS,
+    logger,
+)
 from src.extractor.linkers.filteration import _tokenize_path
 
 
@@ -27,7 +32,12 @@ def get_discipline_tokens(url: str, text: str = "") -> Tuple[str, Tuple[str, ...
     part of the key) and across intake years (years are stopworded out).
     """
     parsed = urlparse(url)
-    tokens = _tokenize_path(parsed.path) + _tokenize_path(text)
+    # Strip location-describing segments before tokenising (C32). A programme
+    # reached through /faculty-of-engineering/ and the same programme reached
+    # directly must key identically, and the three ITU merit lists for one
+    # programme differed only in segments this removes.
+    path = DEDUP_STRIPPED_SEGMENT_REGEX.sub("", parsed.path)
+    tokens = _tokenize_path(path) + _tokenize_path(text)
 
     level = "unspecified"
     for lvl, markers in DEGREE_LEVEL_TOKENS.items():

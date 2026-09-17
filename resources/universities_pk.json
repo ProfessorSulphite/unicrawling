@@ -1,0 +1,136 @@
+{
+  "_meta": {
+    "purpose": "Ground-truth university IDENTITY registry, keyed by canonical domain. Supplies main_info identity fields (name, abbreviation, city, type, aliases, established_year, accreditation_body) deterministically so the LLM is never asked to guess them. Rankings are intentionally not part of this pipeline; if added later they belong in a separate, separately-verified file.",
+    "schema": {
+      "<domain>": {
+        "name": "str  -- official registered name",
+        "abbreviation": "str | null",
+        "city": "str | null",
+        "type": "public | private | other",
+        "aliases": [
+          "alternate domains that resolve to the same institution"
+        ]
+      }
+    }
+  },
+  "universities": {
+    "nust.edu.pk": {
+      "name": "National University of Sciences and Technology",
+      "abbreviation": "NUST",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": [
+        "seecs.nust.edu.pk",
+        "sines.nust.edu.pk",
+        "ceme.nust.edu.pk",
+        "pnec.nust.edu.pk",
+        "mcs.nust.edu.pk"
+      ]
+    },
+    "lums.edu.pk": {
+      "name": "Lahore University of Management Sciences",
+      "abbreviation": "LUMS",
+      "city": "Lahore",
+      "type": "private",
+      "aliases": []
+    },
+    "nu.edu.pk": {
+      "name": "National University of Computer and Emerging Sciences",
+      "abbreviation": "FAST-NUCES",
+      "city": "Multi-Campus",
+      "type": "private",
+      "aliases": [
+        "isb.nu.edu.pk",
+        "lhr.nu.edu.pk",
+        "khi.nu.edu.pk"
+      ]
+    },
+    "itu.edu.pk": {
+      "name": "Information Technology University",
+      "abbreviation": "ITU",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": []
+    },
+    "comsats.edu.pk": {
+      "name": "COMSATS University Islamabad",
+      "abbreviation": "CUI",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": [
+        "cuiatd.edu.pk",
+        "cuilahore.edu.pk"
+      ]
+    },
+    "qau.edu.pk": {
+      "name": "Quaid-i-Azam University",
+      "abbreviation": "QAU",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": []
+    },
+    "uet.edu.pk": {
+      "name": "University of Engineering and Technology Lahore",
+      "abbreviation": "UET Lahore",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": []
+    },
+    "aku.edu": {
+      "name": "Aga Khan University",
+      "abbreviation": "AKU",
+      "city": "Karachi",
+      "type": "private",
+      "aliases": []
+    },
+    "iba.edu.pk": {
+      "name": "Institute of Business Administration Karachi",
+      "abbreviation": "IBA Karachi",
+      "city": "Karachi",
+      "type": "public",
+      "aliases": []
+    },
+    "pu.edu.pk": {
+      "name": "University of the Punjab",
+      "abbreviation": "PU",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": []
+    },
+    "uaf.edu.pk": {
+      "name": "University of Agriculture Faisalabad",
+      "abbreviation": "UAF",
+      "city": "Faisalabad",
+      "type": "public",
+      "aliases": []
+    },
+    "giki.edu.pk": {
+      "name": "Ghulam Ishaq Khan Institute of Engineering Sciences and Technology",
+      "abbreviation": "GIKI",
+      "city": "Topi",
+      "type": "private",
+      "aliases": []
+    },
+    "au.edu.pk": {
+      "name": "Air University",
+      "abbreviation": "AU",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": []
+    },
+    "bahria.edu.pk": {
+      "name": "Bahria University",
+      "abbreviation": "BU",
+      "city": "Islamabad",
+      "type": "public",
+      "aliases": []
+    },
+    "gcu.edu.pk": {
+      "name": "Government College University Lahore",
+      "abbreviation": "GCU",
+      "city": "Lahore",
+      "type": "public",
+      "aliases": []
+    }
+  }
+}

@@ -29,6 +29,44 @@ from src.extractor.linkers.constants import (
     logger,
 )
 
+# Document extensions worth ingesting as sources rather than discarding. Fee
+# schedules, admission calendars and prospectuses are published as PDFs at most
+# universities, and NotebookLM ingests them natively.
+DOCUMENT_EXTENSIONS = {".pdf"}
+
+# Everything crawl4ai must never NAVIGATE to. The harvest loop already refused
+# to keep these, but the crawl strategy had no filter chain at all, so the
+# browser still fetched each one -- ITU's 8 PDFs consumed 8 of the page budget
+# and logged 8 "Page failed" warnings before being thrown away one function
+# later. Documents are harvested from the link graph, never visited.
+_NON_NAVIGABLE_EXTENSIONS = sorted(EXCLUDED_EXTENSIONS | DOCUMENT_EXTENSIONS)
+
+
+def _build_filter_chain():
+    """
+    Refuse to navigate to non-HTML URLs, or return None if unsupported.
+
+    Imported defensively and at call time: the filter classes moved packages
+    between crawl4ai releases, and a missing symbol here must cost the page
+    budget optimisation, never the entire crawl.
+    """
+    try:
+        from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
+    except Exception:
+        try:
+            from crawl4ai import FilterChain, URLPatternFilter  # type: ignore
+        except Exception as e:
+            logger.debug(f"crawl4ai URL filters unavailable ({e}); crawling without a filter chain.")
+            return None
+
+    try:
+        patterns = [f"*{ext}" for ext in _NON_NAVIGABLE_EXTENSIONS]
+        patterns += [f"*{ext}?*" for ext in _NON_NAVIGABLE_EXTENSIONS]
+        return FilterChain([URLPatternFilter(patterns=patterns, reverse=True)])
+    except Exception as e:
+        logger.debug(f"Could not build crawl4ai filter chain ({e}); crawling without one.")
+        return None
+
 
 class CrawlFailure(RuntimeError):
     """Raised when a site could not be crawled at all, so callers can mark state."""
@@ -90,17 +128,65 @@ async def close_shared_crawler() -> None:
 
     The globals are cleared before awaiting close() so that a hang or error in
     teardown cannot leave a half-dead crawler installed as the shared instance.
+
+    In-flight navigations are drained first (C32). Closing the browser out from
+    under them raises TargetClosedError on each, and crawl4ai reports that as an
+    ordinary page failure -- so the pages are simply lost. The ITU run lost
+    /admissions/eligibility-criteria/, /admissions/faqs/ and
+    /admissions/bs-management-and-technology/ that way, three of the highest
+    value pages on the site, to a race at shutdown rather than to anything
+    wrong with the pages.
+
+    The drain is bounded: a navigation that will not finish must not hold the
+    process open, so the wait is capped and teardown proceeds regardless.
     """
     global _SHARED_CRAWLER, _SHARED_CRAWLER_LOOP
 
     crawler, _SHARED_CRAWLER, _SHARED_CRAWLER_LOOP = _SHARED_CRAWLER, None, None
     if crawler is None:
         return
+
+    await _drain_in_flight_navigations()
+
     try:
         await crawler.close()
         logger.info("Closed shared headless browser.")
     except Exception as e:
         logger.warning(f"Shared browser did not close cleanly: {e}")
+
+
+async def _drain_in_flight_navigations(timeout: float = 15.0) -> None:
+    """
+    Let outstanding page fetches finish before the browser goes away.
+
+    Identified by task name rather than by holding a registry: crawl4ai owns the
+    tasks and does not expose them. Anything still pending that is neither this
+    coroutine nor the caller's is given a bounded chance to complete.
+    """
+    try:
+        current = asyncio.current_task()
+        pending = [
+            t for t in asyncio.all_tasks()
+            if t is not current and not t.done()
+            and "crawl" in (t.get_name() or "").lower()
+        ]
+    except RuntimeError:
+        return
+
+    if not pending:
+        return
+
+    logger.info(f"Draining {len(pending)} in-flight navigation(s) before browser teardown...")
+    done, still_pending = await asyncio.wait(pending, timeout=timeout)
+    if still_pending:
+        logger.warning(
+            f"{len(still_pending)} navigation(s) did not finish within {timeout}s; "
+            f"closing the browser anyway."
+        )
+        for task in still_pending:
+            task.cancel()
+        # Collect the cancellations so they are not reported as never-retrieved.
+        await asyncio.gather(*still_pending, return_exceptions=True)
 
 
 @asynccontextmanager
@@ -181,13 +267,14 @@ async def crawl_site_links(
     for target_candidate in candidates:
         run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, score_links=True)
         scorer = KeywordRelevanceScorer(keywords=CRAWL4AI_SCORER_KEYWORDS, weight=1.0)
-        strategy = BestFirstCrawlingStrategy(
-            max_depth=max_depth,
-            max_pages=max_pages,
-            url_scorer=scorer
-        )
+        strategy_kwargs = dict(max_depth=max_depth, max_pages=max_pages, url_scorer=scorer)
+        filter_chain = _build_filter_chain()
+        if filter_chain is not None:
+            strategy_kwargs["filter_chain"] = filter_chain
+        strategy = BestFirstCrawlingStrategy(**strategy_kwargs)
 
         aggregated_links = []
+        document_links = []
         seen_raw_hrefs = set()
         visited_count = 0
         successful_pages = 0
@@ -223,21 +310,30 @@ async def crawl_site_links(
                         if not href.lower().startswith(("http://", "https://")):
                             href = urljoin(res.url, href)
 
-                        # Filter out document extensions before adding
                         parsed_href = urlparse(href)
                         ext = os.path.splitext(parsed_href.path)[1].lower()
-                        if ext in EXCLUDED_EXTENSIONS:
+
+                        # Documents are collected, not discarded (C32). A fee
+                        # schedule published as a PDF is the highest-value
+                        # source a university offers for the two fields the
+                        # payload was least able to answer.
+                        is_document = ext in DOCUMENT_EXTENSIONS
+                        if ext in EXCLUDED_EXTENSIONS and not is_document:
+                            continue
+                        if is_document and not getattr(config, "ingest_document_links", True):
                             continue
 
                         href_norm = href.rstrip("/").split("#")[0]
                         if href_norm not in seen_raw_hrefs:
                             seen_raw_hrefs.add(href_norm)
-                            aggregated_links.append({
+                            record = {
                                 "href": href,
                                 "text": link.get("text", "").strip(),
                                 "title": link.get("title", "").strip(),
                                 "crawl_score": link.get("total_score") or link.get("intrinsic_score"),
-                            })
+                                "is_document": is_document,
+                            }
+                            (document_links if is_document else aggregated_links).append(record)
             except Exception as e:
                 crawl_error = f"{type(e).__name__}: {e}"
                 logger.error(f"Error during Crawl4AI execution for {target_candidate}: {crawl_error}")
@@ -245,9 +341,10 @@ async def crawl_site_links(
         if aggregated_links:
             logger.info(
                 f"Completed site crawl for {target_candidate}: visited {visited_count} pages "
-                f"({successful_pages} succeeded), harvested {len(aggregated_links)} raw unique links."
+                f"({successful_pages} succeeded), harvested {len(aggregated_links)} raw unique links"
+                + (f" and {len(document_links)} documents." if document_links else ".")
             )
-            return aggregated_links
+            return aggregated_links + document_links
         else:
             last_error = crawl_error or f"0 links from {target_candidate}"
             logger.warning(f"Candidate URL {target_candidate} yielded 0 links ({last_error}). Trying next candidate URL...")

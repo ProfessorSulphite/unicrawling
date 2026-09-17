@@ -26,6 +26,7 @@ from src.extractor.linkers.filteration import preprocess_and_filter_links
 from src.extractor.linkers.semantic_scoring import (
     allocate_proportional_tier_quotas,
     classify_and_score_links,
+    ensure_guaranteed_coverage,
 )
 
 
@@ -197,6 +198,11 @@ def export_partitioned_links(
                 "raw_similarity_score": item["raw_similarity_score"],
                 "matched_keyword": item["matched_keyword"],
                 "year_tag": item.get("year_tag", "N/A"),
+                # Phase 2 reads this to skip the HTML pre-flight probe: a PDF
+                # that 403s a HEAD request is routinely still fetchable by
+                # NotebookLM, and treating it as a dead link condemned the
+                # university's whole health sample.
+                "is_document": bool(item.get("is_document", False)),
                 "selected": selected,
             }, ensure_ascii=False) + "\n")
         f.flush()
@@ -284,6 +290,15 @@ async def run_pipeline(
 
             # Tier-proportional selection, not a flat top-N slice.
             top_quality_links = allocate_proportional_tier_quotas(scored_links, total_cap=dynamic_target)
+
+            # A quota is a good default and a bad guarantee: it fills Tier 2
+            # with whatever scored highest there, which on ITU was 13 merit
+            # lists, while the one page publishing the fee schedule ranked below
+            # the cut. This pulls one page per fee/deadline/apply pattern into
+            # the selection, displacing the weakest non-matching links.
+            top_quality_links = ensure_guaranteed_coverage(
+                top_quality_links, scored_links, total_cap=dynamic_target
+            )
 
             # The reserve is the next slice of the same ranking, chosen the same
             # tier-proportional way so a backfill preserves the tier balance

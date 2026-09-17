@@ -304,13 +304,17 @@ async def test_the_extractor_still_makes_its_own_report_when_none_is_given():
 
 async def test_a_cancellation_mid_query_still_counts_what_that_query_spent(monkeypatch):
     """
-    Each spec accumulates into its own sub-report and merges on the way out, so
-    a cancellation landing inside one used to lose that spec's asks entirely --
+    Each stage accumulates into its own sub-report and merges on the way out, so
+    a cancellation landing inside one used to lose that stage's asks entirely --
     and the refund would then credit back queries that had really been issued.
+
+    Holds for the staged plan as well as the old fixed suite: the cancellation
+    now lands in the identity stage rather than in `main_info_contact`, but the
+    accounting guarantee is the same one and is what the refund depends on.
     """
     from src.extractor.crawlers import runner as crawlers_runner
 
-    async def cancel_after_one_ask(client, notebook_id, spec, source_ids, sub):
+    async def cancel_after_one_ask(client, notebook_id, spec, source_ids, sub, uni_slug=None):
         sub.queries_used += 1
         raise asyncio.CancelledError()
 

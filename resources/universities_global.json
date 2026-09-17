@@ -1,0 +1,57 @@
+{
+  "_meta": {
+    "purpose": "Ground-truth university IDENTITY registry, keyed by canonical domain. Supplies main_info identity fields (name, abbreviation, city, type, aliases, established_year, accreditation_body) deterministically so the LLM is never asked to guess them. Rankings are intentionally not part of this pipeline; if added later they belong in a separate, separately-verified file.",
+    "schema": {
+      "<domain>": {
+        "name": "str",
+        "abbreviation": "str",
+        "country": "str",
+        "city": "str",
+        "established_year": "int",
+        "accreditation_body": "str"
+      }
+    }
+  },
+  "universities": {
+    "lmu.de": {
+      "name": "Ludwig-Maximilians-Universität München",
+      "abbreviation": "LMU",
+      "country": "Germany",
+      "city": "Munich",
+      "established_year": 1472,
+      "accreditation_body": "Bavarian State Ministry of Science and the Arts / System Accreditation"
+    },
+    "tum.de": {
+      "name": "Technical University of Munich",
+      "abbreviation": "TUM",
+      "country": "Germany",
+      "city": "Munich",
+      "established_year": 1868,
+      "accreditation_body": "Bavarian State Ministry of Science and the Arts"
+    },
+    "nust.edu.pk": {
+      "name": "National University of Sciences and Technology",
+      "abbreviation": "NUST",
+      "country": "Pakistan",
+      "city": "Islamabad",
+      "established_year": 1991,
+      "accreditation_body": "Higher Education Commission (HEC) / PEC"
+    },
+    "itu.edu.pk": {
+      "name": "Information Technology University",
+      "abbreviation": "ITU",
+      "country": "Pakistan",
+      "city": "Lahore",
+      "established_year": 2012,
+      "accreditation_body": "Higher Education Commission (HEC)"
+    },
+    "lums.edu.pk": {
+      "name": "Lahore University of Management Sciences",
+      "abbreviation": "LUMS",
+      "country": "Pakistan",
+      "city": "Lahore",
+      "established_year": 1984,
+      "accreditation_body": "Higher Education Commission (HEC) / NBEAC"
+    }
+  }
+}

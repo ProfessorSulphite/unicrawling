@@ -8,7 +8,7 @@ what it affects rather than by when it was added.
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 from src.utilities.loaders import load_dotenv
 
@@ -48,6 +48,7 @@ class Config:
     # rankings: [] for all 15 entries and the extractor assigned that over the
     # payload, so sourced QS ranks were written out empty on every run.
     rankings_json_path: Path = BASE_DIR / "resources" / "rankings_global.json"   # Sourced university identity and rankings registry, keyed by canonical domain
+    identity_registry_path: Path = BASE_DIR / "resources" / "universities_global.json"  # Sourced university identity registry (without rankings)
 
     tests_dir: Path = BASE_DIR / "tests"                                         # Test tree, mirroring the src/ package layout
 
@@ -74,15 +75,19 @@ class Config:
 
     # ═══════════════════════════════════════════════════════════════════════
     # CRAWLING LIMITS & THRESHOLDS (Phase 1)
-    # ═══════════════════════════════════════════════════════════════════════
-    max_sources_per_notebook: int = 150      # Hard ceiling on sources per notebook; raise to ingest more links per university, at the cost of upload time
+    notebooklm_max_sources_limit: int = 300  # Hard ceiling enforced by Google NotebookLM Pro
+    max_sources_per_notebook: int = 150      # Target ceiling on sources per notebook; raise to ingest more links per university, at the cost of upload time
     dynamic_link_ratio: float = 0.50         # Fraction of clean candidate links actually sent; lower = fewer but higher-quality sources
     # 15 pages at depth 2 reached little beyond the landing page's own menu: the
     # 2026-09-05 batch harvested 41 usable links for COMSATS and 36 for BNU, and
     # the sparse tiers were being filled from a candidate pool that barely had
     # any. Discovery is the cheapest stage in the pipeline -- it spends no
     # NotebookLM quota -- so it is the right place to spend time.
-    max_crawl_pages: int = 35                # Pages Crawl4AI visits per domain; raise for deeper discovery, costs proportionally more time
+    # C32 raised 35 -> 60. ITU stopped at the 35-page cap with 142 raw links
+    # already harvested, and the fee/deadline pages that the payload was missing
+    # sit deeper than the cap reached. Discovery spends no NotebookLM quota, so
+    # it stays the cheapest lever in the pipeline.
+    max_crawl_pages: int = 60                # Pages Crawl4AI visits per domain; raise for deeper discovery, costs proportionally more time
     crawl_max_depth: int = 3                 # Link hops Crawl4AI follows from the start URL; 2 rarely leaves the top-level menu, 4+ reaches leaf programme pages at a steep time cost
     # Phase 2's pre-flight drops every link that no longer resolves, and the
     # notebook simply ended up smaller -- COMSATS ingested 41 of 80 selected
@@ -95,6 +100,19 @@ class Config:
     # Subdomains of the institution (application.itu.edu.pk) always count as
     # on-site; only a genuinely different registrable domain is dropped.
     restrict_links_to_university_domain: bool = True   # Drop harvested links outside the university's own registrable domain; disabling re-admits third-party pages as sources
+
+    # --- Document (PDF) discovery and ingestion (C32) -----------------------
+    # `.pdf` sits in EXCLUDED_EXTENSIONS, so PDFs were dropped at harvest -- but
+    # the crawl strategy had no filter chain, so crawl4ai still NAVIGATED to
+    # them. ITU's 8 fee/test-pattern PDFs each consumed one of the page slots,
+    # threw a "Page failed" warning, and contributed nothing. Fee schedules and
+    # admission calendars are published as PDFs at most universities, so they
+    # are the single most valuable document class the pipeline was discarding.
+    ingest_document_links: bool = True       # Harvest PDFs as Tier-2 sources instead of discarding them; NotebookLM ingests PDFs natively
+    max_document_sources: int = 8            # Ceiling on PDF sources per university, so a document-heavy site cannot crowd out HTML pages
+    # A PDF has no page text to embed, so it is ranked on anchor text and path
+    # alone and pinned to Tier 2 rather than competing in the BGE scoring pass.
+    document_source_tier: int = 2            # Tier assigned to harvested documents; 2 places them where the fee/deadline queries read
 
     # Proportional share of the source budget per priority tier. Flat top-N
     # slicing after a tier-major sort starves Tiers 3/4 entirely, which makes
@@ -213,6 +231,15 @@ class Config:
     # the answers merged. Each level doubles the sub-asks, so this trades daily
     # query budget for coverage -- 2 allows at most 4 narrowed asks per query.
     max_query_split_depth: int = 3           # How many times an oversized query may be halved over its sources; 0 disables narrowing
+    # C32 retires source-splitting as the primary oversize remedy. It is kept
+    # behind this flag for one release rather than deleted, because the evidence
+    # says the premise it was built on is wrong: `phd` and `diploma` asked over
+    # the SAME 37 sources succeeded on the first ask while `bachelors` and
+    # `masters` failed twice each, and all three narrowed sub-answers came back
+    # byte-identical (13,689 bytes x3) -- so splitting produced no new evidence.
+    # The roster-first plan bounds response size by construction instead.
+    enable_oversize_split: bool = False      # Re-enable halving an oversized query over its source set; the staged query plan makes it unnecessary
+    oversize_single_reask: bool = True       # On an oversized response, re-ask the identical question once before giving up; the failure looks transient, not deterministic
     # NOT the query suite. The suite against one notebook is serial and must stay
     # that way: concurrent unkeyed asks share a conversation, and an ask still
     # waiting when a later ask's turn lands returns THAT turn's answer. Observed
@@ -227,8 +254,77 @@ class Config:
     # universities only if nothing is ever retried, and 75 with the same ~10%
     # retry headroom the 5-query suite had. Batch sizing, not this number, is
     # what has to give -- daily_query_budget is a real external quota, not a knob.
+    # NotebookLM 5-Hour rolling window & daily ceilings
     daily_query_budget: int = 500            # Hard daily cap enforced by the state ledger; must match the real NotebookLM quota
-    queries_per_university: int = 6          # Queries in the suite; reserved up-front per university, so it must match QUERY_SUITE
+    budget_5_hours: int = 75                 # Maximum queries permitted within any rolling 5-hour window
+    query_pacing_delay_sec: float = 0.0      # Seconds to sleep between serial queries against the same notebook (2.0s in production)
+    on_rate_limit: str = "auto_sleep"        # Rate limit handling: 'auto_sleep' (wait & retry) or 'pause_exit'
+    rate_limit_default_sleep_sec: int = 300  # Default sleep duration in seconds when hit by Gemini usage limits
+    notebook_mode: str = "ephemeral"         # 'reusable' (keep worker notebook, purge sources) or 'ephemeral' (create & delete per uni)
+    worker_notebook_title: str = "Education_Counselor_Worker_DB"  # Fixed title when running in reusable notebook mode
+    ingestion_mode: str = "auto"             # 'auto' (detect WAF and choose), 'url' (direct NotebookLM fetch), or 'text' (local browser capture)
+    prospectus_pdf_path: Optional[str] = None # Optional path to an official prospectus PDF to ingest as Tier 1
+    queries_per_university: int = 6          # LEGACY json-mode suite size; only read when response_format == 'json'
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # STAGED QUERY PLAN (C32)
+    #
+    # The old suite asked "list every BACHELORS programme" with fifteen fields
+    # per programme, which is one question doing two jobs: DISCOVER how many
+    # programmes exist, and DESCRIBE each one. Response size was therefore
+    # (unknown count) x (15 fields) -- a number nobody chose. Two of the six
+    # blocks blew the 50 MB RPC ceiling twice each on ITU, spending 29% of that
+    # university's quota to learn nothing.
+    #
+    # The plan now runs in stages: identity, faculties, a ROSTER ask that emits
+    # one short line per programme and cannot overflow, then DETAIL asks over a
+    # bounded number of programmes named by that roster. Stage 4's size is
+    # `chunk_size x fields`, which is a number we choose.
+    # ═══════════════════════════════════════════════════════════════════════
+    # Every ask was arriving as a FOLLOW-UP TURN, not as a question. The SDK
+    # extends the notebook's most-recent conversation whenever `ask()` is called
+    # without a conversation_id, so by the roster ask on ITU's `s_2` run the
+    # context already held the identity turn, the faculties turn and a 52 MB
+    # aborted turn -- and the roster returned 7 bachelors programmes with no
+    # masters or PhD, from a corpus holding 5 MS and 2 PhD programme pages. A
+    # model four turns deep does not restate what has already been said.
+    #
+    # Deleting the conversation after each ask is the SDK's documented way to
+    # force the next one to start fresh. Costs one API round-trip per ask and no
+    # query quota. Disable only to reproduce the old shared-conversation
+    # behaviour for comparison.
+    isolate_query_conversations: bool = True  # Run each ask in its own conversation; disabling makes every stage a follow-up turn of the last
+    response_format: str = "text"            # 'text' (delimited @@RECORD protocol) or 'json'; text has no braces or escapes to get wrong
+    base_queries_per_university: int = 3     # Identity + faculties + roster; reserved up front, before the roster reveals how many detail asks are needed
+    max_queries_per_university: int = 14     # Hard clamp on total asks for one university; a roster too large for this raises chunk size rather than dropping programmes
+    program_detail_chunk_size: int = 5       # Programmes described per detail ask; raise to spend fewer asks, lower if a response ever comes back oversized
+    max_program_detail_chunk_size: int = 15  # Ceiling when a tight quota forces the chunk size up; beyond this the response is large enough to be the problem again
+    program_roster_gapfill: bool = True      # Issue one final narrow ask for fees/deadlines still blank after the merge; skipped when nothing is missing
+
+    # --- Roster containment (C34) ------------------------------------------
+    # The roster ask streamed past the 52 MB ceiling on BOTH attempts of run
+    # `s_3` -- roughly 50 million characters for an answer whose correct form is
+    # about 1.5 KB. That is runaway repetition, not a large answer, and it was
+    # deterministic: same prompt, same sources, same abort at ~68s twice.
+    #
+    # Run `s_2` looked better only because a polluted conversation had made the
+    # model TERSE: its roster returned 7 bachelors and no masters or PhD from a
+    # corpus holding 5 MS and 2 PhD pages. Removing that pollution (C33) let the
+    # ask attempt the full job, which is when it ran away. The short answer was
+    # the symptom, not the success.
+    #
+    # Tier 1 only: programme pages are where programmes are enumerated. Tier 2
+    # is fee schedules, test patterns and sample papers -- 15 further sources
+    # that cannot name a programme the Tier-1 set does not, and every one of
+    # them is more repetitive corpus for the model to loop over.
+    roster_tiers: tuple = (1,)               # Source tiers the roster ask reads; widen only if programmes are being missed
+    roster_max_items: int = 120              # Explicit ceiling written into the roster prompt; nothing else bounds how many records a list ask emits
+    # Fallback if the single roster still runs away: ask once per degree level.
+    # Costs 3 extra asks and each answer is a quarter the size. Safe for
+    # completeness -- these are DISCOVERY asks over the same full source set, so
+    # no programme can fall between them; only the question is narrowed.
+    roster_split_by_level: bool = False      # Split the roster into one ask per degree level; 4 smaller asks instead of 1
+    roster_match_min_ratio: float = 0.82     # Fuzzy-match floor when a detail record's name does not exactly equal its roster row; below this the record is an orphan
 
     # ═══════════════════════════════════════════════════════════════════════
     # AUDIT THRESHOLDS (plan section 5; consumed by inspector/auditor.py)

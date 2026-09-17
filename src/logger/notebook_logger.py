@@ -134,19 +134,39 @@ class NotebookLifecycleLogger:
         response_bytes: int,
         duration_sec: float = 0.0,
         uni_slug: Optional[str] = None,
+        status: str = "ok",
+        error: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Log query suite execution event."""
+        """
+        Log one NotebookLM ask, whatever its outcome.
+
+        `status` is what makes this record worth keeping (C32). The caller used
+        to log only on the success path, so the audit document recorded 10 asks
+        for an ITU run whose ledger charged 14 -- and the four missing ones were
+        the *most expensive* asks in the run, the oversized-response failures
+        that each burned a full chat timeout. An audit that hides exactly the
+        events worth investigating is worse than no audit, because the
+        discrepancy reads as a ledger bug.
+
+        Values: ok | oversized | timeout | parse_failed | rate_limited | error.
+        """
+        details: Dict[str, Any] = {
+            "query_index": query_index,
+            "query_key": query_key,
+            "prompt_len": prompt_len,
+            "response_bytes": response_bytes,
+            "duration_sec": round(duration_sec, 3),
+            "status": status,
+        }
+        if error:
+            # Bounded: a failure message can carry a whole rejected payload, and
+            # the audit document is read far more often than it is written.
+            details["error"] = error[:500]
         return self.log_event(
             event_type="QUERY_EXECUTED",
             notebook_id=notebook_id,
             uni_slug=uni_slug,
-            details={
-                "query_index": query_index,
-                "query_key": query_key,
-                "prompt_len": prompt_len,
-                "response_bytes": response_bytes,
-                "duration_sec": round(duration_sec, 3),
-            },
+            details=details,
         )
 
     def log_json_repaired(
@@ -205,8 +225,8 @@ def log_source_uploaded(notebook_id: str, source_id: str, url: str, status: str 
     return get_notebook_logger().log_source_uploaded(notebook_id, source_id, url, status, duration_sec, uni_slug)
 
 
-def log_query_executed(notebook_id: str, query_index: int, query_key: str, prompt_len: int, response_bytes: int, duration_sec: float = 0.0, uni_slug: Optional[str] = None):
-    return get_notebook_logger().log_query_executed(notebook_id, query_index, query_key, prompt_len, response_bytes, duration_sec, uni_slug)
+def log_query_executed(notebook_id: str, query_index: int, query_key: str, prompt_len: int, response_bytes: int, duration_sec: float = 0.0, uni_slug: Optional[str] = None, status: str = "ok", error: Optional[str] = None):
+    return get_notebook_logger().log_query_executed(notebook_id, query_index, query_key, prompt_len, response_bytes, duration_sec, uni_slug, status, error)
 
 
 def log_json_repaired(notebook_id: str, query_key: str, fix_type: str, uni_slug: Optional[str] = None):

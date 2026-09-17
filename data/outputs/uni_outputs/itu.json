@@ -1,0 +1,56 @@
+{
+  "main_info": {
+    "name": "Information Technology University",
+    "abbreviation": "ITU",
+    "country": "Pakistan",
+    "city": "Lahore",
+    "established_year": null,
+    "accreditation_body": "HEC ;; PEC ;; NCEAC",
+    "admission_cycles_offered": [
+      "Fall",
+      "Round 2"
+    ],
+    "primary_instruction_language": null,
+    "website": "https://itu.edu.pk/",
+    "type": "public",
+    "description": "Information Technology University of the Punjab is a technology research-oriented university in Pakistan offering undergraduate, graduate, and doctoral degree programs.",
+    "domain_verified": true,
+    "verification_note": "Identity fields sourced from rankings_global.json registry.",
+    "key_links": {
+      "academics_url": "https://itu.edu.pk/academics/",
+      "admissions_url": "https://itu.edu.pk/admissions/",
+      "application_portal_url": "https://application.itu.edu.pk/ ;; https://admissions.itu.edu.pk/login"
+    },
+    "rankings": [],
+    "exa_enriched": false
+  },
+  "programs": {
+    "bachelors": [],
+    "masters": [],
+    "phd": [],
+    "diploma": []
+  },
+  "faculties": [],
+  "contact": {
+    "official_email": "admission@itu.edu.pk ;; registrar@itu.edu.pk",
+    "phone_numbers": [
+      "042-99046061",
+      "0307-0111488",
+      "+92-42-111-111-488"
+    ],
+    "physical_address": "Arfa Software Technology Park, 346-B, Ferozepur Road, Lahore",
+    "admissions_office_location": "6th Floor, Arfa Software Technology Park, Ferozepur Road, Lahore",
+    "sub_campuses_contact": [
+      {
+        "campus_name": "Main Barki Campus",
+        "city": null,
+        "contact_details": "4- KM Main Barki Road, Lahore"
+      }
+    ]
+  },
+  "programs_possibly_truncated": true,
+  "failed_query_blocks": [
+    "faculties",
+    "roster"
+  ]
+}

@@ -151,10 +151,21 @@ TIER1_PROGRAM_KEYWORDS = [
 ]
 
 # Priority Tier 2: Fees, Admissions, Eligibility & Portals
+# C32 removed "merit list closing aggregate formula 2026". Tier is assigned
+# purely by which keyword wins cosine argmax, and that one phrase's embedding
+# matched generic admissions language rather than merit lists specifically: it
+# won 13 of ITU's 46 selected links, more than any programme keyword, and a
+# merit list carries neither a fee nor a deadline. It is replaced by two
+# narrower phrases aimed at the documents that DO carry them.
+#
+# The cost of a broad keyword here is paid twice over: it wins argmax, which
+# both mis-tiers the page AND displaces a page that would have answered.
 TIER2_ADMISSION_KEYWORDS = [
     "tuition fee structure semester charges 2026", "fee refund policy rules",
     "admission eligibility criteria minimum marks 2026", "online application portal apply now 2026",
-    "admission schedule deadline entry test 2026", "merit list closing aggregate formula 2026"
+    "admission schedule deadline entry test 2026",
+    "application processing fee payment challan",
+    "academic calendar admission dates last date to apply",
 ]
 
 # Priority Tier 3: Faculties, Departments & Campuses
@@ -177,6 +188,56 @@ PRIORITY_TIERS = {
     "Tier 3: Faculties & Departments": (3, TIER3_FACULTY_KEYWORDS, 1.10),
     "Tier 4: FAQs & Contacts": (4, TIER4_SERVICES_KEYWORDS, 1.00),
 }
+
+# ------------------------------------------------------------------------------
+# 3a. STRUCTURAL TIER OVERRIDES (C32)
+#
+# Tier was decided entirely by which of the 23 keywords won cosine argmax --
+# there was no URL rule of any kind. That gives the embedding a monopoly on a
+# judgement the URL path is often far better evidence for, and it fails in both
+# directions:
+#
+#   * A merit-list page reads like an admissions page to an embedding, because
+#     it IS about admissions. It won Tier 2 on ITU 13 times and occupied slots
+#     the programme and fee queries then read, finding nothing in them.
+#   * ITU's /financial-assistance page landed in Tier 4, which NO programme
+#     query reads at all, because "scholarships" matched a Tier-4 phrase first.
+#
+# These two lists give the path structure a vote the embedding cannot override.
+# They are deliberately generic rather than tuned to one university: a listings
+# page of outcomes (results, merit lists, notice boards, staff directories) is
+# low-value corpus everywhere, and a page whose path says "fee" or "deadline"
+# is high-value everywhere.
+
+# Matched as a substring of the lowercased path. Any hit forces the link to
+# Tier 3 AFTER scoring, so it can never occupy a Tier-1/2 slot that the
+# programme and fee queries read. Tier 3 rather than exclusion: a merit list is
+# real institutional content and still answers "what does admission look like
+# here", it simply must not crowd out the pages carrying fees and deadlines.
+DEMOTED_PATH_PATTERNS = (
+    # Outcome listings -- published once per intake, superseded immediately,
+    # and carrying no fee, no deadline and no programme description.
+    "merit-list", "merit_list", "meritlist", "/merit/",
+    "/result/", "/results/", "waiting-list", "selected-candidates",
+    "notice-board", "noticeboard", "/notices/", "/circular",
+    # Person directories. Dozens to hundreds of near-identical pages on any
+    # large university site; they answer nothing the schema asks for.
+    "/profile/", "/profiles/", "/people/", "/person/", "/staff/",
+    "/directory/", "/team/",
+    # Historical and administrative archives.
+    "/alumni/", "/library/", "/gallery/",
+)
+
+# Matched the same way, but as a PROMOTION: a page whose path says it carries
+# fees, deadlines or application mechanics is pinned to Tier 2 whatever the
+# embedding thought, and at least one match per pattern is pulled into the
+# selection if it exists anywhere in the scored set. These are exactly the
+# fields the ITU run answered for 0% of programmes.
+GUARANTEED_PATH_PATTERNS = (
+    "fee", "financial", "scholarship", "funding", "tuition",
+    "deadline", "schedule", "calendar", "important-date", "key-date",
+    "prospectus", "how-to-apply", "apply-now", "admission-guide",
+)
 
 # Flat list of keywords for SentenceTransformer embedding calculation
 ALL_COUNSELOR_KEYWORDS = (
@@ -262,7 +323,30 @@ DEDUP_STOPWORDS = {
     "department", "dept", "school", "faculty", "institute", "centre", "center",
     "fall", "spring", "summer", "autumn", "onward", "onwards", "entries", "entry",
     "index", "html", "htm", "php", "aspx", "page", "detail", "details", "home",
+    # C32. Without these, ITU's three merit lists for the SAME programme --
+    #   /merit-lists-2026/bs-software-engineering
+    #   /merit-lists-2026/faculty-of-engineering/bs-software-engineering
+    #   /merit-lists-2026-2/bs-software-engineering-2nd-round
+    # produce three different discipline-token sets and survive deduplication as
+    # three distinct "programmes". Dedup reduced 96 links to 93 on that run.
+    "merit", "merits", "list", "lists", "round", "rounds", "result", "results",
+    "1st", "2nd", "3rd", "4th", "5th", "first", "second", "third",
+    "final", "provisional", "revised", "updated", "notice", "notification",
 }
+
+# Path segments stripped whole before tokenisation, because they describe WHERE
+# a page sits rather than WHAT it is about. A programme reached via
+# /faculty-of-engineering/ and the same programme reached directly must produce
+# the same dedup key, or one real programme becomes two.
+DEDUP_STRIPPED_SEGMENT_REGEX = re.compile(
+    r"(?:^|/)(?:merit-lists?(?:-\d{4})?(?:-\d+)?"
+    r"|faculty-of-[a-z-]+"
+    r"|school-of-[a-z-]+"
+    r"|department-of-[a-z-]+"
+    r"|results?-\d{4}"
+    r")(?=/|$)",
+    re.IGNORECASE,
+)
 
 PATH_TOKEN_SPLIT_REGEX = re.compile(r"[/_.\-\s]+")
 

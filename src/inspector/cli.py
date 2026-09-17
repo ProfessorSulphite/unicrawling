@@ -205,6 +205,29 @@ def build_parser() -> argparse.ArgumentParser:
     analytics_parser = subparsers.add_parser("analytics", help="Audit dataset health & quality metrics")
     analytics_parser.add_argument("--file", type=Path, default=config.output_jsonl_path, help="Path to JSONL file")
 
+    # Command: runlog
+    #
+    # Distinct from `analytics`, which reads the cumulative master JSONL. The
+    # corpus is additive, so a run that extracted nothing leaves the dataset
+    # looking exactly as healthy as before -- `analytics` cannot report a bad
+    # run at all. This answers "what did THIS run do, spend, and get wrong".
+    runlog_parser = subparsers.add_parser(
+        "runlog",
+        help="Analytics for one pipeline run (default: the most recent), not the whole dataset",
+    )
+    runlog_parser.add_argument(
+        "run", nargs="?", default=None,
+        help="Run token such as s_3 or c_1. Omit for the most recent run of any kind.",
+    )
+    runlog_parser.add_argument(
+        "--list", action="store_true",
+        help="List recent runs and exit, so a token can be chosen",
+    )
+    runlog_parser.add_argument(
+        "--no-asks", action="store_true",
+        help="Skip the per-ask table; show only the summary and coverage",
+    )
+
     # Command: audit
     subparsers.add_parser(
         "audit",
@@ -266,6 +289,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         export_dataset(format_type=args.format, output_path=args.output)
     elif args.command == "analytics":
         audit_analytics(args.file)
+    elif args.command == "runlog":
+        from src.inspector.run_analytics import render_run_analytics, render_run_list
+
+        if args.list:
+            return render_run_list()
+        # Non-zero when the run did not fully succeed, so this is usable as a
+        # gate in a shell script and not only as something to read.
+        return render_run_analytics(args.run, show_asks=not args.no_asks)
     elif args.command == "sync":
         try:
             sync_to_supabase(dry_run=args.dry_run, force=args.force)

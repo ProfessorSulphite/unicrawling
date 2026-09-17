@@ -15,7 +15,7 @@ import sqlite3
 import logging
 import threading
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Iterable, Tuple
 
 logger = logging.getLogger("State")
@@ -32,7 +32,12 @@ TERMINAL_FAILURE = "failed"
 # "completed": a partial university has real data worth keeping and real data
 # still missing, so it must survive a rerun as work outstanding.
 PARTIAL_EXTRACTION = "partial"
-VALID_STATUSES = set(STATUS_SEQUENCE) | {TERMINAL_FAILURE, PARTIAL_EXTRACTION}
+# The quality gate's outcome: the extraction ran but produced nothing usable
+# (target blocked NotebookLM's crawler, or the answer was empty). Distinct from
+# TERMINAL_FAILURE because the pipeline itself did not error -- it succeeded in
+# establishing that the source was unusable.
+BLOCKED = "blocked"
+VALID_STATUSES = set(STATUS_SEQUENCE) | {TERMINAL_FAILURE, PARTIAL_EXTRACTION, BLOCKED}
 
 
 class InvalidStatusError(ValueError):
@@ -171,6 +176,18 @@ class StateManager:
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_notebook_audit_slug
                 ON notebook_audit (uni_slug);
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS query_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    university_slug TEXT NOT NULL,
+                    queries INTEGER NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_query_events_created_at
+                ON query_events (created_at);
             """)
             conn.commit()
 
@@ -420,25 +437,96 @@ class StateManager:
             ).fetchone()
             return int(row["n"])
 
+    def queries_used_in_window(self, hours: float = 5.0) -> int:
+        """
+        Total NotebookLM queries recorded in the rolling sliding window.
+
+        A SIGNED sum since C32: `release_queries` writes a compensating negative
+        row rather than mutating the original, so unspent reservations leave the
+        window as they should.
+
+        Floored at zero because the two rows expire independently. A charge made
+        just outside the window and refunded just inside it leaves only the
+        refund in range, and a negative "used" count would report more budget
+        available than the quota holds -- turning an accounting artifact into a
+        real over-spend against NotebookLM.
+        """
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(queries), 0) AS n FROM query_events "
+                "WHERE created_at >= datetime('now', '-' || ? || ' hours')",
+                (float(hours),),
+            ).fetchone()
+            return max(0, int(row["n"]))
+
+    def remaining_5h_budget(self) -> int:
+        """Queries remaining in the 5-hour rolling window against config.budget_5_hours."""
+        budget_5h = getattr(config, "budget_5_hours", 75)
+        return max(0, budget_5h - self.queries_used_in_window(5.0))
+
+    def seconds_until_5h_budget_available(self, required: int = 5) -> float:
+        """Calculates seconds until `required` queries become available in the 5-hour rolling window."""
+        rem = self.remaining_5h_budget()
+        if rem >= required:
+            return 0.0
+
+        needed = required - rem
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT queries, created_at FROM query_events "
+                "WHERE created_at >= datetime('now', '-5 hours') "
+                "ORDER BY created_at ASC"
+            ).fetchall()
+
+        freed = 0
+        now = datetime.now(timezone.utc)
+        for r in rows:
+            # Only a real charge frees capacity when it ages out. A refund row
+            # (negative, C32) does the opposite on expiry, so counting it here
+            # would predict capacity that never arrives and busy-wait on it.
+            queries = int(r["queries"])
+            if queries <= 0:
+                continue
+            freed += queries
+            if freed >= needed:
+                created_str = str(r["created_at"])
+                try:
+                    created_dt = datetime.fromisoformat(created_str)
+                    if created_dt.tzinfo is None:
+                        created_dt = created_dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    created_dt = now
+                expires_at = created_dt + timedelta(hours=5.0)
+                diff = (expires_at - now).total_seconds()
+                return max(1.0, diff + 1.0)
+
+        return 300.0
+
     def remaining_query_budget(self) -> int:
         """Queries still available today against config.daily_query_budget."""
         return max(0, config.daily_query_budget - self.queries_used_today())
 
     def reserve_queries(self, slug: str, count: int) -> None:
         """
-        Record `count` queries against today's budget, refusing to overrun it.
+        Record `count` queries against both the daily and rolling 5-hour budgets.
 
-        Called before issuing the query suite. Without this the 5-query suite over
-        83 universities silently walks into the 500/day wall mid-run, leaving a
-        notebook ingested but never extracted.
+        Called before issuing the query suite. Without this the 5-to-6 query suite over
+        universities silently walks into daily and 5-hour rate limits mid-run.
         """
         if count <= 0:
             return
-        remaining = self.remaining_query_budget()
-        if count > remaining:
+        remaining_daily = self.remaining_query_budget()
+        if count > remaining_daily:
             raise QuotaExceededError(
                 f"Daily NotebookLM query budget exhausted: requested {count}, "
-                f"{remaining} of {config.daily_query_budget} remaining today."
+                f"{remaining_daily} of {config.daily_query_budget} remaining today."
+            )
+        remaining_5h = self.remaining_5h_budget()
+        budget_5h = getattr(config, "budget_5_hours", 75)
+        if count > remaining_5h:
+            raise QuotaExceededError(
+                f"5-Hour Rolling NotebookLM budget exhausted: requested {count}, "
+                f"{remaining_5h} of {budget_5h} remaining in current 5-hour window."
             )
         with self._get_connection() as conn:
             conn.execute(
@@ -449,18 +537,34 @@ class StateManager:
                 """,
                 (self._today(), slug.lower().strip(), int(count)),
             )
+            conn.execute(
+                """
+                INSERT INTO query_events (university_slug, queries) VALUES (?, ?)
+                """,
+                (slug.lower().strip(), int(count)),
+            )
             conn.commit()
 
     def release_queries(self, slug: str, count: int) -> None:
         """
         Hand back queries reserved but never issued, floored at zero.
 
-        The suite is reserved whole and up front, before the first ask. When the
-        extraction then ends early -- a timeout, a cancelled run, a notebook that
-        never answered -- the unspent remainder stayed charged against the day.
-        COMSATS was billed the full 6 on 2026-09-05 having issued 2, and the
-        reservation for a run killed mid-suite was never given back at all, so
-        the ledger drifted further from the real quota with every failure.
+        Refunds BOTH budgets (C32). `query_ledger` is mutable and was always
+        credited here, but `query_events` -- which backs the rolling 5-hour
+        window -- is append-only, so the refund never reached it. A university
+        that reserved 6 and spent 2 kept all 6 charged against the 5-hour window
+        for a full five hours, and the 5-hour window is the TIGHTER of the two
+        ceilings (75 vs 500): it is what actually limits batch throughput, so
+        the drift accumulated exactly where it hurt most.
+
+        The refund is a compensating event row with a NEGATIVE count rather than
+        a deletion or an update of the original. The window is a sum over rows
+        in a time range, so a negative row expires on the same schedule as the
+        charge it reverses -- which is the correct behaviour, and is what
+        deleting the original row would get wrong. Append-only also keeps the
+        table an audit trail: the reservation and its refund both remain
+        visible, and `queries_used_in_window` already SUMs, so it needs no
+        change to read signed values correctly.
         """
         if count <= 0:
             return
@@ -471,6 +575,10 @@ class StateManager:
                 WHERE day = ? AND university_slug = ?
                 """,
                 (int(count), self._today(), slug.lower().strip()),
+            )
+            conn.execute(
+                "INSERT INTO query_events (university_slug, queries) VALUES (?, ?)",
+                (slug.lower().strip(), -int(count)),
             )
             conn.commit()
 

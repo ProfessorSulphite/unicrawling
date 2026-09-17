@@ -198,7 +198,45 @@ Streams the JSONL line by line, so memory does not scale with dataset size. Repo
 count, public/private split, program counts by level, faculty count, portal and contact
 coverage, and malformed line count.
 
-### 3.8 `state` — SQLite pipeline manifest
+### 3.8 `runlog` — analytics for ONE run
+
+```bash
+python3 cli.py runlog                 # the most recent run of any kind
+python3 cli.py runlog s_3             # a specific run token
+python3 cli.py runlog --list          # recent runs, newest first, to pick a token
+python3 cli.py runlog s_3 --no-asks   # summary and coverage only
+```
+
+**Not the same question as `analytics`.** That command reads the cumulative master JSONL, and the
+corpus is additive — a run that extracted nothing at all leaves the dataset looking exactly as
+healthy as it did before, so `analytics` cannot report a bad run. `runlog` answers "what did *this*
+run do, what did it spend, and what went wrong".
+
+It joins four sources that previously had to be correlated by hand:
+
+| Source | What it contributes |
+|---|---|
+| `loggings/{single,complete}_logs/<token>.json` | what was targeted, and each university's outcome |
+| `loggings/notebook_logs/<notebook>.json` | every ask, its status, byte count and duration |
+| `data/state.sqlite` | per-university status and error log |
+| `data/outputs/uni_outputs/<slug>.json` | programmes, faculties, failed blocks, field coverage |
+
+Asks are attributed by **slug and the run's own time window**, never by notebook ID alone — the ID
+in `pipeline_state` is whatever the university's most recent run left there, so joining on it
+reports zero asks for every earlier run.
+
+Payload, state and coverage figures are keyed by university rather than by run, so when a later run
+has since overwritten them the output says so explicitly instead of presenting current numbers as
+that run's output.
+
+Exits non-zero when the run did not fully succeed or any ask returned nothing, so it works as a
+gate in a shell script and not only as something to read:
+
+```bash
+python3 cli.py runlog || echo "last run needs attention"
+```
+
+### 3.9 `state` — SQLite pipeline manifest
 
 ```bash
 python3 cli.py state
@@ -212,13 +250,13 @@ flagged ⚠ with the failed blocks in the Notes column. `partial` is deliberatel
 completion: a resumed batch retries those universities rather than skipping them, because the
 empty bucket is an artefact of the failure and not a fact about the university.
 
-### 3.9 `schema` — display the master JSON schema
+### 3.10 `schema` — display the master JSON schema
 
 ```bash
 python3 cli.py schema
 ```
 
-### 3.10 `notebooks` ⚠️ — list live NotebookLM notebooks
+### 3.11 `notebooks` ⚠️ — list live NotebookLM notebooks
 
 ```bash
 python3 cli.py notebooks
@@ -227,7 +265,7 @@ python3 cli.py notebooks
 Requires a valid NotebookLM session. Useful for confirming that
 `delete_notebook_after_success()` is actually reclaiming workspace slots.
 
-### 3.11 `interactive` — Rich TUI menu
+### 3.12 `interactive` — Rich TUI menu
 
 ```bash
 python3 cli.py interactive

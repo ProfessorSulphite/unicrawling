@@ -61,3 +61,37 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
     # The registry is read-only, so it keeps pointing at the real resource file:
     # tests assert against its actual contents.
     yield
+
+
+@pytest.fixture
+def legacy_json_suite(monkeypatch):
+    """
+    Pin a test to the pre-C32 six-query JSON suite.
+
+    The default is now the staged text plan, and the two paths ask different
+    questions in a different order and parse a different wire format -- so a
+    test that feeds JSON answers is testing the legacy path whether it says so
+    or not. Requesting this fixture is that test saying so.
+
+    The legacy path is still shipped (config.response_format = 'json') so a
+    regression in the text path can be A/B'd against the same university, which
+    is only worth having if it stays covered.
+    """
+    monkeypatch.setattr(config, "response_format", "json")
+    yield
+
+
+@pytest.fixture
+def oversize_split_enabled(monkeypatch):
+    """
+    Turn the legacy source-splitting oversize remedy back on.
+
+    Off by default since C32: the evidence says an oversized response is
+    transient rather than a property of the corpus, so one identical re-ask is
+    tried instead. The split path is retained for one release and stays covered
+    here. `oversize_single_reask` is disabled alongside it so a test counting
+    asks sees the split's own asks and not an extra retry in front of them.
+    """
+    monkeypatch.setattr(config, "enable_oversize_split", True)
+    monkeypatch.setattr(config, "oversize_single_reask", False)
+    yield

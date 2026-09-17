@@ -33,77 +33,130 @@ from src.utilities.state_management import StateManager
 
 # ---------------------------------------------------------------- fixtures --
 
-MAIN_INFO_ANSWER = json.dumps({
-    "main_info": {
-        "name": "Information Technology University",
-        "abbreviation": "ITU",
-        "country": "Pakistan",
-        "city": "Lahore",
-        "website": "https://itu.edu.pk",
-        "description": "A public research university in Lahore.",
-        "type": "public",
-        "key_links": {
-            "academics_url": "https://itu.edu.pk/academics",
-            "admissions_url": "https://itu.edu.pk/admissions",
-            "application_portal_url": "https://apply.itu.edu.pk",
-        },
-    },
-    "contact": {
-        "official_email": "admissions@itu.edu.pk",
-        "phone_numbers": ["042-111-111-488"],
-        "physical_address": "Arfa Software Technology Park, Lahore",
-    },
-})
+# The FakeNotebookLM answers in the DELIMITED-TEXT protocol, because that is
+# what the pipeline ships (config.response_format = 'text', C32). The legacy
+# JSON suite is covered separately in test_extractor/test_crawlers_runner.py.
+#
+# The staged plan asks, in order: identity, faculties, roster, one detail ask
+# per degree level, then one gap-fill. Seven asks for the three programmes here.
 
-BACHELORS_ANSWER = json.dumps([{
-    "name": "BS Computer Science", "degree_level": "bachelors",
-    "department": "Department of Computer Science", "duration": "4 years",
-    "tuition_fee": "PKR 1,416,000", "currency": "PKR",
-    "admission_requirements": "Intermediate with 60% and the ITU entry test.",
-    "application_fee": "PKR 2,000", "application_deadlines": ["2026-08-05"],
-    "description": "A four-year programme covering systems, theory and practice.",
-    "eligibility_requirements": {"minimum_marks_percentage": "60%",
-                                 "entry_tests_accepted": ["ITU Entry Test"]},
-}])
+IDENTITY_ANSWER = """@@RECORD
+NAME: Information Technology University
+ABBREVIATION: ITU
+COUNTRY: Pakistan
+CITY: Lahore
+WEBSITE: https://itu.edu.pk
+TYPE: public
+DESCRIPTION: A public research university in Lahore.
+ACADEMICS_URL: https://itu.edu.pk/academics
+ADMISSIONS_URL: https://itu.edu.pk/admissions
+PORTAL_URL: https://apply.itu.edu.pk
+EMAIL: admissions@itu.edu.pk
+PHONES: 042-111-111-488
+ADDRESS: Arfa Software Technology Park, Lahore
+@@END
+"""
 
-MASTERS_ANSWER = json.dumps([{
-    "name": "MS Data Science", "degree_level": "masters",
-    "department": "Department of Computer Science", "duration": "2 years",
-    "tuition_fee": "PKR 327,000", "currency": "PKR",
-    "application_deadlines": ["August 5, 2026"],
-    "description": "A two-year taught masters in data science.",
-    "eligibility_requirements": {"minimum_marks_percentage": "60%"},
-}])
+FACULTIES_ANSWER = """@@RECORD
+FACULTY: Faculty of Computing
+DEPARTMENTS: Computer Science
+@@END
+"""
 
-PHD_ANSWER = json.dumps([{
-    "name": "PhD Computer Science", "degree_level": "phd",
-    "department": "Department of Computer Science",
-    "description": "A doctoral programme in computer science.",
-    "eligibility_requirements": {},
-}])
+ROSTER_ANSWER = """@@RECORD
+NAME: BS Computer Science
+LEVEL: bachelors
+DEPARTMENT: Department of Computer Science
+@@END
+@@RECORD
+NAME: MS Data Science
+LEVEL: masters
+DEPARTMENT: Department of Computer Science
+@@END
+@@RECORD
+NAME: PhD Computer Science
+LEVEL: phd
+DEPARTMENT: Department of Computer Science
+@@END
+"""
 
-FACULTIES_ANSWER = json.dumps([
-    {"faculty_name": "Faculty of Computing", "departments": ["Computer Science"]},
-])
-
-# Keyed by QUERY_SUITE order. A dict rather than a side_effect list so the test
-# is not silently order-dependent -- the answer is chosen by what was asked.
-ANSWERS = {
-    "BACHELORS": BACHELORS_ANSWER,
-    "MASTERS": MASTERS_ANSWER,
-    "PhD and research doctorate": PHD_ANSWER,
-    "DIPLOMA": "[]",
-    "faculties": FACULTIES_ANSWER,
+# Keyed by programme name so a test can replace one programme's detail without
+# rewriting the whole answer, and so the detail responder can return exactly the
+# programmes a given chunk asked about.
+DETAIL_RECORDS = {
+    "BS Computer Science": """@@RECORD
+NAME: BS Computer Science
+LEVEL: bachelors
+DEPARTMENT: Department of Computer Science
+DURATION: 4 years
+TUITION: PKR 1,416,000
+CURRENCY: PKR
+APP_FEE: PKR 2,000
+DEADLINES: 2026-08-05
+MIN_MARKS: 60%
+ENTRY_TESTS: ITU Entry Test
+REQUIREMENTS: Intermediate with 60% and the ITU entry test.
+DESCRIPTION: A four-year programme covering systems, theory and practice.
+@@END
+""",
+    "MS Data Science": """@@RECORD
+NAME: MS Data Science
+LEVEL: masters
+DEPARTMENT: Department of Computer Science
+DURATION: 2 years
+TUITION: PKR 327,000
+CURRENCY: PKR
+APP_FEE: NONE
+DEADLINES: August 5, 2026
+MIN_MARKS: 60%
+DESCRIPTION: A two-year taught masters in data science.
+@@END
+""",
+    "PhD Computer Science": """@@RECORD
+NAME: PhD Computer Science
+LEVEL: phd
+DEPARTMENT: Department of Computer Science
+APP_FEE: NONE
+DEADLINES: NONE
+DESCRIPTION: A doctoral programme in computer science.
+@@END
+""",
 }
+
+# ITU publishes no per-programme application fee for these two. That is the
+# honest answer and the one the plan's section 6.2 calls the real possibility:
+# the corpus now CONTAINS the fee pages, and they still do not say. The audit
+# gate below depends on it staying that way.
+GAPFILL_ANSWER = """@@RECORD
+NAME: MS Data Science
+APP_FEE: NONE
+DEADLINES: August 5, 2026
+@@END
+@@RECORD
+NAME: PhD Computer Science
+APP_FEE: NONE
+DEADLINES: NONE
+@@END
+"""
 
 
 def _answer_for(question: str) -> str:
-    if "main_info" in question or "contact" in question.lower()[:400]:
-        return MAIN_INFO_ANSWER
-    for marker, answer in ANSWERS.items():
-        if marker in question:
-            return answer
-    return MAIN_INFO_ANSWER
+    """Route an ask to its stage's answer, by what the prompt actually says."""
+    if "core identity and contact details" in question:
+        return IDENTITY_ANSWER
+    if "List every faculty and school" in question:
+        return FACULTIES_ANSWER
+    if "This is an inventory, not a description" in question:
+        return ROSTER_ANSWER
+    if "fee and deadline information is missing" in question:
+        return GAPFILL_ANSWER
+    if "For EACH of the following" in question:
+        # Return records only for the programmes this chunk named, which is what
+        # a well-behaved model does and what the roster merge is keyed on.
+        return "".join(
+            body for name, body in DETAIL_RECORDS.items() if f"- {name}\n" in question
+        ) or "@@RECORD\n@@END\n"
+    return IDENTITY_ANSWER
 
 
 class FakeNotebookLM:
@@ -241,17 +294,36 @@ async def test_phase_1_links_reach_phase_2_with_their_tiers(pipeline):
 
 async def test_each_query_is_scoped_to_the_sources_that_can_answer_it(pipeline):
     """
-    Tier scoping is the reason a tier is recorded at all. Programme queries ask
-    tiers 1-2; the identity query is allowed the whole corpus.
+    Tier scoping is the reason a tier is recorded at all.
+
+    Three different scopes, each chosen for what the ask needs:
+
+      * the ROSTER reads Tier 1 only (C34). Programme pages are where
+        programmes are enumerated; Tier 2 is fee schedules and test patterns,
+        which cannot name a programme Tier 1 does not and are only more
+        repetitive corpus for the model to loop over.
+      * DETAIL asks read Tiers 1-2, because a fee page can describe a programme
+        the programme page does not.
+      * IDENTITY is allowed the whole corpus.
     """
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
-    programme_asks = [a for a in pipeline.asked if "degree programme" in a["question"]]
-    assert programme_asks, "no programme query was issued"
-    for ask in programme_asks:
+    roster = [a for a in pipeline.asked
+              if "This is an inventory, not a description" in a["question"]]
+    assert roster, "no roster query was issued"
+    for ask in roster:
+        assert ask["source_ids"] == ["src-1", "src-2"], "the roster read beyond Tier 1"
+
+    detail = [a for a in pipeline.asked if "For EACH of the following" in a["question"]]
+    assert detail, "no detail query was issued"
+    for ask in detail:
         assert ask["source_ids"] == ["src-1", "src-2", "src-3"], (
-            "a programme query was not scoped to its tiers"
+            "a detail query was not scoped to its tiers"
         )
+
+    identity = [a for a in pipeline.asked
+                if "core identity and contact details" in a["question"]]
+    assert identity[0]["source_ids"] == ["src-1", "src-2", "src-3", "src-4"]
 
 
 async def test_no_two_programme_queries_share_an_answer(pipeline):
@@ -290,8 +362,9 @@ async def test_the_run_is_recorded_as_completed_with_its_query_count(pipeline):
         assert row["status"] == "completed"
         assert row["notebook_id"] == "nb-e2e-1"
         assert row["sources_ingested"] == 4
-        assert row["queries_executed"] == 6
-        assert state.queries_used_today() == 6
+        # identity + faculties + roster + one detail ask per degree level + gap-fill.
+        assert row["queries_executed"] == 7
+        assert state.queries_used_today() == 7
     finally:
         state.close()
 
@@ -315,8 +388,20 @@ async def test_the_notebook_audit_trail_records_the_whole_lifecycle(pipeline):
     counts = load_notebook_log("nb-e2e-1")["event_counts"]
     assert counts["NOTEBOOK_CREATED"] == 1
     assert counts["SOURCE_UPLOADED"] == 4
-    assert counts["QUERY_EXECUTED"] == 6
+    assert counts["QUERY_EXECUTED"] == 7
     assert counts["NOTEBOOK_DELETED"] == 1
+
+    # Every ask carries the university it was issued for, and its outcome.
+    # Both were missing before C32: query events logged `slug:N/A` while every
+    # other event carried the slug, and only successful asks were logged at all
+    # -- so the audit recorded 10 asks for a run the ledger charged 14, and the
+    # four it hid were the expensive ones.
+    events = [
+        e for e in load_notebook_log("nb-e2e-1")["events"]
+        if e["event_type"] == "QUERY_EXECUTED"
+    ]
+    assert all(e["uni_slug"] == "itu" for e in events)
+    assert all(e["details"]["status"] == "ok" for e in events)
 
 
 # ------------------------------------------------------ the skip paths --
@@ -389,36 +474,50 @@ async def test_a_raising_phase_1_marks_the_university_failed(pipeline, monkeypat
 
 # ------------------------------------------ a partial extraction stays open --
 
-async def test_a_failed_query_block_is_recorded_on_the_payload_and_left_open(
+async def test_a_failed_detail_ask_keeps_the_programme_and_stays_open(
     pipeline, monkeypatch
 ):
     """
-    A query that fails every retry yields an empty bucket, not an error. Written
-    as "completed" it was indistinguishable from a university that genuinely
-    offers no bachelors programmes -- and the next batch skipped it forever, so
-    one transient API failure permanently cost a degree level.
+    A failed ask must not delete a programme, and must not read as clean.
+
+    Under the old suite this was all-or-nothing: the `bachelors` ask WAS the
+    bachelors bucket, so one transient API failure emptied it, the payload was
+    written "completed", and the next batch skipped the university forever --
+    one flaky minute permanently cost a degree level.
+
+    The staged plan degrades further down. The roster already established that
+    the programme exists and what level it is, so a failed DETAIL ask costs only
+    its description: the programme survives, undescribed, and the block is
+    recorded as failed so the university stays queued.
     """
     from src.config import config
 
     original_ask = pipeline.chat.ask.side_effect
 
-    async def ask_but_bachelors_always_fails(notebook_id, question, **kwargs):
-        if "BACHELORS" in question:
+    async def ask_but_bachelors_detail_fails(notebook_id, question, **kwargs):
+        if "For EACH of the following" in question and "bachelors programmes" in question:
             raise RuntimeError("chat.ask exploded")
         return await original_ask(notebook_id, question, **kwargs)
 
-    pipeline.chat.ask = AsyncMock(side_effect=ask_but_bachelors_always_fails)
+    pipeline.chat.ask = AsyncMock(side_effect=ask_but_bachelors_detail_fails)
 
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
     record = json.loads(
         (config.outputs_uni_outputs_dir / "itu.json").read_text(encoding="utf-8")
     )
-    # The other blocks are real data and are kept.
+
+    # The programme is still here, from the roster, with its identity intact.
+    bachelors = record["programs"]["bachelors"]
+    assert [p["name"] for p in bachelors] == ["BS Computer Science"]
+    # But undescribed, because the ask that would have described it failed.
+    assert bachelors[0]["tuition_fee"] is None
+    assert bachelors[0]["description"] is None
+    # The other levels are unaffected.
     assert [p["name"] for p in record["programs"]["masters"]] == ["MS Data Science"]
-    # The empty one says why it is empty.
-    assert record["programs"]["bachelors"] == []
-    assert record["failed_query_blocks"] == ["bachelors"]
+
+    # And the failure is on the record rather than inferred from a gap.
+    assert any(b.startswith("detail:bachelors") for b in record["failed_query_blocks"])
 
     state = StateManager()
     try:
@@ -426,7 +525,7 @@ async def test_a_failed_query_block_is_recorded_on_the_payload_and_left_open(
         assert "itu" not in state.get_completed_slugs(), (
             "a partial university must stay queued for the next run"
         )
-        assert "bachelors" in state.get_state("itu")["error_log"]
+        assert "detail:bachelors" in state.get_state("itu")["error_log"]
     finally:
         state.close()
 
@@ -506,14 +605,27 @@ async def test_a_corpus_meeting_every_floor_passes_the_gate(pipeline, monkeypatc
     from src.inspector.auditor import audit_records, readiness_verdict
     from src.inspector.records import iter_all_records
 
-    # Distinct from the bachelors answer on purpose: two programme queries
-    # returning identical content is cross-contamination, and the extractor
-    # correctly drops both blocks when it sees it.
-    complete_masters = json.loads(BACHELORS_ANSWER)
-    complete_masters[0].update(name="MS Data Science", degree_level="masters",
-                               duration="2 years", tuition_fee="PKR 327,000")
-    monkeypatch.setitem(ANSWERS, "MASTERS", json.dumps(complete_masters))
-    monkeypatch.setitem(ANSWERS, "PhD and research doctorate", "[]")
+    # Every programme fully described, including the two fields the run above
+    # legitimately cannot answer. Distinct content per programme on purpose: two
+    # blocks holding identical records is cross-contamination, and the extractor
+    # correctly refuses to file either one.
+    complete = {
+        name: body.replace("APP_FEE: NONE", "APP_FEE: PKR 2,000")
+                  .replace("DEADLINES: NONE", "DEADLINES: 2026-08-05")
+        for name, body in DETAIL_RECORDS.items()
+    }
+    complete["PhD Computer Science"] = complete["PhD Computer Science"].replace(
+        "DESCRIPTION: A doctoral programme in computer science.",
+        "DURATION: 4 years\nTUITION: PKR 500,000\nCURRENCY: PKR\n"
+        "MIN_MARKS: 70%\nREQUIREMENTS: A masters degree and a research proposal.\n"
+        "DESCRIPTION: A doctoral programme in computer science.",
+    )
+    complete["MS Data Science"] = complete["MS Data Science"].replace(
+        "DESCRIPTION: A two-year taught masters in data science.",
+        "REQUIREMENTS: A relevant bachelors degree with 60%.\n"
+        "DESCRIPTION: A two-year taught masters in data science.",
+    )
+    monkeypatch.setattr("test_pipeline.DETAIL_RECORDS", complete)
 
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 

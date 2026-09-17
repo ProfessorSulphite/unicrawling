@@ -107,6 +107,23 @@ class MainInfo(BaseModel):
         return None
 
 
+def coerce_deadline_list(v: Any) -> List[str]:
+    """
+    Normalise whatever a model emitted for a deadline field into a list of strings.
+
+    Module-level so ProgramItem and ProgramGapFill share ONE implementation.
+    Two copies of a coercion is how the gap-fill path and the detail path come
+    to disagree about what "August 5, 2026" means.
+    """
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v.strip()] if v.strip() else []
+    if isinstance(v, list):
+        return [str(d).strip() for d in v if d is not None and str(d).strip()]
+    return [str(v).strip()]
+
+
 class EligibilityRequirements(BaseModel):
     minimum_marks_percentage: Optional[str] = None
     entry_tests_accepted: List[str] = []
@@ -206,13 +223,39 @@ class ProgramItem(BaseModel):
     @field_validator("application_deadlines", mode="before")
     @classmethod
     def _coerce_deadlines(cls, v: Any) -> List[str]:
-        if v is None:
-            return []
-        if isinstance(v, str):
-            return [v.strip()] if v.strip() else []
-        if isinstance(v, list):
-            return [str(d).strip() for d in v if d is not None and str(d).strip()]
-        return [str(v).strip()]
+        return coerce_deadline_list(v)
+
+
+class ProgramGapFill(BaseModel):
+    """
+    A partial programme record: the fields a gap-fill ask is allowed to supply.
+
+    Deliberately NOT a ProgramItem. The gap-fill stage asks one narrow question
+    about programmes the roster has already named and levelled, so it must not
+    be able to state a `degree_level` at all -- a second opinion on a level that
+    is already settled can only introduce a contradiction, and the roster is the
+    better evidence either way (it saw the programme in context).
+
+    Making it a ProgramItem would also force the model to restate a required
+    `degree_level` in an answer that has no business carrying one, and a missing
+    one would fail validation for the whole batch of records.
+
+    Field names match ProgramItem exactly, so `merge_detail_into_roster` reads
+    them with the same getattr and needs no special case.
+    """
+    name: str
+    application_fee: Optional[str] = None
+    application_deadlines: List[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("application_deadlines", "application_deadline"),
+    )
+    tuition_fee: Optional[str] = None
+    currency: Optional[str] = None
+
+    @field_validator("application_deadlines", mode="before")
+    @classmethod
+    def _coerce_deadlines(cls, v: Any) -> List[str]:
+        return coerce_deadline_list(v)
 
 
 # Plan section 5, "Per-program required fields". The canonical list lives here,

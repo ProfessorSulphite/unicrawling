@@ -6,6 +6,12 @@ failure reporting rather than a silently clean result, tier-scoped queries, a
 truncation flag, and a notebook that is never deleted by the extractor itself.
 
 Moved out of tests/test_pipeline.py in C15.
+
+**These exercise the LEGACY six-query JSON suite**, which C32 demoted from the
+default to an opt-in control path (config.response_format = 'json'). Every test
+here feeds canned JSON answers to a fixed suite, so it was always testing that
+path; `legacy_json_suite` makes it say so. The staged text plan that replaced it
+as the default is covered in test_staged_query_plan.py and test_text_protocol.py.
 """
 import json
 
@@ -51,7 +57,7 @@ def _extract_client(answers):
     return client
 
 
-async def test_extraction_builds_validated_payload():
+async def test_extraction_builds_validated_payload(legacy_json_suite):
     client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     payload, report = await extract_university_payload(client, "nb-1", "NUST", "nust.edu.pk")
     assert isinstance(payload, UniversityPayload)
@@ -65,7 +71,7 @@ async def test_extraction_builds_validated_payload():
     assert report.ok
 
 
-async def test_extraction_does_not_delete_notebook():
+async def test_extraction_does_not_delete_notebook(legacy_json_suite):
     """
     Deletion previously lived in a `finally:`, so any transient chat error
     destroyed all 60 ingested sources. Deletion is now the orchestrator's call,
@@ -76,7 +82,7 @@ async def test_extraction_does_not_delete_notebook():
     client.notebooks.delete.assert_not_called()
 
 
-async def test_extraction_survives_a_failing_query_and_reports_it():
+async def test_extraction_survives_a_failing_query_and_reports_it(legacy_json_suite):
     client = MagicMock()
     client.chat.ask = AsyncMock(side_effect=[
         MagicMock(answer=_Q1),
@@ -94,7 +100,7 @@ async def test_extraction_survives_a_failing_query_and_reports_it():
     assert "bachelors" in report.failed
 
 
-async def test_extraction_scopes_queries_by_tier():
+async def test_extraction_scopes_queries_by_tier(legacy_json_suite):
     """Each query must see only the sources that can answer it."""
     client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     by_tier = {1: ["s1"], 2: ["s2"], 3: ["s3"], 4: ["s4"]}
@@ -109,7 +115,7 @@ async def test_extraction_scopes_queries_by_tier():
     assert calls[order.index("bachelors")].kwargs["source_ids"] == ["s1", "s2"]
 
 
-async def test_extraction_flags_probable_truncation():
+async def test_extraction_flags_probable_truncation(legacy_json_suite):
     """40 Tier-1 programme pages yielding 1 programme is a truncated answer."""
     client = _extract_client([_Q1, _Q2, "[]", "[]", "[]", "[]"])
     payload, _ = await extract_university_payload(
@@ -117,7 +123,7 @@ async def test_extraction_flags_probable_truncation():
     assert payload.programs_possibly_truncated is True
 
 
-async def test_extraction_does_not_flag_healthy_yield():
+async def test_extraction_does_not_flag_healthy_yield(legacy_json_suite):
     many = json.dumps([
         {"name": f"BS Program {i}", "degree_level": "undergraduate",
          "summary_3_lines": "x", "eligibility_requirements": {}}
@@ -129,7 +135,7 @@ async def test_extraction_does_not_flag_healthy_yield():
     assert payload.programs_possibly_truncated is False
 
 
-async def test_query_suite_matches_the_reserved_budget():
+async def test_query_suite_matches_the_reserved_budget(legacy_json_suite):
     """reserve_queries() claims queries_per_university up front, before a single
     query is issued. If the suite grows past that number the ledger under-counts
     and the daily NotebookLM cap is silently overrun, so the two are pinned
@@ -141,7 +147,7 @@ async def test_query_suite_matches_the_reserved_budget():
     assert config.queries_per_university == len(QUERY_SUITE)
 
 
-async def test_query_suite_covers_every_degree_level():
+async def test_query_suite_covers_every_degree_level(legacy_json_suite):
     """One programme query per DegreeLevel, keyed by the level's own value."""
     keys = {spec.key for spec in QUERY_SUITE}
     assert {level.value for level in DegreeLevel} <= keys
@@ -226,7 +232,18 @@ def test_the_query_suite_issues_one_ask_at_a_time():
 
     from src.extractor.crawlers import runner as crawler_runner
 
-    tree = ast.parse(_inspect.getsource(crawler_runner.extract_university_payload))
+    # Read every function that issues asks, not just the entry point: C32 moved
+    # the loop out of extract_university_payload into the stage runners, and a
+    # check that still read only the entry point would pass vacuously.
+    sources = "\n".join(
+        _inspect.getsource(fn) for fn in (
+            crawler_runner.extract_university_payload,
+            crawler_runner._run_staged_plan,
+            crawler_runner._run_legacy_suite,
+            crawler_runner._run_stage,
+        )
+    )
+    tree = ast.parse(sources)
     called = {
         n.func.attr
         for n in ast.walk(tree)
@@ -236,7 +253,7 @@ def test_the_query_suite_issues_one_ask_at_a_time():
     assert "Semaphore" not in called, "a semaphore here means more than one ask is in flight"
 
 
-async def test_two_queries_returning_one_answer_are_both_dropped():
+async def test_two_queries_returning_one_answer_are_both_dropped(legacy_json_suite):
     """
     The safety net for the failure above. Neither block may be filed: there is
     no way to tell which query the shared answer belonged to, and guessing is
@@ -252,7 +269,7 @@ async def test_two_queries_returning_one_answer_are_both_dropped():
     assert "received the other's response" in report.failed["bachelors"]
 
 
-async def test_the_saved_payload_can_never_repeat_the_itu_shape():
+async def test_the_saved_payload_can_never_repeat_the_itu_shape(legacy_json_suite):
     """The exact assertion that would have caught it: no two buckets are equal."""
     client = _extract_client([_Q1, _PHD_ANSWER, "[]", _PHD_ANSWER, "[]", "[]"])
     payload, _ = await extract_university_payload(client, "nb-1", "ITU", "itu.edu.pk")
@@ -269,7 +286,7 @@ async def test_the_saved_payload_can_never_repeat_the_itu_shape():
                 assert buckets[a] != buckets[b], f"{a} and {b} hold the same programmes"
 
 
-async def test_two_empty_queries_are_not_treated_as_contamination():
+async def test_two_empty_queries_are_not_treated_as_contamination(legacy_json_suite):
     """Four empty arrays are the normal case for a small university, not a bug."""
     client = _extract_client([_Q1, "[]", "[]", "[]", "[]", "[]"])
     payload, report = await extract_university_payload(client, "nb-1", "ITU", "itu.edu.pk")
@@ -277,7 +294,7 @@ async def test_two_empty_queries_are_not_treated_as_contamination():
     assert payload.programs.bachelors == [] and payload.programs.phd == []
 
 
-async def test_genuinely_different_answers_are_left_alone():
+async def test_genuinely_different_answers_are_left_alone(legacy_json_suite):
     bs = json.dumps([{"name": "BS Computer Science", "degree_level": "bachelors",
                       "eligibility_requirements": {}}])
     client = _extract_client([_Q1, bs, "[]", _PHD_ANSWER, "[]", "[]"])

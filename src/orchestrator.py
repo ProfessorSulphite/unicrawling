@@ -32,6 +32,7 @@ correctly rather than redoing finished work.
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
@@ -68,6 +69,10 @@ from src.utilities.state_management import (  # noqa: E402
     StateManager,
 )
 from src.utilities.workspace import backup_existing_outputs  # noqa: E402
+
+# The pipeline's own logger, already configured by logger/setup.py. Used for
+# the records an operator needs in the FILE rather than in scrollback.
+logger = logging.getLogger("ExtractData")
 
 # Defined on Config (C23) so the inspector's `batch` subcommand can share the
 # default without importing this module at module scope -- Finding 6.
@@ -264,19 +269,71 @@ async def _run_master_pipeline(
             # ------------------------------------------------------------------
             # PHASE 3: SCHEMA EXTRACTION & EXA FALLBACK
             # ------------------------------------------------------------------
+            staged = getattr(config, "response_format", "text") == "text"
+            base_reservation = (
+                int(getattr(config, "base_queries_per_university", 3)) if staged
+                else int(config.queries_per_university)
+            )
             print(
-                f"\n📌 [PHASE 3] Executing {config.queries_per_university}-Query "
-                f"Schema Extraction & Exa Fallback..."
+                f"\n📌 [PHASE 3] Executing "
+                + (
+                    f"staged extraction (identity + faculties + roster, then "
+                    f"bounded detail asks, ceiling {config.max_queries_per_university})..."
+                    if staged else
+                    f"{config.queries_per_university}-Query Schema Extraction & Exa Fallback..."
+                )
             )
 
-            # Reserve the whole suite against today's budget BEFORE issuing any
-            # query. The suite itself is serial (see config.query_concurrency --
-            # concurrent unkeyed asks share a conversation and return each
-            # other's answers), but universities are not: reserving up front is
-            # what stops a run walking into the 500/day ceiling mid-suite and
-            # leaving a notebook ingested but never extracted.
-            state_mgr.reserve_queries(uni_slug, config.queries_per_university)
-            reserved = config.queries_per_university
+            # Reserve the FIXED part of the plan against today's budget before
+            # issuing any query. The plan itself is serial (see
+            # config.query_concurrency -- concurrent unkeyed asks share a
+            # conversation and return each other's answers), but universities
+            # are not: reserving up front is what stops a run walking into the
+            # daily or 5-hour ceiling mid-plan and leaving a notebook ingested
+            # but never extracted.
+            #
+            # Only the fixed part, because the rest is not knowable yet: how
+            # many detail asks a university needs depends on how many programmes
+            # its roster returns, and the roster is the third ask. Reserving a
+            # worst case up front would hold quota sized for a 200-programme
+            # university every time a 17-programme one ran.
+            state_mgr.reserve_queries(uni_slug, base_reservation)
+            reserved = base_reservation
+
+            def reserve_more(count: int) -> int:
+                """
+                Top up the reservation once the roster reveals the real ask count.
+
+                Returns how many asks were actually granted, which may be fewer
+                than requested. The extractor treats a short grant by raising its
+                chunk size rather than dropping programmes -- a programme omitted
+                here is indistinguishable downstream from one the university does
+                not offer.
+                """
+                nonlocal reserved
+                if count <= 0:
+                    return 0
+                available = min(
+                    state_mgr.remaining_query_budget(),
+                    state_mgr.remaining_5h_budget(),
+                    max(0, int(config.max_queries_per_university) - reserved),
+                )
+                grant = max(0, min(count, available))
+                if grant < count:
+                    print(
+                        f"⚠️  [QUOTA] {uni_slug}: requested {count} further asks, "
+                        f"{grant} available (daily {state_mgr.remaining_query_budget()}, "
+                        f"5h {state_mgr.remaining_5h_budget()})."
+                    )
+                if grant <= 0:
+                    return 0
+                try:
+                    state_mgr.reserve_queries(uni_slug, grant)
+                except QuotaExceededError as qe:
+                    print(f"⚠️  [QUOTA] {uni_slug}: top-up refused: {qe}")
+                    return 0
+                reserved += grant
+                return grant
 
             # Owned here, not inside the extractor, so that a failed extraction
             # still reports what it spent. A report the extractor keeps privately
@@ -292,6 +349,8 @@ async def _run_master_pipeline(
                     source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
                     tier1_source_count=ingest_res.tier_histogram().get(1, 0),
                     report=report,
+                    uni_slug=uni_slug,
+                    reserve_more=reserve_more if staged else None,
                 )
             except BaseException:
                 # Includes CancelledError and the university watchdog's timeout.
@@ -324,9 +383,33 @@ async def _run_master_pipeline(
             uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
             atomic_write_json(uni_json_path, payload.model_dump())
 
+            # A single-university run wrote its payload silently while batch
+            # runs logged "N records written", so the one path an operator
+            # actually watches produced no record that anything was persisted.
+            total_programs = sum(
+                len(getattr(payload.programs, level))
+                for level in ("bachelors", "masters", "phd", "diploma")
+            )
+            logger.info(
+                f"JsonIO: wrote 1 record ({total_programs} programmes, "
+                f"{len(payload.faculties)} faculties) for {uni_slug} -> {uni_json_path}"
+            )
+
             print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
             print(f"  └─ JSONL  : {output_file}")
             print(f"  └─ Slug   : {uni_json_path}")
+            print(f"  └─ Data   : {total_programs} programmes, {len(payload.faculties)} faculties, "
+                  f"{report.queries_used} ask(s)")
+            if report.anomalies:
+                # Neither success nor failure: an orphaned detail record, a
+                # cross-level duplicate arbitrated away, a chunk the quota could
+                # not pay for. Each one silently changes the data if nobody sees
+                # it, and `report.failed` has no room for a non-failure.
+                print(f"  └─ Notes  : {len(report.anomalies)} extraction anomaly(ies)")
+                for note in report.anomalies[:5]:
+                    print(f"      • {note}")
+                if len(report.anomalies) > 5:
+                    print(f"      • ... and {len(report.anomalies) - 5} more (see the log)")
 
             # A query block that failed every retry does not fail the pipeline --
             # the other five blocks are still real data worth keeping -- but it
@@ -434,6 +517,9 @@ def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
                     records.append({
                         "url": url,
                         "tier": int(item.get("tier", 1) or 1),
+                        # Absent in partitions written before C32, which is the
+                        # correct default: nothing in them is a document.
+                        "is_document": bool(item.get("is_document", False)),
                         "selected": bool(item.get("selected", True)),
                     })
 
@@ -519,6 +605,64 @@ def load_run_settings(config_file_path: Path) -> Optional[Dict[str, Any]]:
         return None
     with open(config_file_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def report_batch_quota_outlook(queue_size: int) -> Dict[str, int]:
+    """
+    Say up front how much of this batch today's quota can actually pay for.
+
+    Both ceilings are real external NotebookLM quotas, not knobs, and the
+    TIGHTER of the two is the rolling 5-hour window (75), not the daily budget
+    (500). That inverts the intuition: the daily figure is the one printed
+    everywhere and the 5-hour one is what actually stops the batch. At ~12 asks
+    per university it permits about 6 universities per window, roughly 30 a day
+    -- materially fewer than `500 / 12 = 41` would suggest.
+
+    The staged plan spends more asks per university than the old fixed suite, so
+    this must be visible at run start rather than discovered at 3am when a batch
+    stops mid-queue with notebooks ingested and never extracted.
+
+    Reports; never refuses. Deciding to run a batch that will not finish today is
+    the operator's call, and a resumed run picks up exactly where this one stops.
+    """
+    state_mgr = StateManager()
+    try:
+        per_uni = (
+            int(config.max_queries_per_university)
+            if getattr(config, "response_format", "text") == "text"
+            else int(config.queries_per_university)
+        )
+        daily_left = state_mgr.remaining_query_budget()
+        window_left = state_mgr.remaining_5h_budget()
+    finally:
+        state_mgr.close()
+
+    needed = queue_size * per_uni
+    fits_daily = daily_left // per_uni if per_uni else queue_size
+    fits_window = window_left // per_uni if per_uni else queue_size
+    outlook = {
+        "per_university": per_uni,
+        "needed": needed,
+        "daily_remaining": daily_left,
+        "window_remaining": window_left,
+        "universities_today": fits_daily,
+        "universities_this_window": fits_window,
+    }
+
+    if needed > daily_left or needed > window_left:
+        binding = "5-hour window" if fits_window <= fits_daily else "daily budget"
+        console.print(
+            f"[bold yellow]⚠️  QUOTA OUTLOOK[/bold yellow] {queue_size} universities × "
+            f"{per_uni} asks = {needed} asks needed.\n"
+            f"   Daily remaining: {daily_left}/{config.daily_query_budget} "
+            f"(≈{fits_daily} universities). "
+            f"5-hour remaining: {window_left}/{config.budget_5_hours} "
+            f"(≈{fits_window} universities).\n"
+            f"   The [bold]{binding}[/bold] binds first. The batch will pause or stop "
+            f"short; resume it once quota frees."
+        )
+    logger.info(f"Quota outlook for this batch: {outlook}")
+    return outlook
 
 
 def build_queue(
@@ -610,6 +754,8 @@ async def run_batch_pipeline(
         state_mgr.close()
 
     queue, skipped = build_queue(uni_dict, processed_slugs, rerun)
+
+    report_batch_quota_outlook(len(queue))
 
     console.print(
         Panel(

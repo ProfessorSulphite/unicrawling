@@ -408,3 +408,502 @@ Suite grew from 629 to 667 tests. Each defect above is pinned by a regression te
 score. Two quota tests were rewritten to derive their expectations from `config.tier_quotas()`
 rather than transcribing the old shares as literals, which pinned one setting rather than the
 allocation behaviour.
+
+---
+
+## 7. Roster-First Extraction Pass (2026-09-16)
+
+Prompted by the single ITU run `s_1`, which completed with **no hard failure** — 46/46 sources
+ingested, every query block answered, notebook cleaned up, ledger exact — and still produced data
+the auditor refuses to ship:
+
+```
+✗ NOT READY — DO NOT PUSH
+  • 'application_fee'        answered for 0% of programmes (floor 60%)
+  • 'application_deadlines'  answered for 0% of programmes (floor 60%)
+1 university · 17 programmes · 0 with every required field · overall coverage 78%
+```
+
+Full evidence in `resources/AnalaysisSingleRunITU01.md`. The changes below are deliberately not
+ITU-shaped: every one of them is a general property of the pipeline that ITU happened to expose.
+
+### 7.1 The query stage asked one question to do two jobs
+
+`"List every BACHELORS programme"` with fifteen fields per programme asks the model to **discover**
+how many programmes exist *and* **describe** each one, in one breath. Response size was therefore
+`(unknown count) × (15 fields)` — a number nobody chose and nothing bounded. `bachelors` and
+`masters` each blew the 50 MB RPC ceiling twice; 4 of 14 asks (29% of the university's quota) and
+~195 s (24% of runtime) bought nothing.
+
+The plan is now **staged**, and the stages are built at runtime rather than being a fixed list:
+
+| # | Stage | Tiers | Asks | Response bound |
+|---|---|---|---|---|
+| 1 | `identity` — MainInfo + ContactInfo | 1,2,3,4 | 1 | one record |
+| 2 | `faculties` | 3,1 | 1 | ~6 records |
+| 3 | `roster` — name, level, link, department **only** | 1,2 | 1 | one line per programme |
+| 4 | `detail:<level>:<n>` — full fields for N *named* programmes | 1,2 | ⌈P/N⌉ per level | N × fields |
+| 5 | `gapfill` — fees/deadlines still blank | 2 | 0–1 | narrow |
+
+ITU: **9 asks instead of 14**, none of them unbounded.
+
+Stage 3 is one short line per programme. Stage 4 asks a *closed* question ("these five
+programmes, by name"), so its size is `chunk_size × fields`: a number we choose and can lower.
+
+> **Corrected after the `s_2` run — see §8.** This section originally claimed both stages were
+> "bounded by construction" and that lowering `program_detail_chunk_size` makes an oversized
+> response not recur. That reasoning assumed each ask was an independent question. It was not:
+> every ask extended the same server-side conversation, so response size was never bounded by
+> the question alone. A closed question naming five programmes blew the 52 MB ceiling twice on
+> `s_2`. The bound is real only with §8's conversation isolation in place.
+
+It also answers the objection that sank the obvious alternative of splitting by discipline —
+*how would we know we did not miss one?* There is no partition for a programme to fall through.
+Stage 3 enumerates everything once over the full Tier-1+2 corpus, and stage 4 only ever
+re-describes names stage 3 produced. No taxonomy to maintain, and no catch-all "any you missed?"
+ask, which is a negative question models answer poorly.
+
+**Consequences that fall out of the shape, not from extra code:**
+
+- *A failed detail ask no longer costs the programme.* Under the old suite the `bachelors` ask
+  **was** the bachelors bucket, so one transient API failure emptied it, the payload was written
+  `completed`, and the next batch skipped the university forever. Now the roster has already
+  established that the programme exists and what level it is; a failed detail ask costs only its
+  description.
+- *One bad record no longer costs the block.* List answers validate per record
+  (`_validate_leniently`), so a single unreadable row is dropped and reported rather than failing
+  the other twenty with it.
+- *The roster owns identity.* A detail record may only **fill** blank fields — never rename a
+  programme, move it between levels, or overwrite an answered field. That last rule is what stops
+  the gap-fill's university-wide fee replacing a real per-programme one.
+
+### 7.2 Delimited text replaces JSON on the wire
+
+JSON carries four ways to fail that have nothing to do with whether the model knew the answer:
+brace balance, quote balance, escapes, trailing commas. Yale burned all three attempts on a single
+`Invalid \escape` the same morning.
+
+`src/extractor/crawlers/text_protocol.py` defines one record shape for every stage:
+
+```
+@@RECORD
+NAME: BS Computer Science
+LEVEL: bachelors
+DEADLINES: 2026-08-15 (Fall) ;; 2026-12-01 (Spring)
+@@END
+```
+
+No braces, no quotes, no escapes — that failure class is gone by construction, not handled. Each
+parser rule kills a specific observed degradation, and each degrades to *correct data* rather than
+to an exception: a non-key line extends the previous value (so a hard-wrapped `DESCRIPTION`
+survives), `@@RECORD` implicitly closes an unterminated record (so truncation costs one record and
+needs no bracket-stack reconstruction), unknown keys are ignored rather than guessed, markdown
+bolding and bullets are absorbed, and `NONE`/`N/A`/`Not specified` all map to a real absence rather
+than becoming the literal string in a student-facing fee field.
+
+Two things this deliberately does **not** do:
+
+- **It does not replace the validation layer.** `parse_records()` returns dicts keyed to
+  `schema.py` field names and every one goes through the existing Pydantic models, so every
+  validator, alias and coercion already written and tested still runs.
+- **It does not hand-write prompts.** The format contract in each prompt is *generated* from the
+  same `FieldSpec` table the parser reads, so a field cannot be requested without being parsed or
+  parsed without being requested. Hand-maintained prompt/parser pairs are what rot.
+
+`config.response_format = "json"` still reaches the old six-query suite, kept as a control group so
+a regression can be A/B'd against the same university rather than argued about.
+
+### 7.3 Phase 1 — the corpus did not contain the answers
+
+The 0% coverage was a **source-selection** failure, not an extraction one. 25 of ITU's 46 uploaded
+sources were merit lists, which carry neither a fee nor a deadline; the five
+`/admissions/<programme>` pages that do were ranked 47–51 and never uploaded.
+
+The root cause is general: **tier was decided entirely by which of 23 keywords won cosine argmax,
+with no structural input at all.** That monopoly fails in both directions — a merit list reads like
+an admissions page *because it is about admissions*, and ITU's `/financial-assistance` matched a
+Tier-4 phrase and landed in Tier 4, which no programme query reads.
+
+- **`DEMOTED_PATH_PATTERNS`** forces outcome listings and person directories (merit lists, results,
+  notice boards, `/profile/`, `/staff/`, `/alumni/`) to Tier 3 *after* scoring. Demoted, not
+  excluded: a merit list is real content, it simply must not occupy a slot the fee query reads.
+- **`GUARANTEED_PATH_PATTERNS`** promotes fee/deadline/apply paths to Tier 2, and
+  `ensure_guaranteed_coverage()` admits the best unselected match per pattern into the selection,
+  displacing the weakest non-matching link. A quota is a good default and a bad guarantee.
+- **The over-firing keyword is gone.** `"merit list closing aggregate formula 2026"` won 13 of 46
+  selected links — more than any programme keyword — because its embedding matched generic
+  admissions language. Replaced by two narrower phrases aimed at the documents that carry the
+  missing fields.
+- **Deduplication collapses the near-duplicates.** `DEDUP_STRIPPED_SEGMENT_REGEX` removes
+  location-describing path segments (`/faculty-of-.../`, `/merit-lists-2026/`) before tokenising,
+  so ITU's three merit lists for one programme stop surviving as three distinct "programmes".
+  Dedup previously reduced 96 links to 93.
+- **PDFs are ingested instead of being paid for twice.** `.pdf` was on the extension denylist, so
+  PDFs were dropped at harvest — but the crawl strategy had **no filter chain**, so crawl4ai still
+  *navigated* to each one. ITU's 8 PDFs consumed 8 of the page budget, logged 8 warnings, and
+  contributed nothing. Now a `FilterChain` stops the navigation, documents are harvested into a
+  separate list, ranked without the embedding (a PDF has no page text to embed), pinned to Tier 2,
+  and uploaded via `add_url`. They skip the HTTP pre-flight and are excluded from the health
+  sample: a file server answering `HEAD` with 403 says nothing about whether NotebookLM can fetch
+  the URL, and condemning a whole university on that evidence is how these would be lost again.
+  A second exclusion had to come off for any of this to work: `/wp-content/uploads/` is
+  WordPress's **default upload path**, so it is where a WordPress university keeps its fee
+  schedules — and `wp-content` was on the phrase denylist. That rule exists to block themes,
+  scripts and stylesheets, every one of which the *extension* denylist already removes, so
+  applied to documents it discarded precisely the files this change exists to ingest, on every
+  WordPress site, ITU included. Documents are now exempt from the CMS asset-directory phrases;
+  ordinary pages and the authenticated endpoints (`wp-login`, `wp-admin`) are unaffected. Found
+  by composing the filter end-to-end rather than by reading it — each half looked right alone.
+- **`max_crawl_pages` 35 → 60**, and `close_shared_crawler` now drains in-flight navigations before
+  closing. Three high-value ITU pages — `/admissions/eligibility-criteria/`, `/admissions/faqs/`,
+  `/admissions/bs-management-and-technology/` — were lost to `TargetClosedError` at teardown, a
+  race at shutdown rather than anything wrong with the pages.
+
+### 7.4 Four defects in the audit and quota trail
+
+- **The repair prompt was empty.** `_attempt_query` assigned `raw = ""` at the top of each attempt
+  and interpolated `raw[:1500]` into the repair prompt three lines later, so every repair re-ask
+  said *"Previous answer (truncated):"* followed by nothing. The guard's intent was right — a stale
+  answer must not be quoted after a transport failure that produced none — but it fired
+  unconditionally, disabling the feature for the parse failures it was built for. The failed text
+  now lives in its own variable, cleared only on the transport path.
+- **The audit under-reported spend by 29%.** `log_query_executed` was called only on the success
+  path, so ITU's ledger charged 14 asks while the audit document recorded 10 — and the four it hid
+  were the *most expensive* asks in the run. Every ask is now logged with a `status`
+  (`ok` / `oversized` / `timeout` / `parse_failed` / `rate_limited` / `error`) and the university
+  slug, which every query event previously recorded as `N/A` while every other event carried it.
+- **`query_index` restarted per block**, because each spec received a fresh `ExtractionReport`.
+  `ExtractionReport.index_offset` makes it continuous across a run.
+- **The 5-hour window was never refunded.** `release_queries` credited the mutable `query_ledger`
+  but not the append-only `query_events`, so a university that reserved 6 and spent 2 kept all 6
+  charged against the rolling window for five hours. The refund is now a compensating **negative**
+  event row, which expires on the same schedule as the charge it reverses — the behaviour deleting
+  the original row would get wrong — and keeps the table an audit trail.
+
+### 7.5 A variable-length plan inside a fixed quota
+
+`queries_per_university = 6` cannot describe a plan whose length depends on an answer. Replaced by
+`base_queries_per_university` (3, reserved up front), `max_queries_per_university` (14, a hard
+clamp) and `program_detail_chunk_size` (5).
+
+The orchestrator reserves the base stages before any ask, then passes a `reserve_more(n) -> granted`
+callback the extractor calls once the roster reveals the real count. Quota stays with the
+orchestrator; the extractor never imports state management.
+
+A refused top-up is a new failure mode this shape introduces — "no budget" can now land
+*mid-university*, after three asks have run and a notebook is already ingested — so the behaviour
+is defined rather than discovered: the detail asks are not issued at all, the roster's programmes
+are kept named and levelled but undescribed, and the report says so, so the university can be
+re-run instead of shipped as though it had no fees.
+
+**When the grant is merely short, the chunk size rises — programmes are never dropped.** A dropped
+programme is indistinguishable downstream from one the university does not offer; a larger chunk
+merely risks a big response, which announces itself. The chunk size is still clamped at
+`max_program_detail_chunk_size`, beyond which the honest outcome is to describe fewer programmes
+**and say so in the report** rather than issue an ask that predictably fails.
+
+### 7.6 The 5-hour window binds, not the daily budget
+
+Both ceilings are real external quotas. The tighter is the **rolling 5-hour window (75)**, not the
+daily budget (500) — which inverts the intuition, because the daily figure is the one printed
+everywhere and the 5-hour one is what actually stops a batch.
+
+| | asks/uni | per 5h window | per day |
+|---|---|---|---|
+| Before | 6 | 12 | ~58 (already 5h-bound, not the 500 cap) |
+| After | ~12 | **6** | **~30** |
+
+**Batch throughput roughly halves.** That is the real price of this pass, and it is worse than
+`500 ÷ 12 = 41` suggests. It is recoverable by raising `program_detail_chunk_size`, but it must be
+a deliberate trade rather than a surprise mid-batch, so `report_batch_quota_outlook()` now states
+it at run start against both ceilings and names which one binds. It reports and never refuses:
+running a batch that will not finish today is the operator's call, and a resumed run picks up
+where it stopped.
+
+### 7.7 Revised reading of the 52 MB responses
+
+The previous code asserted that an oversized response is *deterministic* — a property of how much
+corpus the question was pointed at — and built the source-splitting remedy on it. The evidence does
+not support that premise:
+
+- `phd` and `diploma`, asked over the **same 37 sources**, both succeeded on the first ask.
+- The four failures reported 52,449,458–52,487,729 bytes against a 52,428,800 ceiling. That tight
+  clustering carries **no information about payload size** — it is simply where the client aborts
+  the read.
+- All three "narrowed" sub-answers came back byte-identical (13,689 bytes ×3), so splitting
+  produced no new evidence for three asks' worth of quota.
+
+Degenerate repetition — the model looping and streaming indefinitely — fits the evidence better,
+and it is transient. So the policy is inverted: **one identical re-ask first**
+(`oversize_single_reask`), with source-splitting retained behind `enable_oversize_split`
+(default off) for one release rather than deleted.
+
+The `s_2` run confirmed the transience directly: the single re-ask recovered 2 of 3 oversize
+failures. It also showed *why* the repetition starts — see §8.
+
+### 7.8 Verification
+
+Suite grew from 690 to **790 tests** (788 pass, 2 pre-existing skips).
+
+- `tests/test_extractor/test_text_protocol.py` (36) — one test per observed degradation, plus a
+  round-trip of every `REQUIRED_PROGRAM_FIELDS` entry through `ProgramItem`, so the auditor's
+  contract and the wire format cannot drift into a field that reads 0% forever.
+- `tests/test_extractor/test_staged_query_plan.py` (35) — budgeting, chunk construction, name
+  matching, merge rules, cross-level arbitration, answer accounting, quota refusal.
+- `tests/test_pipeline.py` — the end-to-end suite now drives the **shipped** default path rather
+  than the legacy one, including the gap-fill stage and the graceful-degradation property in §7.1.
+- `tests/test_extractor/test_crawlers_runner.py` and the oversize tests are pinned to the legacy
+  path with the `legacy_json_suite` / `oversize_split_enabled` fixtures — they always tested it;
+  now they say so.
+
+**Six real defects were found by writing these, by simulating a 23-programme university against
+a tight quota, and by composing the Phase 1 filter end-to-end — none by reading the code:**
+
+1. `plan_query_budget` computed `ceil(total / chunk)` while `build_detail_specs` chunks *within* a
+   degree level. Three programmes at three levels need three asks; the old arithmetic said one, and
+   the under-count then read as "the quota granted 1 of 1" — so two thirds of the university went
+   undescribed with nothing reported.
+2. The gap-fill ask validated against `ProgramItem`, whose `degree_level` is required, so every
+   gap-fill answer failed validation wholesale. It now uses `ProgramGapFill`, a partial model that
+   *cannot* state a level — the roster settled that, and a second opinion could only contradict it.
+3. `_is_empty_value` treated a default-constructed `EligibilityRequirements` as answered, so the
+   merge skipped it forever and `eligibility_requirements` read 0% however well the model answered.
+4. **A sparse identity answer failed wholesale.** `MainInfo.key_links` and `Q1Payload.contact` are
+   required objects whose every member is optional, and the wire format flattens them — so a
+   university publishing no portal link and no phone number produced a record with no `key_links`
+   key at all, and the entire identity block failed validation over an answer that was completely
+   correct. Nested containers are now restored whether or not the model had anything to put in them.
+5. **Validation failures in the text path were charged twice.** They escaped as raw
+   `ValidationError` rather than `ExtractionError`, so they fell through to the transport-error
+   branch — which increments `queries_used` a second time (the ask was already counted), logs the
+   wrong status, and clears the very text the repair prompt exists to quote. The simulated run
+   issued 3 identity asks and billed 6. The JSON path had always converted here; the text path
+   now does too.
+
+6. **Every fee PDF on a WordPress site was still discarded** by the `wp-content` phrase rule, so
+   the PDF ingestion work above was inert on exactly the sites it was written for. See §7.3.
+
+After the fixes that simulation runs clean: 9 asks issued, 9 charged, 23 of 23 roster programmes
+described, no anomalies — against a `reserve_more` that granted less than was asked for.
+
+### 7.9 What this does not fix
+
+`application_fee` and `application_deadlines` at 0% is what blocks the upload, and this pass
+**cannot promise** to clear it. What it guarantees is that the corpus finally *contains* the pages
+where those values would live. Whether ITU publishes them is a fact about ITU that the run never
+established, because those pages were never read.
+
+- **Likely (~70%)** — one university-wide processing fee and one admission schedule exist, the
+  gap-fill ask finds them, coverage goes 0% → ~100%.
+- **Real possibility (~30%)** — no *per-programme* application fee is published anywhere, and
+  **`null` is the correct answer.** At that point the auditor is wrong, not the pipeline, and the
+  choice is to let a university-level fee satisfy the field or to drop it from
+  `REQUIRED_PROGRAM_FIELDS`. Decide it before the run: otherwise a *passing* run reads as a failing
+  one. The e2e fixture deliberately encodes this case.
+
+Unchanged by design: `main_info.rankings` stays `[]` (registry-sourced, suppressed at the prompt),
+`courses_taught` stays unrequested, `summary_3_lines` stays deprecated. Wall clock improves only
+modestly — query time drops but the crawl grows with `max_crawl_pages`.
+
+Expected churn, budgeted rather than hoped away: roster/detail name mismatch is the most likely
+source (the fuzzy fallback is deliberately conservative and orphans are kept and flagged, because a
+*wrong* match writes one programme's fees onto another and is invisible, while an orphan is not),
+and the text parser will want one hardening pass against real answers.
+
+---
+
+## 8. Conversation Isolation (2026-09-16)
+
+Diagnosed from run `s_2`, the first live run of the staged plan. Phase 1 was transformed and the
+audit trail was correct, but the extraction half-failed in a way that pointed at something §7
+had assumed rather than checked.
+
+### 8.1 The symptom
+
+The roster — the ask the whole design rests on, because it is the completeness guarantee —
+returned **7 programmes, all bachelors**, and missed `BS Artificial Intelligence` as well.
+
+The corpus was not the problem. Tier 1+2 held **8 BS, 5 MS and 2 PhD programme pages**:
+
+```
+t1 https://itu.edu.pk/admissions/ms-computer-science      t1 .../phd-computer-science
+t1 https://itu.edu.pk/admissions/ms-data-science          t1 .../phd-electrical-engineering
+t1 https://itu.edu.pk/admissions/ms-computer-engineering  ... (+2 more MS)
+```
+
+Two asks also blew the 52 MB ceiling: the roster (recovered by the single re-ask) and
+`detail:bachelors:1`, which failed both attempts — **a closed question naming five programmes**.
+That is not a size problem, and it is not something a smaller chunk fixes.
+
+### 8.2 The cause: every ask was a follow-up turn
+
+From the SDK's own docstring on `chat.ask`:
+
+> *Repeated `ask()` calls without `conversation_id` all extend the same most-recent conversation.
+> To force a fresh conversation, first call `delete_conversation(...)` — the server then has
+> nothing to extend.*
+
+`_ask` passed `conversation_id=None` on every call. So the nine asks of `s_2` were **nine turns of
+one conversation**. The roster was turn four, behind the identity turn, the faculties turn, and a
+52 MB aborted turn. The client sends `conversation_history=None` on that path, but the *server*
+holds the history regardless.
+
+This is the same substrate as the cross-contamination bug already documented in
+`crawlers/runner.py` — "an unkeyed `chat.ask()` polls the notebook for its newest turn". §7 treated
+each stage as an independent question. It never was.
+
+It explains all three symptoms at once:
+
+- **Under-enumeration.** A model four turns into a conversation that has already described the
+  university and listed its faculties and departments does what a model in a conversation does: it
+  does not restate what has been said. "List EVERY degree programme" lands as a follow-up.
+- **The oversize failures.** A context carrying an aborted 52 MB turn is precisely the setup for
+  the degenerate repetition §7.7 identified. `detail:bachelors:1` was turn six.
+- **The response sizes.** The two answers immediately following an abort are the two shortest of
+  the nine (identity 1040 B, roster 1461 B); the three asks with no failed predecessor are the
+  three largest (1232 B, 5193 B, 4137 B).
+
+**§7 made this worse rather than being neutral to it.** Going from 6 asks to 9, each carrying more
+accumulated context, amplified a pre-existing flaw. The "bounded by construction" claim in §7.1 is
+corrected there.
+
+### 8.3 The fix
+
+`config.isolate_query_conversations` (default on). `_ask` now clears the notebook's conversation
+after every ask it owns, so the next one starts as a question rather than a turn. One API
+round-trip per ask, **no query quota**.
+
+It clears on the failure paths too, and that is the point rather than tidiness: an aborted or
+timed-out ask still leaves a turn on the server, and that turn is the one most likely to poison its
+own retry. On the success path the SDK hands back the id; on the failure paths there is no result
+to read it from, so it is looked up via `get_conversation_id`. Cleanup is best-effort and never
+raises — a conversation that will not delete is a quality problem for the *next* ask, not a reason
+to discard an answer already in hand.
+
+This also removes the cross-contamination class **structurally**: two asks that share no
+conversation cannot return each other's turns. Serial execution remains, but it is no longer the
+only thing standing between the pipeline and a PhD list filed as bachelors.
+
+### 8.4 What `s_2` confirmed, independently of the defect
+
+- **`application_deadlines`: 0% → 100%.** The gap-fill ask works.
+- **Phase 1 is fixed.** Merit lists 25 → 7 with **none at Tier 1/2** (was 13); `/admissions/`
+  pages 0 → **17**; 8 PDFs ingested; `academics/fee-structure`, `financial-assistance` and
+  `itu-fee-refund-policy` all at Tier 2.
+- **The text protocol held.** Zero parse failures across nine asks — no escape errors, no brace
+  repair, nothing for `json_repairing.py` to do.
+- **The audit trail is correct.** All nine asks logged with `status`, `response_bytes` and
+  `slug:itu`; ledger and audit agree.
+- **§7.7's transience hypothesis was right.** The single re-ask recovered 2 of 3 oversize failures.
+  The old split path would have spent three asks to learn nothing.
+- **Graceful degradation worked.** The five programmes under the failed detail ask survived from
+  the roster, undescribed, with `failed_query_blocks: ['detail:bachelors:1']` and status `partial`
+  — so ITU stays queued instead of shipping as complete.
+
+### 8.5 `application_fee` — the evidence now favours `null`
+
+Still 0%, but this run makes it informative rather than inconclusive. The fee pages **were** in the
+corpus this time, at Tier 2, and the gap-fill ask ran cleanly (4137 B, `ok`) returning deadlines
+but no fees.
+
+That is the ~30% branch of §7.9: **ITU appears not to publish a per-programme application fee, and
+`null` is the correct answer.** The remaining decision is the auditor's, not the extractor's —
+either let a university-level fee satisfy the per-programme field, or drop `application_fee` from
+`REQUIRED_PROGRAM_FIELDS`. Until then a correct run will keep reading as a failing one.
+
+### 8.6 Verification
+
+Suite 790 → **797 tests** (795 pass, the same 2 pre-existing skips). `TestConversationIsolation` pins each half of the contract:
+a successful ask clears its conversation; an oversized one and a timed-out one clear the turn they
+left behind; an explicit `conversation_id` is never cleared (a deliberate follow-up is the one case
+where continuity is the point); a cleanup failure never costs a good answer; and the end-to-end
+property — N asks, N distinct conversations, none inherited.
+
+What this cannot verify offline is whether a clean conversation actually makes the roster
+enumerate all three degree levels. That needs one more ITU run.
+
+---
+
+## 9. Roster Containment and Per-Run Analytics (2026-09-16)
+
+### 9.1 What run `s_3` actually showed
+
+C33's conversation isolation worked where it could: identity went from
+*oversized → retry → ok* to **ok on the first try**. But the roster then failed outright — both
+attempts oversized at ~68s, zero programmes, `failed_query_blocks: ['roster']`.
+
+**That reframes `s_2`.** Its roster "succeeded" on the second attempt, returning 1461 B with 7
+bachelors programmes and no masters or PhD, from a corpus holding 5 MS and 2 PhD programme pages.
+§8 read that as pollution degrading a good ask. It is the other way round: **the short answer was
+the degraded behaviour**, and removing the pollution let the ask attempt the full job — which is
+when it ran away. So §8's diagnosis was half right. The pollution was real and is fixed; it was
+not what broke the roster.
+
+52 MB is ~50 million characters for an answer whose correct form is about 1.5 KB — a factor of
+~35,000. With consistent abort timing and 2/2 reproducibility, that is deterministic runaway
+repetition, not a large answer.
+
+### 9.2 Containment
+
+Three changes, none of which assumes the model will behave:
+
+- **The roster reads Tier 1 only** (`roster_tiers`). Programme pages are where programmes are
+  enumerated. Tier 2 is fee schedules, test patterns and sample papers: 15 further sources on ITU
+  that cannot name a programme the Tier-1 set does not, and every one of them is more repetitive
+  corpus to loop over. Detail asks still read Tiers 1–2, because a fee page *can* describe a
+  programme its own page does not.
+- **The prompt no longer invites a loop.** Removed: *"EVERY … at every level"*, *"named anywhere in
+  the sources, including ones mentioned only in a list or a table"*, and *"Completeness matters
+  more than detail here"* — an open-ended exhaustiveness instruction over a large heterogeneous
+  corpus, sitting on top of a repeating output template. Completeness is now expressed as *"list
+  each programme exactly once"* rather than as *"keep going"*.
+- **The format contract names a terminating condition.** *"Repeat the whole `@@RECORD..@@END` block
+  once per item"* became *"Emit ONE block per item, then stop"*, plus *"never emit the same item
+  twice"* and an explicit `roster_max_items` cap. The instruction is identical; one wording names
+  an action to keep doing and the other names when to stop, and the first was in the prompt that
+  ran away.
+
+**Fallback, off by default:** `roster_split_by_level` asks once per degree level. Four smaller
+answers, 3 extra asks. It does *not* reintroduce the partition problem the design exists to avoid
+— these are DISCOVERY asks over the same source set, so no programme can fall between them; only
+the question is narrowed, and the four levels are exhaustive over `DegreeLevel` by construction.
+
+This is the third correction to §7.1's "bounded by construction" claim. The honest statement is
+narrower: **the roster's size is bounded only by what the prompt asks for and the cap it states.**
+Response size over this channel is not a property of the question alone.
+
+### 9.3 `cli.py runlog` — analytics for one run
+
+`analytics` reads the cumulative master JSONL, and the corpus is additive: a run that extracts
+nothing leaves the dataset looking exactly as healthy as before. It structurally cannot report a
+bad run. Diagnosing `s_2` and `s_3` meant correlating four sources by hand every time.
+
+`runlog` does that join: run manifest + notebook audit documents + `state.sqlite` + payloads.
+It shows per-university outcome, every ask with its status, bytes and duration, per-field
+coverage, and the number worth acting on — **quota spent for nothing**. Exits non-zero when the run
+did not fully succeed, so it works as a shell gate and not only as something to read.
+
+Two correctness points, both found by running it on real data:
+
+- **Asks are joined on slug and the run's own time window, never on notebook ID.** The ID in
+  `pipeline_state` is whatever the university's *most recent* run left there, so the first version
+  reported zero asks for `s_2` while its audit document sat on disk.
+- **Payload, state and coverage are keyed by university, not by run.** When a later run has
+  overwritten them the output says so rather than presenting current numbers as that run's output
+  — `s_2` reports 0 programmes only because `s_3` later replaced its payload.
+
+### 9.4 Housekeeping
+
+Deleted `loggings/notebook_logs/nb.json` — 19 synthetic events under notebook `nb`, slug `big`,
+left by a simulation run outside pytest during the C32 work. `tests/conftest.py` redirects every
+writable path precisely to stop test exhaust reaching the real audit trail; a manual script run
+outside the suite bypasses that guard, and this is what that looks like.
+
+### 9.5 Verification
+
+Suite 797 → **822 tests** (820 pass, the same 2 pre-existing skips). New coverage: roster tier scoping, the banned prompt
+phrases, the cap and stop instruction, the split fallback's level exhaustiveness and its merge back
+into one roster, plus 15 tests for `runlog` including both join-correctness points above.
+
+Still unverified offline, and unverifiable offline: whether a contained roster actually enumerates
+all three degree levels against the real model. That needs one more ITU run.

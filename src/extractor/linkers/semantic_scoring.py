@@ -9,11 +9,14 @@ import gc
 
 from sentence_transformers import SentenceTransformer
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from src.config import config
 
 from src.extractor.linkers.constants import (
     ALL_COUNSELOR_KEYWORDS,
+    DEMOTED_PATH_PATTERNS,
+    GUARANTEED_PATH_PATTERNS,
     PRIORITY_TIERS,
     RESERVE_FLOOR_RATIO,
     logger,
@@ -75,6 +78,175 @@ def allocate_proportional_tier_quotas(
     filled = {t: sum(1 for i in selected if i["priority_tier_num"] == t) for t in sorted(quotas)}
     logger.info(f"Tier quota allocation (cap={total_cap}): {filled}")
     return selected
+
+# tier number -> (display name, tier weight), derived from PRIORITY_TIERS so a
+# structurally re-tiered link is weighted like every other link in its new tier.
+_TIER_BY_NUM: Dict[int, tuple] = {
+    num: (name, weight) for name, (num, _kw, weight) in PRIORITY_TIERS.items()
+}
+
+# Where a structurally demoted link lands. Not excluded: a merit list is real
+# institutional content, it simply must not occupy a slot the programme and fee
+# queries read.
+DEMOTION_TIER = 3
+
+
+def apply_structural_tier_rules(url: str, tier_num: int) -> tuple:
+    """
+    Let the URL path override the tier the embedding chose.
+
+    Returns (tier_num, reason) where reason is None when nothing was overridden.
+
+    The embedding decides tier by cosine argmax over 23 keyword phrases, with no
+    structural input at all, and that monopoly fails in both directions. A merit
+    list reads like an admissions page because it IS about admissions, so it won
+    Tier 2 thirteen times on one ITU run and occupied slots the fee query then
+    found nothing in. Conversely ITU's /financial-assistance page matched a
+    Tier-4 phrase and landed in Tier 4, which no programme query reads.
+
+    Promotion is checked first and demotion second, so an explicitly demoted
+    path wins: /merit-lists-2026/fee-structure is a merit list, not a fee page.
+    """
+    path = urlparse(url).path.lower()
+
+    promoted = next((p for p in GUARANTEED_PATH_PATTERNS if p in path), None)
+    demoted = next((p for p in DEMOTED_PATH_PATTERNS if p in path), None)
+
+    if demoted:
+        if tier_num < DEMOTION_TIER:
+            return DEMOTION_TIER, f"demoted: path matches '{demoted}'"
+        return tier_num, None
+
+    if promoted and tier_num > 2:
+        return 2, f"promoted: path matches '{promoted}'"
+
+    return tier_num, None
+
+
+def _score_document_links(documents: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """
+    Rank harvested PDFs without the embedding model.
+
+    A PDF has no page text to embed -- `path_words` and the anchor text are all
+    the evidence there is -- so putting it through the same cosine pass as an
+    HTML page compares a filename against a paragraph and loses. They are pinned
+    to config.document_source_tier instead and ranked among themselves on how
+    strongly their path matches the fee/deadline patterns, which is the whole
+    reason for ingesting them.
+
+    Fee schedules and admission calendars are published as PDFs at most
+    universities; the pipeline discarded every one of them before C32.
+    """
+    tier = getattr(config, "document_source_tier", 2)
+    tier_name, tier_weight = _TIER_BY_NUM.get(tier, ("Tier 2: Fees & Admissions", 1.20))
+
+    scored: List[Dict[str, str]] = []
+    for link in documents:
+        haystack = f"{link['href']} {link.get('text', '')} {link.get('path_words', '')}".lower()
+        hits = sum(1 for p in GUARANTEED_PATH_PATTERNS if p in haystack)
+        # Bounded so a document can rank alongside a good HTML page but never
+        # above the best of them: it is unread evidence until NotebookLM opens it.
+        base = min(0.90, 0.60 + 0.06 * hits)
+        recency, year_tag = compute_year_decay_factor(haystack)
+        scored.append({
+            "href": link["href"],
+            "text": link.get("text") or link.get("path_words") or link["href"],
+            "raw_text": link.get("raw_text", link.get("text", "")),
+            "matched_keyword": "document: fee/deadline PDF" if hits else "document",
+            "raw_similarity_score": round(base, 4),
+            "weighted_score": round(base * tier_weight * recency, 4),
+            "category": tier_name,
+            "priority_tier_num": tier,
+            "year_tag": year_tag,
+            "passed_threshold": True,
+            "is_document": True,
+        })
+
+    scored.sort(key=lambda x: -x["weighted_score"])
+    cap = getattr(config, "max_document_sources", 8)
+    if len(scored) > cap:
+        logger.info(f"Documents: capped {len(scored)} harvested PDFs to the best {cap}.")
+        scored = scored[:cap]
+    if scored:
+        logger.info(f"Documents: admitted {len(scored)} PDF sources at Tier {tier} (bypassed BGE scoring).")
+    return scored
+
+
+def ensure_guaranteed_coverage(
+    selected: List[Dict[str, str]],
+    scored_links: List[Dict[str, str]],
+    total_cap: int,
+) -> List[Dict[str, str]]:
+    """
+    Guarantee the selection contains the pages that carry fees and deadlines.
+
+    Tier-proportional quota allocation is a good default and a bad guarantee.
+    It fills Tier 2 with whatever scored highest in Tier 2, and on a site whose
+    admissions section is dominated by one page type, every Tier-2 slot can go
+    to that type -- ITU's went to merit lists, and the single page that actually
+    published the fee schedule ranked below the cut.
+
+    For each pattern in GUARANTEED_PATH_PATTERNS this admits the best-scoring
+    unselected match, displacing the weakest selected link that is NOT itself a
+    guaranteed match. The selection size is unchanged; only its composition is.
+    One page per pattern, not all of them: this is a floor, not a preference.
+
+    `application_fee` and `application_deadlines` were answered for 0% of
+    programmes on the run this exists to prevent, and the cause was that no
+    ingested source contained either value.
+    """
+    if not selected or not scored_links:
+        return selected
+
+    chosen_ids = {id(i) for i in selected}
+    candidates = [i for i in scored_links if id(i) not in chosen_ids]
+    if not candidates:
+        return selected
+
+    def matched_patterns(item: Dict[str, str]) -> set:
+        path = urlparse(item["href"]).path.lower()
+        return {p for p in GUARANTEED_PATH_PATTERNS if p in path}
+
+    covered: set = set()
+    for item in selected:
+        covered |= matched_patterns(item)
+
+    promotions: List[Dict[str, str]] = []
+    for pattern in GUARANTEED_PATH_PATTERNS:
+        if pattern in covered:
+            continue
+        best = max(
+            (c for c in candidates if pattern in matched_patterns(c)),
+            key=lambda x: x["weighted_score"],
+            default=None,
+        )
+        if best is None or id(best) in {id(p) for p in promotions}:
+            continue
+        promotions.append(best)
+        covered |= matched_patterns(best)
+
+    if not promotions:
+        return selected
+
+    # Displace the weakest links that are not themselves guaranteed matches, so
+    # a promotion never evicts another promotion.
+    evictable = sorted(
+        (i for i in selected if not matched_patterns(i)),
+        key=lambda x: x["weighted_score"],
+    )
+    n = min(len(promotions), len(evictable))
+    if n < len(promotions):
+        promotions = promotions[:n]
+    evicted = {id(i) for i in evictable[:n]}
+
+    result = [i for i in selected if id(i) not in evicted] + promotions
+    result.sort(key=lambda x: (x["priority_tier_num"], -x["weighted_score"]))
+    logger.info(
+        f"Guaranteed coverage: promoted {len(promotions)} fee/deadline/apply page(s) "
+        f"into the selection: {[p['href'] for p in promotions]}"
+    )
+    return result[:total_cap] if total_cap > 0 else result
+
 
 _EMBEDDING_MODEL: Optional[SentenceTransformer] = None
 
@@ -146,6 +318,14 @@ def classify_and_score_links(
     # pass one, which was all of them.
     threshold = config.semantic_threshold if threshold is None else threshold
 
+    # Documents carry no page text to embed and are ranked separately (C32).
+    documents = [l for l in links if l.get("is_document")]
+    links = [l for l in links if not l.get("is_document")]
+    document_results = _score_document_links(documents) if documents else []
+
+    if not links:
+        return document_results
+
     model = _get_embedding_model()
 
     link_texts = [
@@ -171,6 +351,7 @@ def classify_and_score_links(
     crawl_boost = _crawl_score_normaliser(links)
 
     scored_results = []
+    n_retiered = 0
     for idx, link in enumerate(links):
         scores = similarity_matrix[idx]
         max_score = float(scores.max())
@@ -195,6 +376,14 @@ def classify_and_score_links(
                 tier_num = t_num
                 tier_weight = t_weight
                 break
+
+        # The URL path gets a vote the embedding cannot override (C32).
+        overridden, reason = apply_structural_tier_rules(link["href"], tier_num)
+        if reason:
+            tier_num = overridden
+            assigned_tier, tier_weight = _TIER_BY_NUM.get(tier_num, (assigned_tier, tier_weight))
+            n_retiered += 1
+            logger.debug(f"Structural tier override ({reason}): {link['href']} -> Tier {tier_num}")
 
         recency_factor = 1.00
         year_tag = "Current / Timeless"
@@ -230,8 +419,16 @@ def classify_and_score_links(
     n_passed = sum(1 for r in scored_results if r["passed_threshold"])
     logger.info(
         f"Scoring complete: {n_passed} links passed quality threshold ({threshold}); "
-        f"{len(scored_results) - n_passed} retained as tier reserve."
+        f"{len(scored_results) - n_passed} retained as tier reserve"
+        + (f"; {n_retiered} structurally re-tiered." if n_retiered else ".")
     )
 
     deduped_results = deduplicate_canonical_degree_links(scored_results)
+
+    # Documents join after deduplication: their keys are filenames, and a
+    # fee-structure PDF must never dedupe against the HTML fee page it mirrors --
+    # the two are different sources and NotebookLM reads both.
+    if document_results:
+        deduped_results = deduped_results + document_results
+        deduped_results.sort(key=lambda x: (x["priority_tier_num"], -x["weighted_score"]))
     return deduped_results

@@ -38,7 +38,8 @@ _FENCE_REGEX = re.compile(r"^\s*```(?:json|JSON)?\s*|\s*```\s*$", re.MULTILINE)
 # fails outright. These two patterns only match markers that sit INSIDE a JSON
 # string literal (preceded by a word character or space, not by ':' or '[').
 _CITATION_IN_STRING = re.compile(r"(?<=[\w\s.,;:)\]-])\s*\\?\[\s*\d+(?:\s*,\s*\d+)*\s*\\?\]")
-_CITATION_TRAILING = re.compile(r"\s*\\?\[\s*\d+(?:\s*,\s*\d+)*\s*\\?\]\s*(?=[\"'])")
+# C32 removed _CITATION_TRAILING: it was compiled here and referenced nowhere,
+# so it claimed to handle a case that nothing ever handled.
 
 
 _CITATION_LEADING = re.compile(r"^\s*\\?\[\s*\d+(?:\s*,\s*\d+)*\s*\\?\]\s*")
@@ -214,8 +215,16 @@ def _adapter_for(target_model: Any) -> TypeAdapter:
     return TypeAdapter(target_model)
 
 
-def _validate_against(target_model: Any, parsed: Any) -> Any:
-    """Validate `parsed` using a cached adapter, or the model's own validator."""
+def validate_against(target_model: Any, parsed: Any) -> Any:
+    """
+    Validate already-parsed data against a target type.
+
+    Public because the delimited-text path needs exactly this and nothing else
+    from this module: text_protocol.py produces schema-shaped dicts, and they
+    must go through the same Pydantic models -- and therefore the same
+    validators, aliases and coercions -- as the JSON path ever did. Duplicating
+    that layer for the new format is how the two would drift.
+    """
     if isinstance(target_model, type) and issubclass(target_model, BaseModel):
         return target_model.model_validate(parsed)
     try:
@@ -225,16 +234,32 @@ def _validate_against(target_model: Any, parsed: Any) -> Any:
     return adapter.validate_python(parsed)
 
 
-def repair_and_validate_json(raw_text: str, target_model: Any) -> Any:
+def repair_and_validate_json(
+    raw_text: str,
+    target_model: Any,
+    notebook_id: str = "N/A",
+    query_key: str = "schema_parse",
+    uni_slug: Optional[str] = None,
+) -> Any:
     """
     Clean fences and citation markers, balance brackets, parse, and validate.
 
     Raises ExtractionError with the offending text when the answer cannot be
     coerced into `target_model`, so the caller can decide whether to re-ask.
+
+    `notebook_id`, `query_key` and `uni_slug` exist only to make the repair
+    audit trail usable (C32). Every JSON_REPAIRED event ever written recorded
+    the literal strings "N/A" and "schema_parse", so the audit could say that
+    repairs happened but never which notebook, which university or which query
+    block needed them -- which is the only thing that would let anyone act on
+    the record. They default to the old values so existing callers still work.
     """
     cleaned = extract_json_str(raw_text)
     if cleaned != raw_text:
-        log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="extracted_json_span")
+        log_json_repaired(
+            notebook_id=notebook_id, query_key=query_key,
+            fix_type="extracted_json_span", uni_slug=uni_slug,
+        )
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -242,11 +267,18 @@ def repair_and_validate_json(raw_text: str, target_model: Any) -> Any:
         repaired = _TRAILING_COMMA_REGEX.sub(r"\1", cleaned)
         try:
             parsed = json.loads(repaired)
-            log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="stripped_trailing_commas")
+            log_json_repaired(
+                notebook_id=notebook_id, query_key=query_key,
+                fix_type="stripped_trailing_commas", uni_slug=uni_slug,
+            )
         except json.JSONDecodeError as e:
             raise ExtractionError(f"Unparseable JSON ({e}); cleaned prefix: {cleaned[:200]!r}") from e
 
     try:
-        return _validate_against(target_model, parsed)
+        return validate_against(target_model, parsed)
     except ValidationError as e:
         raise ExtractionError(f"Schema validation failed: {e}") from e
+
+
+# Retained so pre-C32 importers of the private name keep working.
+_validate_against = validate_against

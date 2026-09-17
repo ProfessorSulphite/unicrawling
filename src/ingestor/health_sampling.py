@@ -59,6 +59,19 @@ class HealthReport:
         return len(self.passed) / len(self.sampled)
 
 
+def _asks_per_university() -> int:
+    """
+    The ask budget this university would have cost, under whichever plan is active.
+
+    The staged plan's ceiling is `max_queries_per_university`, not
+    `queries_per_university` -- that field now sizes only the legacy JSON suite,
+    so quoting it here would understate the saving by half.
+    """
+    if getattr(config, "response_format", "text") == "text":
+        return int(getattr(config, "max_queries_per_university", 14))
+    return int(config.queries_per_university)
+
+
 def resolve_sample_size(
     population: int,
     ratio: Optional[float] = None,
@@ -92,12 +105,23 @@ def select_health_sample(
     so the first N are the highest-scoring pages and are systematically healthier
     than the batch as a whole. Sampling the head would clear a university whose
     long tail is entirely dead.
+
+    Documents are excluded from the population entirely (C32). This sample
+    decides whether a whole university is worth ingesting, and the question it
+    is asking is whether the SITE serves pages to our HTTP client. A PDF on a
+    file server that answers HEAD with 403 -- which is common, and which
+    NotebookLM's own fetcher is unaffected by -- would answer "no" to a question
+    it was never asked, and condemn every page on the site with it.
     """
-    size = resolve_sample_size(len(records), ratio=ratio, minimum=minimum)
-    if size >= len(records):
-        return list(records)
+    population = [r for r in records if not r.get("is_document")]
+    if not population:
+        population = list(records)
+
+    size = resolve_sample_size(len(population), ratio=ratio, minimum=minimum)
+    if size >= len(population):
+        return list(population)
     chooser = rng or random
-    return chooser.sample(list(records), size)
+    return chooser.sample(population, size)
 
 
 async def run_health_check(
@@ -201,6 +225,6 @@ async def run_health_check(
         logger.warning(
             f"{prefix}Link health check FAILED: {report.reason}. "
             f"Skipping this university rather than spending a notebook and "
-            f"{config.queries_per_university} queries on it."
+            f"up to {_asks_per_university()} queries on it."
         )
     return report
