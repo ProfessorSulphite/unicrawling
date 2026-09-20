@@ -45,7 +45,8 @@ flowchart TD
   - Enforce strict **Zero Garbage Policy** (strip portals, logins, tenders, job posts, legal disclaimers, static assets).
   - Filter out news and event links via `--exclude-keywords "news|events"`.
   - Apply 2026 recency score boosting via `--uptodate true`.
-  - Perform **Canonical Degree Deduplication** (`deduplicate_canonical_degree_links`) to merge multi-campus subdomain mirrors and intake year duplicates.
+  - Perform **Canonical Degree Deduplication** (`deduplicate_canonical_degree_links_async`) using fast token sets coupled with Jev `Noul` entity alignment (`are_duplicate_degree_variants_jev`) to merge multi-campus subdomain mirrors, annual intake variants, and acronym synonyms (e.g. BS CS vs BS Computer Science).
+  - Apply **Jev System One Speculative Fan-out** (`classify_and_score_links_jev`) using batched `Choice` (priority tiering) and `Noul` (counseling relevance probability) to classify 25-30 candidate links concurrently without loading local PyTorch tensors.
   - Export dual text outputs: `extracted_links.txt` (URLs only) and `extracted_links_detailed.txt` (Full metadata breakdown).
 
 ---
@@ -63,7 +64,7 @@ flowchart TD
 ---
 
 ### Agent 3: Schema Query & Exa Enrichment Agent (Phase 3)
-* **Role**: Schema-guided query extraction and Exa API fallback agent.
+* **Role**: Schema-guided query extraction, Exa API fallback, and Jev grounding verification agent.
 * **Responsibilities**:
   - Execute a 5 to 6 targeted query suite per university against NotebookLM using strict JSON schema prompt files:
     - **Q1**: `main_info` (Metadata, Rankings, Academics/Admissions/Application Portal URLs).
@@ -74,6 +75,7 @@ flowchart TD
     - **Q5**: `faculties` (Faculties, Schools, and constituent departments).
     - **Q6**: `contact` (Emails, phone numbers, physical address, admissions desk).
   - Reserve the suite against the 500/day NotebookLM budget **before** issuing any query, refusing to start a university that cannot complete within the remaining allowance.
+  - Enforce the **Jev Grounding & Citation Verification Gate** (`src/extractor/crawlers/verification.py`): verify high-risk extracted claims (`tuition_fee`, `eligibility_requirements`, `application_deadlines`) against source text using Jev `Noul` ($p \ge 0.75$), nullifying ungrounded claims to maintain the strict zero-hallucination policy.
   - Trigger **Exa API web search fallback** if ranking data or application portal URLs are missing from NotebookLM sources.
   - Assemble complete 4-block JSON payload and append to the fsynced append-only ledger `university_counseling_data.jsonl`. The master JSON array is aggregated separately in one streamed pass at the end of a run, never per-university.
 
@@ -87,8 +89,9 @@ flowchart TD
     - Total program breakdown (Bachelors, Masters, PhD, Diploma counts).
     - Empty and NaN field audit across all 4 blocks.
     - Application portal link coverage and completeness rankings.
-  - Process natural language student inquiries against the Vector DB with direct official source citations and links.
-
+  - Provide **Semantic Counselor Search & Intent Routing** (`src/inspector/semantic_search.py`):
+    - Parse natural language student inquiries (e.g., *"Affordable AI masters in Lahore"*) into typed intent filters using Jev `Choice`.
+    - Semantically rerank candidate programs using Jev `Score` along a 0–5 calibrated rubric, scoring exact counseling fit.
 
 ---
 
@@ -105,7 +108,7 @@ The four agents above are implemented as packages under `src/`, sequenced by
 | 4 — Quality audit & inspection | `src/inspector/` | `cli.py`, `audit_corpus()` |
 
 Shared, dependency-free leaf layer: `src/utilities/` (schema, state, JSON I/O,
-registry, naming, workspace). Nothing in `utilities/` imports upward, and
+registry, naming, workspace, typesafe_client). Nothing in `utilities/` imports upward, and
 nothing in `inspector/` imports the orchestrator at module scope — the
 orchestrator may import the inspector, never the reverse.
 
@@ -122,3 +125,8 @@ orchestrator may import the inspector, never the reverse.
    refuse a university before a notebook is created.
 5. **Phase 3 queries one notebook serially.** Concurrent asks share a
    conversation and return each other's answers.
+6. **TypeSafe Jev System One Primitives**:
+   - Link relevance & deduplication: `Choice` (priority tiering) and `Noul` (entity duplicate alignment).
+   - Citation & grounding verification: `Noul` ($p \ge 0.75$) eliminates hallucinated fees and deadlines.
+   - Counselor search reranking: `Score` (0–5 rubric) ranks candidates by student constraint satisfaction.
+   - Deterministic offline fallbacks ensure 100% test and pipeline operability even without API access.

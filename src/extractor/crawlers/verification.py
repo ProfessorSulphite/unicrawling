@@ -34,7 +34,7 @@ async def verify_program_claims(
     if not is_typesafe_available():
         return program
 
-    # Build context from source snippets or program description
+    # Build context from provided source snippets
     if isinstance(source_snippets, list):
         context = "\n".join(s for s in source_snippets if s).strip()
     elif isinstance(source_snippets, str):
@@ -42,11 +42,8 @@ async def verify_program_claims(
     else:
         context = ""
 
-    if not context and program.description:
-        context = program.description
-
     if not context:
-        # No context available to verify against; leave as-is
+        # No source snippets available to verify against; leave as-is
         return program
 
     # 1. Verify tuition_fee
