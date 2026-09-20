@@ -26,6 +26,7 @@ from src.extractor.linkers.filteration import preprocess_and_filter_links
 from src.extractor.linkers.semantic_scoring import (
     allocate_proportional_tier_quotas,
     classify_and_score_links,
+    classify_and_score_links_async,
 )
 
 
@@ -269,7 +270,7 @@ async def run_pipeline(
         try:
             raw_links = await crawl_site_links(start_url=target_url, max_pages=max_pages)
             clean_links = preprocess_and_filter_links(raw_links, base_url=target_url, exclude_keywords=exclude_keywords)
-            scored_links = classify_and_score_links(clean_links, threshold=threshold, uptodate=uptodate)
+            scored_links = await classify_and_score_links_async(clean_links, threshold=threshold, uptodate=uptodate)
 
             # Dynamic link selection, ratio from config rather than a literal:
             # config.dynamic_link_ratio documented this knob while the hardcoded

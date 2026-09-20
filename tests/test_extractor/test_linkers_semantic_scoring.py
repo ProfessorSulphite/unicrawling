@@ -125,3 +125,76 @@ def test_keyword_side_carries_the_query_prefix_and_the_link_side_does_not(monkey
     link_texts, _ = fake.encode_calls[1]
     assert all(t.startswith(config.bge_query_prefix) for t in keyword_texts)
     assert not any(t.startswith(config.bge_query_prefix) for t in link_texts)
+
+
+# ------------------------------------------------------------- Jev Fan-out tests --
+
+@pytest.mark.asyncio
+async def test_classify_and_score_links_jev_with_mock(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.extractor.linkers.semantic_scoring import classify_and_score_links_jev
+
+    mock_resp = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.choice = "tier_1_programs"
+    mock_noul = MagicMock()
+    mock_noul.noul = 0.90
+    mock_resp.choices = {"tier_0": mock_choice}
+    mock_resp.nouls = {"rel_0": mock_noul}
+
+    links = [{
+        "href": "https://uni.edu.pk/programs/bs-cs",
+        "text": "BS Computer Science",
+        "raw_text": "BS Computer Science",
+        "path_words": "programs bs cs",
+    }]
+
+    with patch("src.extractor.linkers.semantic_scoring.evaluate_system_one", new_callable=AsyncMock) as mock_eval:
+        mock_eval.return_value = mock_resp
+        scored = await classify_and_score_links_jev(links, threshold=0.60, uptodate=False)
+        assert len(scored) == 1
+        assert scored[0]["category"] == "Tier 1: Bachelor & Master Programs"
+        assert scored[0]["priority_tier_num"] == 1
+        assert scored[0]["passed_threshold"] is True
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_classify_and_score_links_jev_live():
+    from src.extractor.linkers.semantic_scoring import classify_and_score_links_jev
+    from src.utilities.typesafe_client import is_typesafe_available
+
+    if not is_typesafe_available():
+        pytest.skip("TYPESAFE_API_KEY required for live test")
+
+    links = [
+        {
+            "href": "https://itu.edu.pk/academics/bs-artificial-intelligence",
+            "text": "BS in Artificial Intelligence Curriculum",
+            "raw_text": "BS in Artificial Intelligence Curriculum",
+            "path_words": "academics bs artificial intelligence",
+        },
+        {
+            "href": "https://itu.edu.pk/admissions/fee-structure",
+            "text": "Undergraduate Fee Structure 2026",
+            "raw_text": "Undergraduate Fee Structure 2026",
+            "path_words": "admissions fee structure",
+        },
+        {
+            "href": "https://itu.edu.pk/news/annual-sports-day-2025",
+            "text": "Annual Sports Gala Highlights",
+            "raw_text": "Annual Sports Gala Highlights",
+            "path_words": "news annual sports day",
+        },
+    ]
+
+    scored = await classify_and_score_links_jev(links, threshold=0.50, uptodate=False)
+    assert len(scored) >= 2
+    # Verify BS program is Tier 1
+    bs_item = next((s for s in scored if "bs-artificial" in s["href"]), None)
+    assert bs_item is not None
+    assert bs_item["priority_tier_num"] == 1
+    # Verify fee structure is Tier 2
+    fee_item = next((s for s in scored if "fee-structure" in s["href"]), None)
+    assert fee_item is not None
+    assert fee_item["priority_tier_num"] == 2

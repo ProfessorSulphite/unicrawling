@@ -100,7 +100,25 @@ async def test_the_selection_ratio_comes_from_config(tmp_path, monkeypatch, capl
             for i in range(100)
         ]
 
+    async def _fake_score(links, **kw):
+        return [
+            {
+                "href": l["href"],
+                "text": l["text"],
+                "raw_text": l["text"],
+                "matched_keyword": "bs cs",
+                "raw_similarity_score": 0.9,
+                "weighted_score": 0.9,
+                "category": "Tier 1: Admissions & Entry Requirements",
+                "priority_tier_num": 1,
+                "year_tag": "Current / Timeless",
+                "passed_threshold": True,
+            }
+            for l in links
+        ]
+
     monkeypatch.setattr(linkers_runner, "crawl_site_links", _many)
+    monkeypatch.setattr(linkers_runner, "classify_and_score_links_async", _fake_score)
     with caplog.at_level("INFO"):
         await linkers_runner.run_pipeline(
             url="https://x",

@@ -63,3 +63,70 @@ def test_deduplicate_keeps_highest_scoring_variant():
     out = deduplicate_canonical_degree_links(items)
     assert len(out) == 1
     assert "2026" in out[0]["href"]
+
+
+# =============================================================================
+# TypeSafe Jev Entity Deduplication Tests
+# =============================================================================
+
+import pytest
+from unittest.mock import patch, AsyncMock
+from src.extractor.linkers.deduplication import (
+    are_duplicate_degree_variants_jev,
+    deduplicate_canonical_degree_links_async,
+)
+from src.utilities.typesafe_client import is_typesafe_available
+
+
+@pytest.mark.asyncio
+async def test_are_duplicate_degree_variants_jev_mocked():
+    item1 = {"href": "https://nust.edu.pk/programs/bs-cs", "text": "BS CS"}
+    item2 = {"href": "https://nust.edu.pk/programs/bs-computer-science", "text": "BS Computer Science"}
+
+    with patch("src.extractor.linkers.deduplication.is_typesafe_available", return_value=True), \
+         patch("src.extractor.linkers.deduplication.evaluate_noul", new_callable=AsyncMock) as mock_noul:
+        # High confidence duplicate
+        mock_noul.return_value = 0.92
+        assert await are_duplicate_degree_variants_jev(item1, item2) is True
+
+        # Low confidence distinct
+        mock_noul.return_value = 0.15
+        assert await are_duplicate_degree_variants_jev(item1, item2) is False
+
+
+@pytest.mark.asyncio
+async def test_deduplicate_canonical_degree_links_async_with_jev():
+    items = [
+        {"href": "https://nust.edu.pk/programs/bs-cs", "text": "BS CS",
+         "priority_tier_num": 1, "weighted_score": 0.70, "category": "Tier 1"},
+        {"href": "https://nust.edu.pk/programs/bs-computer-science", "text": "BS Computer Science",
+         "priority_tier_num": 1, "weighted_score": 0.90, "category": "Tier 1"},
+    ]
+
+    with patch("src.extractor.linkers.deduplication.is_typesafe_available", return_value=True), \
+         patch("src.extractor.linkers.deduplication.are_duplicate_degree_variants_jev", new_callable=AsyncMock) as mock_dup:
+        mock_dup.return_value = True
+        out = await deduplicate_canonical_degree_links_async(items)
+        assert len(out) == 1
+        assert out[0]["weighted_score"] == 0.90
+        assert "bs-computer-science" in out[0]["href"]
+
+
+@pytest.mark.live
+@pytest.mark.skipif(
+    not is_typesafe_available(),
+    reason="Requires typesafe-sdk and TYPESAFE_API_KEY",
+)
+@pytest.mark.asyncio
+async def test_live_jev_duplicate_entity_alignment():
+    """Live API test for Jev entity deduplication."""
+    item_cs = {"href": "https://nust.edu.pk/programs/bs-cs", "text": "Bachelor in CS"}
+    item_comp_sci = {"href": "https://nust.edu.pk/programs/bs-computer-science", "text": "BS Computer Science"}
+    item_ee = {"href": "https://nust.edu.pk/programs/bs-electrical-engineering", "text": "BS Electrical Engineering"}
+    item_electr = {"href": "https://nust.edu.pk/programs/bs-electronic-engineering", "text": "BS Electronic Engineering"}
+
+    # CS vs Computer Science -> Duplicate should be True
+    assert await are_duplicate_degree_variants_jev(item_cs, item_comp_sci) is True
+
+    # Electrical vs Electronic -> Duplicate should be False
+    assert await are_duplicate_degree_variants_jev(item_ee, item_electr) is False

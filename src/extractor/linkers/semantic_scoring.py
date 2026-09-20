@@ -18,8 +18,18 @@ from src.extractor.linkers.constants import (
     RESERVE_FLOOR_RATIO,
     logger,
 )
-from src.extractor.linkers.deduplication import deduplicate_canonical_degree_links
+from src.extractor.linkers.deduplication import (
+    deduplicate_canonical_degree_links,
+    deduplicate_canonical_degree_links_async,
+)
 from src.extractor.linkers.filteration import compute_year_decay_factor
+from src.utilities.typesafe_client import evaluate_system_one, is_typesafe_available
+
+try:
+    from typesafe_sdk import Choice, Noul
+except ImportError:
+    Choice = None
+    Noul = None
 
 
 def allocate_proportional_tier_quotas(
@@ -235,3 +245,133 @@ def classify_and_score_links(
 
     deduped_results = deduplicate_canonical_degree_links(scored_results)
     return deduped_results
+
+
+JEV_TIER_CRITERIA: Dict[str, str] = {
+    "tier_1_programs": "Specific degree program curriculum, syllabus, degree requirements, or academic prospectus page",
+    "tier_2_admissions": "General admissions policy, fee structures, deadlines, eligibility criteria, or online application portal",
+    "tier_3_faculties": "Faculties, schools, departments, and constituent academic units directory",
+    "tier_4_contacts": "Contact details, campus address, phone numbers, admissions office, or FAQs",
+    "noise": "News articles, events, tenders, convocation galleries, job postings, staff portals, or login pages",
+}
+
+JEV_TIER_MAPPING = {
+    "tier_1_programs": ("Tier 1: Bachelor & Master Programs", 1, 1.50),
+    "tier_2_admissions": ("Tier 2: Admissions, Fees & Deadlines", 2, 1.30),
+    "tier_3_faculties": ("Tier 3: Faculties & Departments", 3, 1.15),
+    "tier_4_contacts": ("Tier 4: FAQs & Contacts", 4, 1.00),
+}
+
+
+async def classify_and_score_links_jev(
+    links: List[Dict[str, str]],
+    threshold: Optional[float] = None,
+    uptodate: bool = True,
+) -> List[Dict[str, str]]:
+    """
+    Score and classify links into Priority Tiers using Jev System One speculative fan-out.
+    """
+    if not links:
+        return []
+
+    threshold = config.semantic_threshold if threshold is None else threshold
+    batch_size = max(5, config.typesafe_batch_size)
+    crawl_boost = _crawl_score_normaliser(links)
+    scored_results = []
+
+    logger.info(f"Classifying {len(links)} links using Jev System One (batch_size={batch_size})...")
+
+    for start_idx in range(0, len(links), batch_size):
+        chunk = links[start_idx : start_idx + batch_size]
+        state = {
+            f"link_{i}": {
+                "url": link.get("href", ""),
+                "text": link.get("text", ""),
+                "path_words": link.get("path_words", ""),
+            }
+            for i, link in enumerate(chunk)
+        }
+
+        questions = {}
+        for i in range(len(chunk)):
+            questions[f"tier_{i}"] = Choice(
+                instructions=f"Which priority tier does `link_{i}` belong to?",
+                criteria=JEV_TIER_CRITERIA,
+            )
+            questions[f"rel_{i}"] = Noul(
+                instructions=f"Is `link_{i}` an academic degree, faculty, admissions, or contact page rather than administrative noise?",
+            )
+
+        response = await evaluate_system_one(state=state, questions=questions)
+        for i, link in enumerate(chunk):
+            tier_choice = "tier_4_contacts"
+            rel_prob = 0.50
+
+            if response and hasattr(response, "choices") and f"tier_{i}" in response.choices:
+                tier_choice = str(response.choices[f"tier_{i}"].choice)
+            if response and hasattr(response, "nouls") and f"rel_{i}" in response.nouls:
+                rel_prob = float(response.nouls[f"rel_{i}"].noul)
+
+            # Noise detection
+            if tier_choice == "noise" or rel_prob < 0.20:
+                tier_choice = "noise"
+                rel_prob = min(rel_prob, 0.15)
+
+            if tier_choice in JEV_TIER_MAPPING:
+                assigned_tier, tier_num, tier_weight = JEV_TIER_MAPPING[tier_choice]
+            else:
+                assigned_tier, tier_num, tier_weight = ("Tier 4: FAQs & Contacts", 4, 1.00)
+
+            recency_factor = 1.00
+            year_tag = "Current / Timeless"
+            if uptodate:
+                combined_str = f"{link.get('href', '')} {link.get('text', '')} {link.get('path_words', '')}"
+                recency_factor, year_tag = compute_year_decay_factor(combined_str)
+
+            weighted_score = round(rel_prob * tier_weight * recency_factor * crawl_boost(link), 4)
+            passed = rel_prob >= threshold
+
+            # Discard hard floor noise
+            if rel_prob < threshold * RESERVE_FLOOR_RATIO:
+                continue
+
+            scored_results.append({
+                "href": link["href"],
+                "text": link["text"],
+                "raw_text": link.get("raw_text", link["text"]),
+                "matched_keyword": tier_choice,
+                "raw_similarity_score": round(rel_prob, 4),
+                "weighted_score": weighted_score,
+                "category": assigned_tier,
+                "priority_tier_num": tier_num,
+                "year_tag": year_tag,
+                "passed_threshold": passed,
+            })
+
+    scored_results.sort(key=lambda x: (x["priority_tier_num"], -x["weighted_score"]))
+    n_passed = sum(1 for r in scored_results if r["passed_threshold"])
+    logger.info(
+        f"Jev link scoring complete: {n_passed} links passed quality threshold ({threshold}); "
+        f"{len(scored_results) - n_passed} retained as tier reserve."
+    )
+
+    deduped_results = await deduplicate_canonical_degree_links_async(scored_results)
+    return deduped_results
+
+
+async def classify_and_score_links_async(
+    links: List[Dict[str, str]],
+    threshold: Optional[float] = None,
+    uptodate: bool = True,
+) -> List[Dict[str, str]]:
+    """
+    Asynchronously score and classify links, preferring Jev System One when available.
+    """
+    if not links:
+        return []
+    if is_typesafe_available():
+        try:
+            return await classify_and_score_links_jev(links, threshold=threshold, uptodate=uptodate)
+        except Exception as e:
+            logger.warning(f"Jev link scoring failed ({e}); falling back to SentenceTransformer.")
+    return classify_and_score_links(links, threshold=threshold, uptodate=uptodate)
