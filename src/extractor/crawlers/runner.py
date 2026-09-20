@@ -35,6 +35,8 @@ from src.extractor.crawlers.notebook_querying import (
     QuerySpec,
     run_query,
 )
+from src.extractor.crawlers.verification import verify_program_batch
+from src.utilities.typesafe_client import is_typesafe_available
 
 # Same registry entry as every other module in this package: logging.getLogger
 # returns one object per name, so this is the logger extract_data.py created.
@@ -246,11 +248,23 @@ async def extract_university_payload(
     # Bucket names, QuerySpec keys and DegreeLevel values are all the same four
     # strings since C17, so this is a straight fan-out with nothing to translate.
     _flag_cross_contaminated_buckets(results, uni_name, report)
+    bachelors = results.get("bachelors") or []
+    masters = results.get("masters") or []
+    phd = results.get("phd") or []
+    diploma = results.get("diploma") or []
+
+    # Apply Jev Grounding & Citation Verification Gate
+    if is_typesafe_available():
+        bachelors = await verify_program_batch(bachelors)
+        masters = await verify_program_batch(masters)
+        phd = await verify_program_batch(phd)
+        diploma = await verify_program_batch(diploma)
+
     programs = ProgramCategoryBlock(
-        bachelors=results.get("bachelors") or [],
-        masters=results.get("masters") or [],
-        phd=results.get("phd") or [],
-        diploma=results.get("diploma") or [],
+        bachelors=bachelors,
+        masters=masters,
+        phd=phd,
+        diploma=diploma,
     )
 
     # --- Truncation signal ---
