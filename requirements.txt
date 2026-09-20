@@ -15,6 +15,7 @@ notebooklm-py==0.7.3
 pydantic==2.13.4
 exa-py==2.16.0
 tenacity==9.1.4
+typesafe-sdk>=0.7.0
 
 # Exporters & CLI analytics
 rich>=13.0.0

@@ -247,6 +247,10 @@ class Config:
     # EXTERNAL API KEYS
     # ═══════════════════════════════════════════════════════════════════════
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
+    typesafe_api_key: str = field(default_factory=lambda: os.getenv("TYPESAFE_API_KEY", ""))                    # TypeSafe AI API key; enables Jev System One semantic decisions
+    typesafe_model: str = "jev-latest"                                                                           # TypeSafe System One model identifier used for evaluation
+    typesafe_enabled: bool = True                                                                                # Master toggle for Jev System One decisions; disabling falls back to deterministic rules
+    typesafe_batch_size: int = 30                                                                                # Maximum questions or candidate links batched per System One speculative request
     # Supabase (C29). Absent by default: the push is opt-in, and inspector/sync.py
     # says exactly what is missing rather than failing obscurely. The SERVICE key
     # is a write credential -- it belongs in .env, never in run_settings.json.
