@@ -24,8 +24,10 @@ from src.inspector.formatting import (
     show,
 )
 from src.inspector.records import find_university_record, load_all_records
+from src.inspector.semantic_search import rerank_program_candidates, route_search_intent
 from src.utilities.schema import UniversityPayload
 from src.utilities.state_management import PARTIAL_EXTRACTION, StateManager
+from src.utilities.typesafe_client import is_typesafe_available
 
 
 # ------------------------------------------------------------------------------
@@ -322,8 +324,128 @@ def compare_universities(slug1: str, slug2: str):
 # 3. GLOBAL PROGRAM & FEE SEARCH COMMAND (search <keyword>)
 # ------------------------------------------------------------------------------
 
+async def search_programs_async(keyword: str, level: Optional[str] = None, max_fee: Optional[float] = None):
+    """Searches across all extracted degree programs globally with Jev intent routing & reranking."""
+    records = load_all_records()
+    kw_clean = keyword.lower().strip()
+    matches = []
+
+    # 1. Jev Intent Routing: detect degree level if not specified
+    if not level and is_typesafe_available():
+        intent = await route_search_intent(keyword)
+        if intent.get("level"):
+            level = intent["level"]
+            console.print(
+                f"[dim cyan]🧠 Jev Intent Router: Detected degree level constraint -> "
+                f"[bold yellow]{level.upper()}[/bold yellow][/dim cyan]"
+            )
+
+    categories = [
+        ("bachelors", "BS / BSc"),
+        ("masters", "MS / MSc"),
+        ("phd", "PhD"),
+        ("diploma", "Diploma / Certificate"),
+    ]
+
+    # Split keyword terms for multi-term query matching
+    kw_tokens = [t for t in kw_clean.split() if len(t) > 2]
+
+    for rec in records:
+        uni_name = rec.get("main_info", {}).get("name", "Unknown Uni")
+        portal_url = rec.get("main_info", {}).get("key_links", {}).get("application_portal_url", "")
+        progs = rec.get("programs", {})
+
+        for cat_key, cat_label in categories:
+            if level and level.lower() not in cat_key and level.lower() not in cat_label.lower():
+                continue
+
+            for p in progs.get(cat_key, []):
+                p_name = p.get("name", "")
+                dept = p.get("department", "")
+                summary = p.get("description") or p.get("summary_3_lines", "")
+                elig = p.get("eligibility_requirements", {})
+                elig_text = str(elig)
+                courses = " ".join(p.get("courses_taught", [])) if isinstance(p.get("courses_taught"), list) else ""
+
+                full_text = f"{p_name} {dept} {summary} {elig_text} {courses}".lower()
+
+                if kw_clean in full_text:
+                    fee_str = p.get("tuition_fee", "")
+                    num_fee = extract_numeric_fee(fee_str)
+
+                    if max_fee is not None and num_fee is not None and num_fee > max_fee:
+                        continue
+
+                    matches.append(
+                        {
+                            "university": show(uni_name, "Unknown University"),
+                            "category": cat_label,
+                            "program_name": show(p_name),
+                            "department": show(dept),
+                            "tuition_fee": fee_str or "N/A",
+                            "deadline": format_deadlines(p),
+                            "portal_url": portal_url,
+                            "description": summary,
+                        }
+                    )
+
+    if not matches:
+        console.print(
+            f"[yellow]No degree programs matched keyword '[bold]{keyword}[/bold]'[/yellow] "
+            f"(filters: level={level or 'all'}, max_fee={max_fee or 'unlimited'})."
+        )
+        return []
+
+    # 2. Jev Semantic Reranking
+    if is_typesafe_available() and len(matches) > 1:
+        console.print(f"[dim cyan]⭐ Jev Reranker: Evaluating fit scores for candidate degree programs...[/dim cyan]")
+        matches = await rerank_program_candidates(keyword, matches, top_k=25)
+
+    table = Table(
+        title=f"🔍 Global Degree Search Results for '{keyword}' ({len(matches)} Matches Found)",
+        show_lines=True,
+    )
+    table.add_column("University", style="bold cyan")
+    table.add_column("Level", style="dim")
+    table.add_column("Program Name", style="bold yellow")
+    table.add_column("Department", style="magenta")
+    table.add_column("Tuition Fee", style="green")
+    table.add_column("Deadline", style="red")
+    has_fit_scores = any("fit_score" in m for m in matches)
+    if has_fit_scores:
+        table.add_column("Fit (Jev)", style="bold green")
+
+    for m in matches[:25]:  # Limit output table display cap
+        row = [
+            m["university"],
+            m["category"],
+            m["program_name"],
+            m["department"],
+            m["tuition_fee"],
+            m["deadline"],
+        ]
+        if has_fit_scores:
+            score_val = m.get("fit_score")
+            row.append(f"{score_val:.2f}/5.0" if score_val is not None else "-")
+        table.add_row(*row)
+
+    console.print(table)
+    if len(matches) > 25:
+        console.print(f"[dim]Showing top 25 of {len(matches)} matching degree programs.[/dim]")
+
+    return matches
+
+
 def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional[float] = None):
     """Searches across all extracted degree programs globally across all universities."""
+    if is_typesafe_available():
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is None:
+            return asyncio.run(search_programs_async(keyword, level=level, max_fee=max_fee))
+
     records = load_all_records()
     kw_clean = keyword.lower().strip()
     matches = []
@@ -378,7 +500,7 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
             f"[yellow]No degree programs matched keyword '[bold]{keyword}[/bold]'[/yellow] "
             f"(filters: level={level or 'all'}, max_fee={max_fee or 'unlimited'})."
         )
-        return
+        return []
 
     table = Table(
         title=f"🔍 Global Degree Search Results for '{keyword}' ({len(matches)} Matches Found)",
@@ -391,7 +513,7 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
     table.add_column("Tuition Fee", style="green")
     table.add_column("Deadline", style="red")
 
-    for m in matches[:25]:  # Limit output table display cap
+    for m in matches[:25]:
         table.add_row(
             m["university"],
             m["category"],
