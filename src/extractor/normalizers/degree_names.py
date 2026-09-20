@@ -20,9 +20,10 @@ resolved before the PhD rule ever runs.
 from __future__ import annotations
 
 import re
-from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from src.utilities.schema import DegreeLevel
+from src.utilities.typesafe_client import evaluate_choice, is_typesafe_available
 
 # ---------------------------------------------------------------------------
 # Normalisation
@@ -166,13 +167,22 @@ def _is_entry_level_doctorate(tokens: FrozenSet[str], text: str) -> bool:
     return False
 
 
-def classify_degree_level(name: str) -> Optional[DegreeLevel]:
-    """Map a programme NAME onto one of the four levels, or None if unreadable.
+JEV_DEGREE_CRITERIA: Dict[str, str] = {
+    "bachelors": (
+        "Undergraduate entry-level degree (BS, BSc, BA, BBA, BE, BEd, BFA, LLB) "
+        "including clinical 5-year entry doctorates such as MBBS, DPT, PharmD, DVM, and Post-RN"
+    ),
+    "masters": "Graduate degree following a bachelors (MS, MSc, MA, MBA, EMBA, MPhil, LLM, MEd)",
+    "phd": "Doctor of Philosophy (PhD) or research doctorate; excludes clinical entry degrees and post-doctoral appointments",
+    "diploma": "Award-bearing postgraduate diploma (PGD), advanced diploma, or professional certificate programme",
+    "unrecognized": "Non-degree text, department name, administrative text, or unreadable title",
+}
 
-    None is deliberate. A name this function cannot read is not a bachelors by
-    default -- guessing here would fabricate a fact a student could act on, which
-    is the exact failure mode C19 exists to remove elsewhere.
-    """
+_JEV_DEGREE_CACHE: Dict[str, Optional[DegreeLevel]] = {}
+
+
+def classify_degree_level_rule(name: str) -> Optional[DegreeLevel]:
+    """Map a programme NAME onto one of the four levels using deterministic token rules."""
     tokens = tokenize_degree_name(name)
     if not tokens:
         return None
@@ -186,6 +196,63 @@ def classify_degree_level(name: str) -> Optional[DegreeLevel]:
         if token_set & markers:
             return level
     return None
+
+
+async def classify_degree_level_jev(
+    name: str, context: Optional[Dict[str, Any]] = None
+) -> Optional[DegreeLevel]:
+    """
+    Classify a degree level using Jev System One Choice evaluation with confidence checking.
+    """
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return None
+    if clean_name in _JEV_DEGREE_CACHE:
+        return _JEV_DEGREE_CACHE[clean_name]
+
+    if not is_typesafe_available():
+        res = classify_degree_level_rule(clean_name)
+        _JEV_DEGREE_CACHE[clean_name] = res
+        return res
+
+    state: Dict[str, Any] = {"name": clean_name}
+    if context:
+        state.update(context)
+
+    res = await evaluate_choice(
+        state=state,
+        instructions="Classify this academic degree title into exactly one target degree level.",
+        criteria=JEV_DEGREE_CRITERIA,
+    )
+    if res:
+        chosen, conf, _ = res
+        if conf >= 0.70 and chosen in DegreeLevel._value2member_map_:
+            level = DegreeLevel(chosen)
+            _JEV_DEGREE_CACHE[clean_name] = level
+            return level
+        if chosen == "unrecognized":
+            _JEV_DEGREE_CACHE[clean_name] = None
+            return None
+
+    fallback = classify_degree_level_rule(clean_name)
+    _JEV_DEGREE_CACHE[clean_name] = fallback
+    return fallback
+
+
+def classify_degree_level(
+    name: str, context: Optional[Dict[str, Any]] = None
+) -> Optional[DegreeLevel]:
+    """Map a programme NAME onto one of the four levels, or None if unreadable.
+
+    Uses cached Jev judgment if present, or deterministic rule evaluation.
+    """
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return None
+    if clean_name in _JEV_DEGREE_CACHE:
+        return _JEV_DEGREE_CACHE[clean_name]
+
+    return classify_degree_level_rule(clean_name)
 
 
 def coerce_declared_level(declared: object) -> Optional[DegreeLevel]:

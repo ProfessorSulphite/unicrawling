@@ -178,3 +178,39 @@ def test_the_exported_schema_advertises_the_four_levels():
     assert schema["$defs"]["DegreeLevel"]["enum"] == ["bachelors", "masters", "phd", "diploma"]
     assert set(schema["$defs"]["ProgramCategoryBlock"]["properties"]) == {
         "bachelors", "masters", "phd", "diploma"}
+
+
+# ----------------------------------------------------------- Jev Choice tests --
+
+@pytest.mark.asyncio
+async def test_classify_degree_level_jev_with_mock(monkeypatch):
+    from unittest.mock import AsyncMock, patch
+    from src.extractor.normalizers.degree_names import classify_degree_level_jev, _JEV_DEGREE_CACHE
+
+    _JEV_DEGREE_CACHE.clear()
+    with patch("src.extractor.normalizers.degree_names.is_typesafe_available", return_value=True):
+        with patch("src.extractor.normalizers.degree_names.evaluate_choice", new_callable=AsyncMock) as mock_choice:
+            mock_choice.return_value = ("bachelors", 0.95, {"bachelors": 0.95, "masters": 0.05})
+            level = await classify_degree_level_jev("Bachelor of Midwifery")
+            assert level == DegreeLevel.BACHELORS
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_classify_degree_level_jev_live():
+    from src.extractor.normalizers.degree_names import classify_degree_level_jev, _JEV_DEGREE_CACHE
+    from src.utilities.typesafe_client import is_typesafe_available
+
+    if not is_typesafe_available():
+        pytest.skip("TYPESAFE_API_KEY required for live test")
+
+    _JEV_DEGREE_CACHE.clear()
+    cases = [
+        ("Doctor of Physical Therapy (DPT)", DegreeLevel.BACHELORS),
+        ("PhD in Pharmacy Practice", DegreeLevel.PHD),
+        ("Master of Philosophy (MPhil) in Education", DegreeLevel.MASTERS),
+        ("Postgraduate Diploma in Clinical Psychology", DegreeLevel.DIPLOMA),
+    ]
+    for name, expected in cases:
+        level = await classify_degree_level_jev(name)
+        assert level == expected, f"Failed for {name}: expected {expected}, got {level}"
