@@ -21,7 +21,13 @@ from urllib.parse import urlparse
 from src.config import config
 
 from src.extractor.linkers.constants import SLUGIFY_REGEX, logger
-from src.extractor.linkers.crawling import CrawlFailure, close_shared_crawler, crawl_site_links
+from src.extractor.linkers.crawling import (
+    CrawlFailure,
+    close_shared_crawler,
+    crawl_department_hubs,
+    crawl_site_links,
+)
+from src.extractor.linkers.department_discovery import detect_academic_department_hubs
 from src.extractor.linkers.filteration import preprocess_and_filter_links
 from src.extractor.linkers.semantic_scoring import (
     allocate_proportional_tier_quotas,
@@ -230,7 +236,9 @@ async def run_pipeline(
     uptodate: bool = True,
     exclude_keywords: str = "news|events",
     output_links: str = "extracted_links.txt",
-    output_detailed: str = "extracted_links_detailed.txt"
+    output_detailed: str = "extracted_links_detailed.txt",
+    enable_dept_discovery: Optional[bool] = None,
+    max_dept_hubs: Optional[int] = None,
 ):
     """
     Main orchestration function managing single site or HEC batch processing.
@@ -245,6 +253,16 @@ async def run_pipeline(
     """
     threshold = config.semantic_threshold if threshold is None else threshold
     max_pages = config.max_crawl_pages if max_pages is None else max_pages
+    enable_dept_discovery = (
+        config.enable_department_hub_discovery
+        if enable_dept_discovery is None
+        else enable_dept_discovery
+    )
+    max_dept_hubs = (
+        config.max_department_hubs
+        if max_dept_hubs is None
+        else max_dept_hubs
+    )
 
     targets = []
     
@@ -269,6 +287,36 @@ async def run_pipeline(
 
         try:
             raw_links = await crawl_site_links(start_url=target_url, max_pages=max_pages)
+
+            if enable_dept_discovery:
+                try:
+                    dept_hubs = await detect_academic_department_hubs(
+                        raw_links=raw_links,
+                        base_url=target_url,
+                        max_hubs=max_dept_hubs,
+                    )
+                    if dept_hubs:
+                        logger.info(
+                            f"Department Discovery: Identified {len(dept_hubs)} academic hubs for {uni_name}. "
+                            f"Launching fan-out micro-crawls..."
+                        )
+                        dept_links = await crawl_department_hubs(
+                            dept_hubs=dept_hubs,
+                            max_pages_per_hub=config.department_crawl_max_pages,
+                            max_depth=config.department_crawl_max_depth,
+                        )
+                        if dept_links:
+                            logger.info(
+                                f"Department Fan-out: Merging {len(dept_links)} links from "
+                                f"{len(dept_hubs)} academic hubs into raw link pool for {uni_name}."
+                            )
+                            raw_links.extend(dept_links)
+                except Exception as hub_err:
+                    logger.warning(
+                        f"Department hub discovery encountered an issue for {uni_name}: {hub_err}. "
+                        "Continuing with root domain links only."
+                    )
+
             clean_links = preprocess_and_filter_links(raw_links, base_url=target_url, exclude_keywords=exclude_keywords)
             scored_links = await classify_and_score_links_async(clean_links, threshold=threshold, uptodate=uptodate)
 
@@ -444,6 +492,20 @@ def main():
         default="extracted_links_detailed.txt",
         help="Path for detailed text report output file (default: extracted_links_detailed.txt)."
     )
+    parser.add_argument(
+        "--enable-dept-discovery",
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=None,
+        help="Enable autonomous discovery and fan-out crawling of departmental and school hubs (default: true from config)."
+    )
+    parser.add_argument(
+        "--max-dept-hubs",
+        type=int,
+        default=None,
+        help=f"Maximum departmental hubs to fan-out crawl (default: {config.max_department_hubs})."
+    )
 
     args = parser.parse_args()
 
@@ -461,7 +523,9 @@ def main():
                 uptodate=args.uptodate,
                 exclude_keywords=args.exclude_keywords,
                 output_links=args.output_links,
-                output_detailed=args.output_detailed
+                output_detailed=args.output_detailed,
+                enable_dept_discovery=args.enable_dept_discovery,
+                max_dept_hubs=args.max_dept_hubs,
             )
         except CrawlFailure as e:
             # The CLI keeps the exit code the shell contract documents; only the

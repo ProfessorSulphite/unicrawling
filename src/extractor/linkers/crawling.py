@@ -255,3 +255,46 @@ async def crawl_site_links(
     raise CrawlFailure(
         f"Crawl of {start_url} (and candidates {candidates}) produced zero links: {last_error}"
     )
+
+
+async def crawl_department_hubs(
+    hub_urls: List[str],
+    max_pages: Optional[int] = None,
+    max_depth: Optional[int] = None,
+) -> List[Dict[str, str]]:
+    """
+    Execute shallow, targeted micro-crawls across detected departmental and school portals.
+
+    Reuses the shared headless browser pool to harvest degree and syllabus
+    pages with low latency and zero process restart overhead.
+    """
+    if not hub_urls:
+        return []
+
+    max_pages = config.department_crawl_max_pages if max_pages is None else max_pages
+    max_depth = config.department_crawl_max_depth if max_depth is None else max_depth
+
+    all_dept_links: List[Dict[str, str]] = []
+    seen_hrefs = set()
+
+    logger.info(
+        f"Initiating targeted departmental fan-out crawls for {len(hub_urls)} academic hubs "
+        f"(max_pages={max_pages}, max_depth={max_depth})..."
+    )
+
+    for hub_url in hub_urls:
+        logger.info(f"Targeted departmental micro-crawl: {hub_url}")
+        try:
+            links = await crawl_site_links(start_url=hub_url, max_pages=max_pages, max_depth=max_depth)
+            for link in links:
+                href = link.get("href", "").strip()
+                href_norm = href.rstrip("/").split("#")[0]
+                if href_norm and href_norm not in seen_hrefs:
+                    seen_hrefs.add(href_norm)
+                    all_dept_links.append(link)
+        except Exception as e:
+            logger.warning(f"Departmental micro-crawl for {hub_url} failed or yielded 0 links: {e}. Skipping hub.")
+
+    logger.info(f"Departmental fan-out complete: harvested {len(all_dept_links)} links across {len(hub_urls)} academic hubs.")
+    return all_dept_links
+

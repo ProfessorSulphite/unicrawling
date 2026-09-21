@@ -95,6 +95,11 @@ class Config:
     # Subdomains of the institution (application.itu.edu.pk) always count as
     # on-site; only a genuinely different registrable domain is dropped.
     restrict_links_to_university_domain: bool = True   # Drop harvested links outside the university's own registrable domain; disabling re-admits third-party pages as sources
+    enable_department_hub_discovery: bool = True   # Automatically detect and crawl academic school, college, and department sub-sites
+    max_department_hubs: int = 8             # Maximum number of departmental and school portals crawled per university domain
+    department_crawl_max_pages: int = 10     # Page budget allocated for each detected department micro-crawl during fan-out
+    department_crawl_max_depth: int = 2      # Maximum link hops followed inside each detected department hub micro-crawl
+
 
     # Proportional share of the source budget per priority tier. Flat top-N
     # slicing after a tier-major sort starves Tiers 3/4 entirely, which makes
