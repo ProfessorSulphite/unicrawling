@@ -42,6 +42,31 @@ async def _find_or_create_notebook(client: NotebookLMClient, title: str, uni_slu
         raise RuntimeError(f"notebooks.create returned no usable id for '{title}'")
     logger.info(f"Created notebook '{title}' ({nb_id})")
     log_notebook_created(nb_id, title, uni_slug)
+    patch_notebooklm_rpc_size_limit()
     return nb_id
+
+
+def patch_notebooklm_rpc_size_limit(max_bytes: int = 200 * 1024 * 1024) -> None:
+    """Widen notebooklm-py's internal MAX_RPC_RESPONSE_BYTES guard to 200MB."""
+    import functools
+    try:
+        import notebooklm._kernel
+        import notebooklm._streaming_post
+
+        orig_stream = notebooklm._streaming_post.stream_post_with_size_cap
+        if getattr(orig_stream, "_is_patched", False):
+            return
+
+        @functools.wraps(orig_stream)
+        async def patched_stream_post(client, url, body, headers, timeout=None, max_bytes=max_bytes):
+            return await orig_stream(client, url, body, headers, timeout=timeout, max_bytes=max_bytes)
+
+        patched_stream_post._is_patched = True
+        notebooklm._streaming_post.stream_post_with_size_cap = patched_stream_post
+        notebooklm._kernel.stream_post_with_size_cap = patched_stream_post
+        logger.debug(f"Patched notebooklm-py streaming response buffer limit to {max_bytes / (1024 * 1024):.0f}MB.")
+    except Exception as e:
+        logger.warning(f"Could not patch notebooklm-py RPC size limit: {e}")
+
 
 

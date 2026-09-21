@@ -58,6 +58,7 @@ from src.extractor.linkers.runner import run_pipeline as run_link_extractor  # n
 from src.extractor.normalizers.runner import load_global_registry  # noqa: E402
 from src.ingestor.cohort_partitioning import partition_links_into_cohorts  # noqa: E402
 from src.ingestor.http_client import close_http_client  # noqa: E402
+from src.ingestor.notebook_lifecycle import patch_notebooklm_rpc_size_limit  # noqa: E402
 from src.ingestor.source_management import (  # noqa: E402
     evict_sources,
     ingest_university_sources,
@@ -116,6 +117,7 @@ async def _resilient_notebooklm_client(max_retries: int = 3, initial_delay: floa
     """
     Acquire NotebookLMClient with retry against transient DNS and network connection drops.
     """
+    patch_notebooklm_rpc_size_limit()
     client = None
     delay = initial_delay
     for attempt in range(1, max_retries + 1):
@@ -272,22 +274,37 @@ async def _run_master_pipeline(
                 report = ExtractionReport()
                 accumulated_results: Dict[str, Any] = {}
                 payload = None
+                uploaded_sources_map: Dict[str, Any] = {}
 
                 try:
                     for cohort in cohorts:
-                        print(f"\n🚀 [STAGE: {cohort.name.upper()}] Ingesting {cohort.source_count} sources into notebook...")
-                        ingest_res = await upload_cohort_sources(
-                            client=client,
-                            notebook_id=notebook_id,
-                            uni_slug=uni_slug,
-                            cohort_links=cohort.links,
-                        )
-                        print(f"  └─ Ingested {ingest_res.ingested_count} sources ({ingest_res.ready_count} ready).")
-                        source_ids_by_tier: Dict[int, List[str]] = {}
-                        for s in ingest_res.sources:
-                            source_ids_by_tier.setdefault(s.tier, []).append(s.source_id)
+                        print(f"\n🚀 [STAGE: {cohort.name.upper()}] Preparing {cohort.source_count} sources for stage...")
+                        new_links = [l for l in cohort.links if l.get("url") and l.get("url") not in uploaded_sources_map]
+                        reused_count = cohort.source_count - len(new_links)
+                        if reused_count > 0:
+                            print(f"  └─ Reusing {reused_count} already-uploaded baseline sources.")
 
-                        print(f"  └─ Executing queries: {cohort.query_keys}...")
+                        if new_links:
+                            print(f"  └─ Ingesting {len(new_links)} new stage-specific sources...")
+                            ingest_res = await upload_cohort_sources(
+                                client=client,
+                                notebook_id=notebook_id,
+                                uni_slug=uni_slug,
+                                cohort_links=new_links,
+                            )
+                            for s in ingest_res.sources:
+                                uploaded_sources_map[s.url] = s
+                            print(f"  └─ Uploaded {ingest_res.ingested_count} sources ({ingest_res.ready_count} ready).")
+
+                        source_ids_by_tier: Dict[int, List[str]] = {}
+                        for l in cohort.links:
+                            url = l.get("url")
+                            if url in uploaded_sources_map:
+                                s = uploaded_sources_map[url]
+                                source_ids_by_tier.setdefault(s.tier, []).append(s.source_id)
+
+                        total_stage_sources = sum(len(v) for v in source_ids_by_tier.values())
+                        print(f"  └─ Executing queries {cohort.query_keys} across {total_stage_sources} scoped sources...")
                         payload, sub_report = await extract_university_payload(
                             client=client,
                             notebook_id=notebook_id,
@@ -309,10 +326,17 @@ async def _run_master_pipeline(
                             accumulated_results["faculties"] = payload.faculties
 
                         if cohort.evict_degree_sources:
-                            degree_sids = [s.source_id for s in ingest_res.sources if s.tier == 1]
+                            degree_sids = [
+                                uploaded_sources_map[l["url"]].source_id
+                                for l in cohort.links
+                                if l.get("tier", 1) == 1 and l.get("url") in uploaded_sources_map
+                            ]
                             if degree_sids:
                                 print(f"  └─ Evicting {len(degree_sids)} completed degree sources...")
                                 await evict_sources(client, notebook_id, degree_sids)
+                                for l in cohort.links:
+                                    if l.get("tier", 1) == 1 and l.get("url") in uploaded_sources_map:
+                                        del uploaded_sources_map[l["url"]]
 
                 except BaseException:
                     state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))

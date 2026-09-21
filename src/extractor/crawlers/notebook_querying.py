@@ -20,10 +20,14 @@ from src.logger.notebook_logger import log_query_executed
 from src.utilities.schema import ContactInfo, FacultyItem, MainInfo, ProgramItem
 
 from src.extractor.crawlers.json_repairing import ExtractionError, repair_and_validate_json
+from src.ingestor.notebook_lifecycle import patch_notebooklm_rpc_size_limit
 
 # Same registry entry as every other module in this package: logging.getLogger
 # returns one object per name, so this is the logger extract_data.py created.
 logger = logging.getLogger("ExtractData")
+
+# Ensure the streaming size cap is widened for query execution
+patch_notebooklm_rpc_size_limit()
 
 
 class QueryTimeoutError(TimeoutError):
