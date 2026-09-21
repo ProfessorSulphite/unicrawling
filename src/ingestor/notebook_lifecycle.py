@@ -58,8 +58,9 @@ def patch_notebooklm_rpc_size_limit(max_bytes: int = 200 * 1024 * 1024) -> None:
             return
 
         @functools.wraps(orig_stream)
-        async def patched_stream_post(client, url, body, headers, timeout=None, max_bytes=max_bytes):
-            return await orig_stream(client, url, body, headers, timeout=timeout, max_bytes=max_bytes)
+        async def patched_stream_post(*args, **kwargs):
+            kwargs.setdefault("max_bytes", max_bytes)
+            return await orig_stream(*args, **kwargs)
 
         patched_stream_post._is_patched = True
         notebooklm._streaming_post.stream_post_with_size_cap = patched_stream_post

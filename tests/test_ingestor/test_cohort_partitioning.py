@@ -84,3 +84,32 @@ def test_patch_notebooklm_rpc_size_limit():
     assert getattr(notebooklm._kernel.stream_post_with_size_cap, "_is_patched", False)
     assert getattr(notebooklm._streaming_post.stream_post_with_size_cap, "_is_patched", False)
 
+
+@pytest.mark.asyncio
+async def test_patch_notebooklm_kernel_post_execution():
+    """Verify that kernel.post forwards keyword-only args without TypeError."""
+    from unittest.mock import AsyncMock, MagicMock
+    import notebooklm._kernel
+
+    patch_notebooklm_rpc_size_limit(200 * 1024 * 1024)
+
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.headers = {}
+    mock_response.aiter_bytes = MagicMock(return_value=[b")]}'\n", b"123\n", b'["wrb.fr", null, "{}"]\n'].__iter__())
+
+    mock_client = MagicMock()
+    mock_client.stream = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()))
+
+    kernel = notebooklm._kernel.Kernel()
+    kernel._http_client = mock_client
+
+    # Should execute cleanly without TypeError: takes 2 positional arguments
+    await kernel.post(
+        "https://notebooklm.google.com/test",
+        headers={"content-type": "application/json"},
+        body="test_body",
+        read_timeout=30.0,
+    )
+
+
