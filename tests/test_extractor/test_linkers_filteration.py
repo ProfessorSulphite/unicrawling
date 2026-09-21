@@ -210,10 +210,17 @@ def test_a_subdomain_is_the_same_institution():
     assert is_same_institution("https://application.itu.edu.pk/", "https://itu.edu.pk")
 
 
+def test_institutional_domain_aliases_are_same_institution():
+    """mitadmissions.org and catalog.mit.edu are recognized aliases for mit.edu."""
+    assert is_same_institution("https://mitadmissions.org/apply/", "https://mit.edu")
+    assert is_same_institution("https://catalog.mit.edu/degree-programs/", "https://mit.edu")
+
+
 def test_a_third_party_domain_is_not():
     assert not is_same_institution(
         "https://collegereadiness.collegeboard.org/sat", "https://itu.edu.pk"
     )
+
 
 
 def test_off_site_links_are_dropped_from_the_harvest():

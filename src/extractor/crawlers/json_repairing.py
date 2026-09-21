@@ -225,6 +225,30 @@ def _validate_against(target_model: Any, parsed: Any) -> Any:
     return adapter.validate_python(parsed)
 
 
+_VALID_OR_INVALID_ESCAPE = re.compile(
+    r"""(
+        \\["\\/bfnrt]
+        | \\u[0-9a-fA-F]{4}
+    ) | \\(.)""",
+    re.VERBOSE
+)
+
+
+def sanitize_invalid_escapes(text: str) -> str:
+    """
+    Remove backslashes from invalid JSON escape sequences (e.g. \\$85,000, 100\\%, \\[1\\]).
+
+    Preserves standard RFC 8259 JSON escape sequences:
+    \\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t, and \\uXXXX.
+    """
+    def repl(m: re.Match) -> str:
+        if m.group(1):
+            return m.group(1)  # valid escape, keep as-is
+        return m.group(2)      # invalid escape, drop the backslash
+
+    return _VALID_OR_INVALID_ESCAPE.sub(repl, text)
+
+
 def repair_and_validate_json(raw_text: str, target_model: Any) -> Any:
     """
     Clean fences and citation markers, balance brackets, parse, and validate.
@@ -238,15 +262,21 @@ def repair_and_validate_json(raw_text: str, target_model: Any) -> Any:
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError:
-        # Trailing commas are the single most common LLM JSON defect.
+        # Trailing commas and invalid backslash escapes (e.g. \$85,000) are common LLM JSON defects.
         repaired = _TRAILING_COMMA_REGEX.sub(r"\1", cleaned)
         try:
             parsed = json.loads(repaired)
             log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="stripped_trailing_commas")
-        except json.JSONDecodeError as e:
-            raise ExtractionError(f"Unparseable JSON ({e}); cleaned prefix: {cleaned[:200]!r}") from e
+        except json.JSONDecodeError:
+            repaired_escapes = sanitize_invalid_escapes(repaired)
+            try:
+                parsed = json.loads(repaired_escapes)
+                log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="sanitized_invalid_escapes")
+            except json.JSONDecodeError as e:
+                raise ExtractionError(f"Unparseable JSON ({e}); cleaned prefix: {cleaned[:200]!r}") from e
 
     try:
         return _validate_against(target_model, parsed)
     except ValidationError as e:
         raise ExtractionError(f"Schema validation failed: {e}") from e
+

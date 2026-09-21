@@ -130,3 +130,18 @@ async def test_live_jev_duplicate_entity_alignment():
 
     # Electrical vs Electronic -> Duplicate should be False
     assert await are_duplicate_degree_variants_jev(item_ee, item_electr) is False
+
+
+def test_are_potential_duplicates_heuristic():
+    from src.extractor.linkers.deduplication import are_potential_duplicates
+    # Direct overlap
+    assert are_potential_duplicates({"computer", "engineering"}, {"software", "engineering"}) is True
+    # Acronym match
+    assert are_potential_duplicates({"cs"}, {"computer", "science"}) is True
+    assert are_potential_duplicates({"ai"}, {"artificial", "intelligence"}) is True
+    # Abbreviation / prefix match
+    assert are_potential_duplicates({"bio"}, {"biological", "engineering"}) is True
+    # Completely distinct (no false positives)
+    assert are_potential_duplicates({"law"}, {"electrical", "engineering"}) is False
+    assert are_potential_duplicates({"biology"}, {"chemistry"}) is False
+

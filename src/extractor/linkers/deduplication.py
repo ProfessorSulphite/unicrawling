@@ -8,6 +8,7 @@ caller -- and keeping it beside its caller is what breaks the import cycle the
 plan's original assignment would have created.
 """
 
+import asyncio
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 
@@ -16,7 +17,37 @@ from src.extractor.linkers.filteration import _tokenize_path
 from src.utilities.typesafe_client import evaluate_noul, is_typesafe_available
 
 
+def are_potential_duplicates(set_a: set, set_b: set) -> bool:
+    """Heuristic to identify candidate duplicate pairs worth verifying with Jev Noul."""
+    if not set_a or not set_b:
+        return False
+    # Direct overlap in discipline tokens (e.g. computer-engineering vs software-engineering)
+    if set_a & set_b:
+        return True
+    # Abbreviation / prefix match (e.g. bio vs biological, stats vs statistics)
+    for t_a in set_a:
+        for t_b in set_b:
+            if len(t_a) >= 3 and len(t_b) >= 3:
+                if (
+                    t_a.startswith(t_b)
+                    or t_b.startswith(t_a)
+                    or (len(t_a) >= 4 and len(t_b) >= 4 and t_a[:4] == t_b[:4])
+                ):
+                    return True
+    # Acronym match (e.g. cs vs computer-science, ee vs electrical-engineering)
+    def _check_acronym(short_set: set, long_set: set) -> bool:
+        for short in short_set:
+            if 2 <= len(short) <= 4:
+                initials = "".join(w[0] for w in sorted(long_set))
+                if all(c in initials for c in short):
+                    return True
+        return False
+
+    return _check_acronym(set_a, set_b) or _check_acronym(set_b, set_a)
+
+
 def get_discipline_tokens(url: str, text: str = "") -> Tuple[str, Tuple[str, ...]]:
+
     """
     Build an exact deduplication key: (degree_level, sorted discipline tokens).
 
@@ -110,40 +141,52 @@ async def deduplicate_canonical_degree_links_async(scored_results: List[Dict[str
 
     # Phase 2: Jev Noul Ambiguity Alignment (Tier B)
     if is_typesafe_available() and len(deduped_candidates) > 1:
-        merged_candidates: List[Dict[str, str]] = []
-        skip_indices = set()
+        # 1. Identify candidate duplicate pairs with matching tier, level, and discipline potential
+        candidate_pairs: List[Tuple[int, int, Dict[str, str], Dict[str, str]]] = []
+        tokens_by_idx = [
+            get_discipline_tokens(item["href"], item.get("text", ""))
+            for item in deduped_candidates
+        ]
 
-        for i, item_a in enumerate(deduped_candidates):
-            if i in skip_indices:
-                continue
-            survivor = item_a
-            level_a, disc_a = get_discipline_tokens(item_a["href"], item_a.get("text", ""))
+        for i in range(len(deduped_candidates)):
+            level_a, disc_a = tokens_by_idx[i]
             set_a = set(disc_a)
+            tier_a = deduped_candidates[i]["priority_tier_num"]
 
             for j in range(i + 1, len(deduped_candidates)):
-                if j in skip_indices:
+                if deduped_candidates[j]["priority_tier_num"] != tier_a:
                     continue
-                item_b = deduped_candidates[j]
-                if item_b["priority_tier_num"] != survivor["priority_tier_num"]:
-                    continue
-                level_b, disc_b = get_discipline_tokens(item_b["href"], item_b.get("text", ""))
+                level_b, disc_b = tokens_by_idx[j]
                 if level_a != level_b:
                     continue
 
                 set_b = set(disc_b)
-                # Check for ambiguity: shared tokens or short acronyms (e.g. 'cs' vs 'computer', 'science')
-                has_overlap = bool(set_a & set_b)
-                has_short_token = any(len(t) <= 3 for t in (set_a | set_b))
-                if has_overlap or has_short_token:
-                    is_duplicate = await are_duplicate_degree_variants_jev(survivor, item_b)
-                    if is_duplicate:
-                        logger.debug(f"Jev aligned duplicate degree variants: '{survivor['href']}' and '{item_b['href']}'")
-                        skip_indices.add(j)
-                        if item_b["weighted_score"] > survivor["weighted_score"]:
-                            survivor = item_b
+                if are_potential_duplicates(set_a, set_b):
+                    candidate_pairs.append((i, j, deduped_candidates[i], deduped_candidates[j]))
 
-            merged_candidates.append(survivor)
-        deduped_candidates = merged_candidates
+        # 2. Evaluate all candidate pairs concurrently with Jev Noul
+        if candidate_pairs:
+            logger.debug(f"Evaluating {len(candidate_pairs)} candidate duplicate degree pairs concurrently with Jev Noul...")
+            eval_results = await asyncio.gather(
+                *(are_duplicate_degree_variants_jev(p[2], p[3]) for p in candidate_pairs),
+                return_exceptions=True,
+            )
+
+            drop_indices = set()
+            for (i, j, item_a, item_b), is_dup in zip(candidate_pairs, eval_results):
+                if is_dup is True:
+                    logger.debug(f"Jev aligned duplicate degree variants: '{item_a['href']}' and '{item_b['href']}'")
+                    # Drop the lower-scoring variant
+                    if item_a["weighted_score"] >= item_b["weighted_score"]:
+                        drop_indices.add(j)
+                    else:
+                        drop_indices.add(i)
+
+            deduped_candidates = [
+                item for idx, item in enumerate(deduped_candidates)
+                if idx not in drop_indices
+            ]
+
 
     final_deduped = passthrough + deduped_candidates
     final_deduped.sort(key=lambda x: (x["priority_tier_num"], -x["weighted_score"]))

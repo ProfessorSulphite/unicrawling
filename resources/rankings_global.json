@@ -249,6 +249,74 @@
       "country": "Pakistan",
       "aliases": [],
       "rankings": []
+    },
+    "mit.edu": {
+      "name": "Massachusetts Institute of Technology",
+      "abbreviation": "MIT",
+      "country": "USA",
+      "city": "Cambridge",
+      "type": "private",
+      "established_year": 1861,
+      "accreditation_body": "New England Commission of Higher Education (NECHE)",
+      "aliases": [
+        "mitadmissions.org",
+        "web.mit.edu",
+        "catalog.mit.edu"
+      ],
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 1,
+          "source_url": "https://www.topuniversities.com/universities/massachusetts-institute-technology-mit"
+        }
+      ]
+    },
+    "harvard.edu": {
+      "name": "Harvard University",
+      "abbreviation": "Harvard",
+      "country": "USA",
+      "city": "Cambridge",
+      "type": "private",
+      "established_year": 1636,
+      "accreditation_body": "New England Commission of Higher Education (NECHE)",
+      "aliases": [
+        "college.harvard.edu"
+      ],
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 4,
+          "source_url": "https://www.topuniversities.com/universities/harvard-university"
+        }
+      ]
+    },
+    "stanford.edu": {
+      "name": "Stanford University",
+      "abbreviation": "Stanford",
+      "country": "USA",
+      "city": "Stanford",
+      "type": "private",
+      "established_year": 1885,
+      "accreditation_body": "WASC Senior College and University Commission (WSCUC)",
+      "aliases": [
+        "admission.stanford.edu"
+      ],
+      "rankings": [
+        {
+          "source": "QS World University Rankings",
+          "scope": "Global",
+          "subject": "Overall",
+          "year": 2026,
+          "rank": 6,
+          "source_url": "https://www.topuniversities.com/universities/stanford-university"
+        }
+      ]
     }
   }
 }

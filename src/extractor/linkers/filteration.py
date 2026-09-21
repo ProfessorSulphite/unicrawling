@@ -230,8 +230,9 @@ def is_same_institution(url: str, base_url: str) -> bool:
     Whether `url` belongs to the institution `base_url` identifies.
 
     Subdomains count: application.itu.edu.pk is ITU's application portal and the
-    schema has a field for exactly that. Anything else does not, however
-    plausible the anchor text.
+    schema has a field for exactly that. Institutional domain aliases defined in
+    resources/rankings_global.json (e.g. mitadmissions.org for mit.edu) are also
+    recognized as belonging to the same institution.
     """
     if not base_url:
         return True
@@ -239,7 +240,27 @@ def is_same_institution(url: str, base_url: str) -> bool:
     if not base:
         return True
     host = registrable_domain(urlparse(url).netloc)
-    return bool(host) and host == base
+    if not host:
+        return False
+    if host == base:
+        return True
+
+    # Check institutional domain aliases from registry
+    try:
+        from src.utilities.registry import lookup
+        entry = lookup(base)
+        if entry:
+            aliases = {registrable_domain(a) for a in entry.get("aliases", [])}
+            if host in aliases:
+                return True
+            website = entry.get("website")
+            if website and host == registrable_domain(urlparse(website).netloc):
+                return True
+    except Exception:
+        pass
+
+    return False
+
 
 
 def preprocess_and_filter_links(

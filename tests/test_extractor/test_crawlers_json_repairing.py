@@ -96,3 +96,30 @@ def test_json_repair_raises_on_unrecoverable_input():
 def test_strip_citation_markers_leaves_structure_intact():
     src = '{"a": "x [1]", "b": [1, 2, 3]}'
     assert json.loads(strip_citation_markers(src)) == {"a": "x", "b": [1, 2, 3]}
+
+
+def test_json_repair_sanitizes_invalid_escapes_dollar_and_markdown():
+    """
+    NotebookLM outputs LaTeX/Markdown escapes like \\$85,000, 100\\%, or \\[citations\\].
+    Standard json.loads fails with 'Invalid \\escape'. Repair must sanitize them while
+    preserving valid JSON escapes (\\n, \\t, \\", \\\\, \\uXXXX).
+    """
+    raw = r"""[
+      {
+        "name": "Master in Finance",
+        "degree_level": "masters",
+        "tuition_fee": "\$85,000",
+        "currency": "USD",
+        "description": "Comprehensive finance curriculum covering 100\% quantitative modeling \[1, 2\].\nSecond line with \t tab.",
+        "eligibility_requirements": {"minimum_marks_percentage": "60\%", "entry_tests_accepted": []}
+      }
+    ]"""
+    programs = repair_and_validate_json(raw, List[ProgramItem])
+    assert len(programs) == 1
+    p = programs[0]
+    assert p.name == "Master in Finance"
+    assert p.tuition_fee == "$85,000"
+    assert p.currency == "USD"
+    assert "100%" in p.description
+    assert "\nSecond line with \t tab." in p.description
+
