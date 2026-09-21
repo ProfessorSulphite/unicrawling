@@ -13,7 +13,7 @@ import json
 import logging
 
 from notebooklm import NotebookLMClient
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.config import config
 from src.utilities.registry import load_registry, lookup as registry_lookup
@@ -150,9 +150,11 @@ async def extract_university_payload(
     source_ids_by_tier: Optional[Dict[int, List[str]]] = None,
     tier1_source_count: int = 0,
     report: Optional[ExtractionReport] = None,
+    query_keys: Optional[Sequence[str]] = None,
+    accumulated_results: Optional[Dict[str, Any]] = None,
 ) -> Tuple[UniversityPayload, ExtractionReport]:
     """
-    Execute the 5-query suite and assemble a validated UniversityPayload.
+    Execute the query suite (or a targeted subset) and assemble a validated UniversityPayload.
 
     This function NEVER deletes the notebook. Deletion is a separate, explicit
     call made by the orchestrator only after the payload validates and has been
@@ -180,44 +182,29 @@ async def extract_university_payload(
             ids.extend(source_ids_by_tier.get(tier, []))
         return ids or None
 
-    # The suite runs SERIALLY, one ask at a time against this notebook. This is a
-    # correctness requirement, not a throughput choice.
-    #
-    # Concurrent asks against one notebook return each other's answers. Observed
-    # on a live ITU run (notebook 029c9450, 2026-09-03): the `bachelors` ask was
-    # in flight from 10:38:21 to 10:43:35 and the `phd` ask from 10:41:15 to
-    # 10:46:00; both returned byte-identical 4617-byte payloads, and the content
-    # was the PhD programmes. The bachelors bucket in that payload is equal to
-    # the phd bucket element for element. Two different prompts, one answer.
-    #
-    # The mechanism is last-write-wins on the conversation: an unkeyed
-    # chat.ask() polls the notebook for its newest turn, so an ask still waiting
-    # when a later ask's turn lands reads that turn instead of its own. The SDK's
-    # per-notebook lock guards conversation *creation*, not answer routing, so it
-    # does not prevent this.
-    #
-    # This is the worst failure shape available: no exception, no empty block, a
-    # full and plausible answer filed under the wrong degree level. It has been
-    # live since 4d531f0 and cost nothing in wall time to have -- the previous
-    # comment here recorded, correctly, that concurrency was already not reducing
-    # wall time against a single notebook. It was pure downside.
-    #
-    # The real parallelism available is across *notebooks*, where no conversation
-    # is shared. That stays open; config.query_concurrency now governs it and is
-    # deliberately not read here.
-    results: Dict[str, Any] = {}
-    for spec in QUERY_SUITE:
-        # Each query accumulates into its own sub-report, merged back in
-        # QUERY_SUITE order so identical inputs produce identical reports.
+    results: Dict[str, Any] = dict(accumulated_results or {})
+    target_suite = (
+        [s for s in QUERY_SUITE if s.key in set(query_keys)]
+        if query_keys is not None
+        else QUERY_SUITE
+    )
+
+    for spec in target_suite:
         sub = ExtractionReport()
         try:
-            results[spec.key] = await run_query(client, notebook_id, spec, ids_for(spec), sub)
+            query_res = await run_query(client, notebook_id, spec, ids_for(spec), sub)
+            if spec.key in PROGRAM_QUERY_KEYS and spec.key in results:
+                existing = results[spec.key] or []
+                new_items = query_res or []
+                existing_names = {p.name.lower().strip() for p in existing if hasattr(p, "name")}
+                for p in new_items:
+                    if hasattr(p, "name") and p.name.lower().strip() not in existing_names:
+                        existing.append(p)
+                        existing_names.add(p.name.lower().strip())
+                results[spec.key] = existing
+            else:
+                results[spec.key] = query_res
         except BaseException:
-            # A cancellation lands mid-spec, and without this the asks that spec
-            # had already issued are absent from `report.queries_used` -- so the
-            # orchestrator's refund would credit back queries that were spent.
-            # `_attempt_query` swallows ordinary Exceptions, so in practice this
-            # is the CancelledError path: the watchdog, or a Ctrl-C.
             report.merge(sub)
             raise
         report.merge(sub)

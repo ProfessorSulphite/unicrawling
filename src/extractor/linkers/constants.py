@@ -147,7 +147,8 @@ TIER1_PROGRAM_KEYWORDS = [
     "undergraduate degree programs", "postgraduate master phd programs 2026",
     "bs computer science software engineering", "bachelor of science business administration",
     "ms data science artificial intelligence 2026", "phd computer science electrical engineering",
-    "degree requirements majors curriculum", "department course list syllabus"
+    "degree requirements majors curriculum", "department course list syllabus",
+    "undergraduate degree charts majors programs",
 ]
 
 # Priority Tier 2: Fees, Admissions, Eligibility & Portals
@@ -241,6 +242,7 @@ DEGREE_LEVEL_TOKENS = {
     "bachelors": {
         "bs", "bsc", "bsce", "bscs", "bachelor", "bachelors", "be", "bba",
         "ba", "bfa", "bed", "bds", "mbbs", "pharmd", "llb", "undergraduate", "ug",
+        "sb", "major", "majors", "degree-charts",
     },
     "masters": {
         "ms", "msc", "mba", "mphil", "ma", "me", "mfa", "med", "llm",

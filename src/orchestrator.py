@@ -48,7 +48,7 @@ from rich.panel import Panel  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
 from src.config import config  # noqa: E402
-from src.extractor.crawlers.notebook_querying import ExtractionReport  # noqa: E402
+from src.extractor.crawlers.notebook_querying import ExtractionReport, Q1Payload  # noqa: E402
 from src.extractor.crawlers.runner import (  # noqa: E402
     delete_notebook_after_success,
     extract_university_payload,
@@ -56,8 +56,13 @@ from src.extractor.crawlers.runner import (  # noqa: E402
 from src.extractor.linkers.crawling import close_shared_crawler  # noqa: E402
 from src.extractor.linkers.runner import run_pipeline as run_link_extractor  # noqa: E402
 from src.extractor.normalizers.runner import load_global_registry  # noqa: E402
+from src.ingestor.cohort_partitioning import partition_links_into_cohorts  # noqa: E402
 from src.ingestor.http_client import close_http_client  # noqa: E402
-from src.ingestor.source_management import ingest_university_sources  # noqa: E402
+from src.ingestor.source_management import (  # noqa: E402
+    evict_sources,
+    ingest_university_sources,
+    upload_cohort_sources,
+)
 from src.inspector.analytics import audit_analytics, generate_result_analytics  # noqa: E402
 from src.inspector.formatting import console  # noqa: E402
 from src.inspector.sync import export_dataset  # noqa: E402
@@ -245,159 +250,271 @@ async def _run_master_pipeline(
         return PipelineOutcome("failed", error_msg)
 
     # --------------------------------------------------------------------------
-    # PHASE 2: NOTEBOOKLM INGESTION
+    # PHASE 2: NOTEBOOKLM INGESTION & PHASE 3 EXTRACTION
     # --------------------------------------------------------------------------
-    print(f"\n📌 [PHASE 2] Ingesting Sources into NotebookLM...")
+    cohorts = partition_links_into_cohorts(links_list, cohort_cap=250)
 
-    try:
-        async with _resilient_notebooklm_client() as client:
-            ingest_res = await ingest_university_sources(
-                uni_slug=uni_slug,
-                uni_name=uni_name,
-                links=links_list,
-                client=client,
-            )
-            # The pre-flight health check can refuse the batch before any
-            # notebook or query budget is spent. That is a skip, not a crash:
-            # record it and move to the next university.
-            if ingest_res.skipped:
-                error_msg = f"Phase 2 skipped: {ingest_res.skip_reason}."
-                state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
-                print(f"⏭️  [PHASE 2 SKIPPED] {error_msg}")
-                return PipelineOutcome("skipped", error_msg)
+    if len(cohorts) > 1:
+        print(f"\n📌 [PHASE 2 & 3: STAGED COHORT INGESTION] Partitioned {len(links_list)} links into {len(cohorts)} degree cohorts:")
+        for c in cohorts:
+            print(f"  └─ Cohort [{c.name}]: {c.source_count} sources -> queries: {c.query_keys}")
 
-            notebook_id = ingest_res.notebook_id
-            ingested_count = ingest_res.ingested_count
-            print(
-                f"✓ [PHASE 2 COMPLETE] Provisioned Notebook ID: {notebook_id} "
-                f"({ingested_count} uploaded, {ingest_res.ready_count} ready)."
-            )
-            state_mgr.set_status(
-                uni_slug,
-                "ingested",
-                notebook_id=notebook_id,
-                sources_ingested=ingested_count,
-            )
+        try:
+            async with _resilient_notebooklm_client() as client:
+                title = f"{uni_name}_Counseling_DB"
+                notebook = await client.notebooks.create(title=title)
+                notebook_id = notebook.id
+                print(f"✓ Provisioned Staged Notebook ID: {notebook_id}")
+                state_mgr.set_status(uni_slug, "ingested", notebook_id=notebook_id, sources_ingested=len(links_list))
 
-            # Persist url -> source_id -> tier so Phase 3 can scope its queries.
-            # Cleared first: a previous run's notebook is deleted on success, so
-            # its source_ids are dead and must not survive into this run's scope.
-            if ingest_res.sources:
-                state_mgr.clear_sources(uni_slug)
-                state_mgr.record_sources(
-                    uni_slug,
-                    ((s.source_id, s.url, s.tier) for s in ingest_res.sources),
-                )
+                state_mgr.reserve_queries(uni_slug, config.queries_per_university)
+                reserved = config.queries_per_university
+                report = ExtractionReport()
+                accumulated_results: Dict[str, Any] = {}
+                payload = None
 
-            # ------------------------------------------------------------------
-            # PHASE 3: SCHEMA EXTRACTION & EXA FALLBACK
-            # ------------------------------------------------------------------
-            print(
-                f"\n📌 [PHASE 3] Executing {config.queries_per_university}-Query "
-                f"Schema Extraction & Exa Fallback..."
-            )
-
-            # Reserve the whole suite against today's budget BEFORE issuing any
-            # query. The suite itself is serial (see config.query_concurrency --
-            # concurrent unkeyed asks share a conversation and return each
-            # other's answers), but universities are not: reserving up front is
-            # what stops a run walking into the 500/day ceiling mid-suite and
-            # leaving a notebook ingested but never extracted.
-            state_mgr.reserve_queries(uni_slug, config.queries_per_university)
-            reserved = config.queries_per_university
-
-            # Owned here, not inside the extractor, so that a failed extraction
-            # still reports what it spent. A report the extractor keeps privately
-            # dies with the call, and the refund below would then hand back the
-            # whole suite including the queries that really were issued.
-            report = ExtractionReport()
-            try:
-                payload, report = await extract_university_payload(
-                    client=client,
-                    notebook_id=notebook_id,
-                    uni_name=uni_name,
-                    uni_domain=uni_domain,
-                    source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
-                    tier1_source_count=ingest_res.tier_histogram().get(1, 0),
-                    report=report,
-                )
-            except BaseException:
-                # Includes CancelledError and the university watchdog's timeout.
-                # Two things are owed back here and neither was ever returned:
-                # the unspent part of the reservation, and the notebook itself.
-                # COMSATS was billed all 6 queries for the 2 it issued, and its
-                # notebook 714feb18 is still holding a workspace slot.
-                state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
-                await _release_notebook(client, state_mgr, uni_slug, notebook_id)
-                raise
-
-            # Reconcile the reservation against what the suite actually spent.
-            # Repair retries and narrowed re-asks cost real queries beyond the
-            # suite; a run that ended early spent fewer. Only the overage was
-            # ever settled, so the ledger drifted upward and the daily budget
-            # ran out earlier than the real quota did.
-            delta = report.queries_used - reserved
-            if delta > 0:
                 try:
-                    state_mgr.reserve_queries(uni_slug, delta)
-                except QuotaExceededError as qe:
-                    print(f"⚠️  [QUOTA] Retry overage exceeded the daily budget: {qe}")
-            elif delta < 0:
-                state_mgr.release_queries(uni_slug, -delta)
+                    for cohort in cohorts:
+                        print(f"\n🚀 [STAGE: {cohort.name.upper()}] Ingesting {cohort.source_count} sources into notebook...")
+                        ingest_res = await upload_cohort_sources(
+                            client=client,
+                            notebook_id=notebook_id,
+                            uni_slug=uni_slug,
+                            cohort_links=cohort.links,
+                        )
+                        print(f"  └─ Ingested {ingest_res.ingested_count} sources ({ingest_res.ready_count} ready).")
+                        source_ids_by_tier: Dict[int, List[str]] = {}
+                        for s in ingest_res.sources:
+                            source_ids_by_tier.setdefault(s.tier, []).append(s.source_id)
 
-            output_file = config.output_jsonl_path
-            append_jsonl(output_file, payload.model_dump_json())
+                        print(f"  └─ Executing queries: {cohort.query_keys}...")
+                        payload, sub_report = await extract_university_payload(
+                            client=client,
+                            notebook_id=notebook_id,
+                            uni_name=uni_name,
+                            uni_domain=uni_domain,
+                            source_ids_by_tier=source_ids_by_tier,
+                            tier1_source_count=len(source_ids_by_tier.get(1, [])),
+                            report=report,
+                            query_keys=cohort.query_keys,
+                            accumulated_results=accumulated_results,
+                        )
 
-            config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
-            uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
-            atomic_write_json(uni_json_path, payload.model_dump())
+                        if "main_info_contact" in cohort.query_keys and payload:
+                            accumulated_results["main_info_contact"] = Q1Payload(main_info=payload.main_info, contact=payload.contact)
+                        for qk in cohort.query_keys:
+                            if payload and hasattr(payload.programs, qk):
+                                accumulated_results[qk] = getattr(payload.programs, qk)
+                        if "faculties" in cohort.query_keys and payload:
+                            accumulated_results["faculties"] = payload.faculties
 
-            print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
-            print(f"  └─ JSONL  : {output_file}")
-            print(f"  └─ Slug   : {uni_json_path}")
+                        if cohort.evict_degree_sources:
+                            degree_sids = [s.source_id for s in ingest_res.sources if s.tier == 1]
+                            if degree_sids:
+                                print(f"  └─ Evicting {len(degree_sids)} completed degree sources...")
+                                await evict_sources(client, notebook_id, degree_sids)
 
-            # A query block that failed every retry does not fail the pipeline --
-            # the other five blocks are still real data worth keeping -- but it
-            # must not vanish silently either. Before this, `report.failed` was
-            # only ever printed to stdout: nothing captured it, `set_status`
-            # always wrote a bare "completed", and the run log recorded no
-            # error. A university could ship with an entire degree-level bucket
-            # empty from a transient API failure and nothing downstream -- not
-            # `cli.py state`, not the run manifest, not the payload itself --
-            # could distinguish that from "this university genuinely offers
-            # none". Persisting it here is what let ITU's missing bachelors
-            # bucket (query failed silently, 2026-09-03) go unnoticed.
-            partial_note = (
-                f"Partial extraction: {len(report.failed)} query block(s) failed "
-                f"after retries: {sorted(report.failed)}"
-                if not report.ok else None
-            )
-            # 'partial', not 'completed'. get_completed_slugs() drives what a
-            # resumed batch skips, so writing "completed" here meant one
-            # transient API failure cost a degree level permanently: the next
-            # run saw a completed university and never asked again.
-            state_mgr.set_status(
-                uni_slug,
-                PARTIAL_EXTRACTION if partial_note else "completed",
-                notebook_id=notebook_id,
-                queries_executed=report.queries_used,
-                error_log=partial_note,
-            )
-            if partial_note:
-                print(f"⚠️  [PHASE 3] {partial_note}")
+                except BaseException:
+                    state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
+                    await _release_notebook(client, state_mgr, uni_slug, notebook_id)
+                    raise
 
-            # Free the notebook workspace slot now that the payload is durable
-            # and the terminal status is written. The id stays on the row on
-            # purpose -- it is the only thing tying this university to its
-            # loggings/notebook_logs/<id>.json audit document, and the reaper
-            # never looks at rows in a terminal status.
-            await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
+                delta = report.queries_used - reserved
+                if delta > 0:
+                    try:
+                        state_mgr.reserve_queries(uni_slug, delta)
+                    except QuotaExceededError as qe:
+                        print(f"⚠️  [QUOTA] Retry overage exceeded the daily budget: {qe}")
+                elif delta < 0:
+                    state_mgr.release_queries(uni_slug, -delta)
 
-    except Exception as e:
-        error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
-        print(f"❌ [PIPELINE ERROR] {error_msg}")
-        state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
-        raise e
+                output_file = config.output_jsonl_path
+                append_jsonl(output_file, payload.model_dump_json())
+
+                config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+                uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+                atomic_write_json(uni_json_path, payload.model_dump())
+
+                print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
+                print(f"  └─ JSONL  : {output_file}")
+                print(f"  └─ Slug   : {uni_json_path}")
+
+                partial_note = (
+                    f"Partial extraction: {len(report.failed)} query block(s) failed "
+                    f"after retries: {sorted(report.failed)}"
+                    if not report.ok else None
+                )
+                state_mgr.set_status(
+                    uni_slug,
+                    PARTIAL_EXTRACTION if partial_note else "completed",
+                    notebook_id=notebook_id,
+                    queries_executed=report.queries_used,
+                    error_log=partial_note,
+                )
+                if partial_note:
+                    print(f"⚠️  [PHASE 3] {partial_note}")
+
+                await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
+
+        except Exception as e:
+            error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
+            print(f"❌ [PIPELINE ERROR] {error_msg}")
+            state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+            raise e
+
+    else:
+        # Standard Single-Pass Execution (<= 300 links)
+        print(f"\n📌 [PHASE 2] Ingesting Sources into NotebookLM...")
+
+        try:
+            async with _resilient_notebooklm_client() as client:
+                ingest_res = await ingest_university_sources(
+                    uni_slug=uni_slug,
+                    uni_name=uni_name,
+                    links=links_list,
+                    client=client,
+                )
+                # The pre-flight health check can refuse the batch before any
+                # notebook or query budget is spent. That is a skip, not a crash:
+                # record it and move to the next university.
+                if ingest_res.skipped:
+                    error_msg = f"Phase 2 skipped: {ingest_res.skip_reason}."
+                    state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+                    print(f"⏭️  [PHASE 2 SKIPPED] {error_msg}")
+                    return PipelineOutcome("skipped", error_msg)
+
+                notebook_id = ingest_res.notebook_id
+                ingested_count = ingest_res.ingested_count
+                print(
+                    f"✓ [PHASE 2 COMPLETE] Provisioned Notebook ID: {notebook_id} "
+                    f"({ingested_count} uploaded, {ingest_res.ready_count} ready)."
+                )
+                state_mgr.set_status(
+                    uni_slug,
+                    "ingested",
+                    notebook_id=notebook_id,
+                    sources_ingested=ingested_count,
+                )
+
+                # Persist url -> source_id -> tier so Phase 3 can scope its queries.
+                # Cleared first: a previous run's notebook is deleted on success, so
+                # its source_ids are dead and must not survive into this run's scope.
+                if ingest_res.sources:
+                    state_mgr.clear_sources(uni_slug)
+                    state_mgr.record_sources(
+                        uni_slug,
+                        ((s.source_id, s.url, s.tier) for s in ingest_res.sources),
+                    )
+
+                # ------------------------------------------------------------------
+                # PHASE 3: SCHEMA EXTRACTION & EXA FALLBACK
+                # ------------------------------------------------------------------
+                print(
+                    f"\n📌 [PHASE 3] Executing {config.queries_per_university}-Query "
+                    f"Schema Extraction & Exa Fallback..."
+                )
+
+                # Reserve the whole suite against today's budget BEFORE issuing any
+                # query. The suite itself is serial (see config.query_concurrency --
+                # concurrent unkeyed asks share a conversation and return each
+                # other's answers), but universities are not: reserving up front is
+                # what stops a run walking into the 500/day ceiling mid-suite and
+                # leaving a notebook ingested but never extracted.
+                state_mgr.reserve_queries(uni_slug, config.queries_per_university)
+                reserved = config.queries_per_university
+
+                # Owned here, not inside the extractor, so that a failed extraction
+                # still reports what it spent. A report the extractor keeps privately
+                # dies with the call, and the refund below would then hand back the
+                # whole suite including the queries that really were issued.
+                report = ExtractionReport()
+                try:
+                    payload, report = await extract_university_payload(
+                        client=client,
+                        notebook_id=notebook_id,
+                        uni_name=uni_name,
+                        uni_domain=uni_domain,
+                        source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
+                        tier1_source_count=ingest_res.tier_histogram().get(1, 0),
+                        report=report,
+                    )
+                except BaseException:
+                    # Includes CancelledError and the university watchdog's timeout.
+                    # Two things are owed back here and neither was ever returned:
+                    # the unspent part of the reservation, and the notebook itself.
+                    # COMSATS was billed all 6 queries for the 2 it issued, and its
+                    # notebook 714feb18 is still holding a workspace slot.
+                    state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
+                    await _release_notebook(client, state_mgr, uni_slug, notebook_id)
+                    raise
+
+                # Reconcile the reservation against what the suite actually spent.
+                # Repair retries and narrowed re-asks cost real queries beyond the
+                # suite; a run that ended early spent fewer. Only the overage was
+                # ever settled, so the ledger drifted upward and the daily budget
+                # ran out earlier than the real quota did.
+                delta = report.queries_used - reserved
+                if delta > 0:
+                    try:
+                        state_mgr.reserve_queries(uni_slug, delta)
+                    except QuotaExceededError as qe:
+                        print(f"⚠️  [QUOTA] Retry overage exceeded the daily budget: {qe}")
+                elif delta < 0:
+                    state_mgr.release_queries(uni_slug, -delta)
+
+                output_file = config.output_jsonl_path
+                append_jsonl(output_file, payload.model_dump_json())
+
+                config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+                uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+                atomic_write_json(uni_json_path, payload.model_dump())
+
+                print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
+                print(f"  └─ JSONL  : {output_file}")
+                print(f"  └─ Slug   : {uni_json_path}")
+
+                # A query block that failed every retry does not fail the pipeline --
+                # the other five blocks are still real data worth keeping -- but it
+                # must not vanish silently either. Before this, `report.failed` was
+                # only ever printed to stdout: nothing captured it, `set_status`
+                # always wrote a bare "completed", and the run log recorded no
+                # error. A university could ship with an entire degree-level bucket
+                # empty from a transient API failure and nothing downstream -- not
+                # `cli.py state`, not the run manifest, not the payload itself --
+                # could distinguish that from "this university genuinely offers
+                # none". Persisting it here is what let ITU's missing bachelors
+                # bucket (query failed silently, 2026-09-03) go unnoticed.
+                partial_note = (
+                    f"Partial extraction: {len(report.failed)} query block(s) failed "
+                    f"after retries: {sorted(report.failed)}"
+                    if not report.ok else None
+                )
+                # 'partial', not 'completed'. get_completed_slugs() drives what a
+                # resumed batch skips, so writing "completed" here meant one
+                # transient API failure cost a degree level permanently: the next
+                # run saw a completed university and never asked again.
+                state_mgr.set_status(
+                    uni_slug,
+                    PARTIAL_EXTRACTION if partial_note else "completed",
+                    notebook_id=notebook_id,
+                    queries_executed=report.queries_used,
+                    error_log=partial_note,
+                )
+                if partial_note:
+                    print(f"⚠️  [PHASE 3] {partial_note}")
+
+                # Free the notebook workspace slot now that the payload is durable
+                # and the terminal status is written. The id stays on the row on
+                # purpose -- it is the only thing tying this university to its
+                # loggings/notebook_logs/<id>.json audit document, and the reaper
+                # never looks at rows in a terminal status.
+                await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
+
+        except Exception as e:
+            error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
+            print(f"❌ [PIPELINE ERROR] {error_msg}")
+            state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+            raise e
 
     # --------------------------------------------------------------------------
     # PHASE 4: INSPECTION & DATA HEALTH AUDIT

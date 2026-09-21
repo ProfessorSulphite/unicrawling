@@ -307,6 +307,6 @@ async def crawl_department_hubs(
         except Exception as e:
             logger.warning(f"Departmental micro-crawl for {hub_url} failed or yielded 0 links: {e}. Skipping hub.")
 
-    logger.info(f"Departmental fan-out complete: harvested {len(all_dept_links)} links across {len(hub_urls)} academic hubs.")
+    logger.info(f"Departmental fan-out complete: harvested {len(all_dept_links)} links across {len(target_hubs)} academic hubs.")
     return all_dept_links
 

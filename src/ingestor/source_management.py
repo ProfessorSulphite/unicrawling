@@ -409,3 +409,88 @@ async def ingest_university_sources(
         result.ready_count = 0
 
     return result
+
+
+async def upload_cohort_sources(
+    client: NotebookLMClient,
+    notebook_id: str,
+    uni_slug: str,
+    cohort_links: List[Dict[str, Any]],
+) -> IngestResult:
+    """Upload sources for one cohort into an existing notebook and wait for readiness."""
+    result = IngestResult(notebook_id=notebook_id)
+    sem = asyncio.Semaphore(config.concurrent_uploads)
+
+    async def _upload(url: str, tier: int) -> Optional[IngestedSource]:
+        async with sem:
+            last_error: Optional[Exception] = None
+            t0 = asyncio.get_event_loop().time()
+            clean_url_str = sanitize_url(url)
+            try:
+                src = await client.sources.add_url(notebook_id, clean_url_str)
+                sid = _extract_id(src)
+                if sid:
+                    dur = asyncio.get_event_loop().time() - t0
+                    log_source_uploaded(notebook_id, sid, clean_url_str, status="ready", duration_sec=dur, uni_slug=uni_slug)
+                    return IngestedSource(source_id=sid, url=clean_url_str, tier=tier)
+                last_error = RuntimeError("add_url returned no source id")
+            except Exception as e:
+                last_error = e
+
+            page_title, text_content = await fetch_and_extract_text(clean_url_str)
+            if text_content:
+                try:
+                    title_name = page_title or clean_url_str
+                    src = await client.sources.add_text(notebook_id, title=title_name, content=text_content)
+                    sid = _extract_id(src)
+                    if sid:
+                        dur = asyncio.get_event_loop().time() - t0
+                        log_source_uploaded(notebook_id, sid, clean_url_str, status="ready", duration_sec=dur, uni_slug=uni_slug)
+                        return IngestedSource(source_id=sid, url=clean_url_str, tier=tier)
+                except Exception:
+                    pass
+
+            logger.warning(f"{uni_slug}: failed to upload {clean_url_str}: {last_error}")
+            return None
+
+    uploaded = await asyncio.gather(
+        *(_upload(rec["url"], rec.get("tier", 1)) for rec in cohort_links if rec.get("url"))
+    )
+
+    for rec, src in zip(cohort_links, uploaded):
+        if src is None:
+            result.failed_urls.append(rec["url"])
+        else:
+            result.sources.append(src)
+
+    if result.sources:
+        try:
+            result.ready_count = await wait_for_sources_adaptive(
+                client=client,
+                notebook_id=notebook_id,
+                source_ids=[s.source_id for s in result.sources],
+                timeout=config.source_ready_timeout_sec,
+            )
+        except Exception as e:
+            logger.warning(f"{uni_slug}: source readiness wait did not complete cleanly: {e}")
+            result.ready_count = 0
+
+    return result
+
+
+async def evict_sources(
+    client: NotebookLMClient,
+    notebook_id: str,
+    source_ids: Sequence[str],
+) -> int:
+    """Evict completed sources from a notebook to free room for next cohort."""
+    evicted = 0
+    for sid in source_ids:
+        try:
+            await client.sources.delete(notebook_id, sid)
+            evicted += 1
+        except Exception as e:
+            logger.debug(f"Failed to evict source {sid} from notebook {notebook_id}: {e}")
+    logger.info(f"Evicted {evicted}/{len(source_ids)} sources from notebook {notebook_id}.")
+    return evicted
+

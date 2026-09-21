@@ -27,4 +27,7 @@ def resolve_source_cap(max_sources: Optional[int] = None) -> int:
     cap = max_sources or config.max_sources_per_notebook
     if cap < 1:
         raise ValueError(f"source cap must be >= 1, got {cap}")
+    if cap > 300:
+        logger.warning(f"Requested source cap ({cap}) exceeds NotebookLM platform limit of 300; clamping to 300.")
+        return 300
     return cap
