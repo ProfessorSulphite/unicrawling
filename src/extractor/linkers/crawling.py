@@ -258,9 +258,12 @@ async def crawl_site_links(
 
 
 async def crawl_department_hubs(
-    hub_urls: List[str],
+    hub_urls: Optional[List[str]] = None,
     max_pages: Optional[int] = None,
     max_depth: Optional[int] = None,
+    *,
+    dept_hubs: Optional[List[str]] = None,
+    max_pages_per_hub: Optional[int] = None,
 ) -> List[Dict[str, str]]:
     """
     Execute shallow, targeted micro-crawls across detected departmental and school portals.
@@ -268,24 +271,33 @@ async def crawl_department_hubs(
     Reuses the shared headless browser pool to harvest degree and syllabus
     pages with low latency and zero process restart overhead.
     """
-    if not hub_urls:
+    target_hubs = dept_hubs if dept_hubs is not None else (hub_urls or [])
+    if not target_hubs:
         return []
 
-    max_pages = config.department_crawl_max_pages if max_pages is None else max_pages
-    max_depth = config.department_crawl_max_depth if max_depth is None else max_depth
+    effective_max_pages = (
+        max_pages_per_hub
+        if max_pages_per_hub is not None
+        else (config.department_crawl_max_pages if max_pages is None else max_pages)
+    )
+    effective_max_depth = config.department_crawl_max_depth if max_depth is None else max_depth
 
     all_dept_links: List[Dict[str, str]] = []
     seen_hrefs = set()
 
     logger.info(
-        f"Initiating targeted departmental fan-out crawls for {len(hub_urls)} academic hubs "
-        f"(max_pages={max_pages}, max_depth={max_depth})..."
+        f"Initiating targeted departmental fan-out crawls for {len(target_hubs)} academic hubs "
+        f"(max_pages={effective_max_pages}, max_depth={effective_max_depth})..."
     )
 
-    for hub_url in hub_urls:
+    for hub_url in target_hubs:
         logger.info(f"Targeted departmental micro-crawl: {hub_url}")
         try:
-            links = await crawl_site_links(start_url=hub_url, max_pages=max_pages, max_depth=max_depth)
+            links = await crawl_site_links(
+                start_url=hub_url,
+                max_pages=effective_max_pages,
+                max_depth=effective_max_depth,
+            )
             for link in links:
                 href = link.get("href", "").strip()
                 href_norm = href.rstrip("/").split("#")[0]
