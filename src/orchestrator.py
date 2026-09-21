@@ -33,8 +33,11 @@ import argparse
 import asyncio
 import json
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+
+import httpx
 
 # Kept ahead of the src imports: `python src/orchestrator.py` still has to work,
 # and run that way sys.path[0] is src/, so the `src` package is not importable yet.
@@ -101,6 +104,31 @@ def compile_master_json() -> Path:
     count = stream_compile_master_json(config.output_jsonl_path, master_path)
     print(f"  └─ Master : {master_path} ({count} records)")
     return master_path
+
+
+@asynccontextmanager
+async def _resilient_notebooklm_client(max_retries: int = 3, initial_delay: float = 2.0):
+    """
+    Acquire NotebookLMClient with retry against transient DNS and network connection drops.
+    """
+    client = None
+    delay = initial_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            client = await NotebookLMClient.from_storage().__aenter__()
+            break
+        except (httpx.ConnectError, httpx.NetworkError, TimeoutError, OSError) as e:
+            if attempt == max_retries:
+                raise
+            print(f"⚠️  [NOTEBOOKLM] Client connection attempt {attempt}/{max_retries} encountered transient error ({e}). Retrying in {delay:.1f}s...")
+            await asyncio.sleep(delay)
+            delay *= 2.0
+
+    try:
+        yield client
+    finally:
+        if client is not None:
+            await client.__aexit__(None, None, None)
 
 
 async def _release_notebook(client, state_mgr, uni_slug: str, notebook_id: str) -> None:
@@ -222,7 +250,7 @@ async def _run_master_pipeline(
     print(f"\n📌 [PHASE 2] Ingesting Sources into NotebookLM...")
 
     try:
-        async with NotebookLMClient.from_storage() as client:
+        async with _resilient_notebooklm_client() as client:
             ingest_res = await ingest_university_sources(
                 uni_slug=uni_slug,
                 uni_name=uni_name,
@@ -484,7 +512,7 @@ async def reap_orphaned_notebooks() -> int:
     )
     reaped = 0
     try:
-        async with NotebookLMClient.from_storage() as client:
+        async with _resilient_notebooklm_client() as client:
             for row in orphans:
                 slug, notebook_id = row["university_slug"], row["notebook_id"]
                 if await delete_notebook_after_success(client, notebook_id, uni_slug=slug):
