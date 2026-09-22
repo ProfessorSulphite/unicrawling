@@ -225,6 +225,9 @@ def _validate_against(target_model: Any, parsed: Any) -> Any:
     return adapter.validate_python(parsed)
 
 
+validate_against = _validate_against
+
+
 _VALID_OR_INVALID_ESCAPE = re.compile(
     r"""(
         \\["\\/bfnrt]

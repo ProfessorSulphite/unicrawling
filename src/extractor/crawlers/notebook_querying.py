@@ -13,13 +13,28 @@ from dataclasses import dataclass, field
 from notebooklm import NotebookLMClient
 from notebooklm.exceptions import RPCResponseTooLargeError
 from pydantic import BaseModel
-from typing import Any, Dict, List, Optional, Sequence, Tuple, get_origin
+from typing import Any, Dict, List, Optional, Sequence, Tuple, get_args, get_origin
 
 from src.config import config
 from src.logger.notebook_logger import log_query_executed
 from src.utilities.schema import ContactInfo, FacultyItem, MainInfo, ProgramItem
 
-from src.extractor.crawlers.json_repairing import ExtractionError, repair_and_validate_json
+from src.extractor.crawlers.json_repairing import (
+    ExtractionError,
+    repair_and_validate_json,
+    validate_against,
+)
+from src.extractor.crawlers.text_protocol import (
+    FACULTY_FIELDS,
+    IDENTITY_FIELDS,
+    PROGRAM_FIELDS,
+    RECORD_END,
+    RECORD_START,
+    FieldSpec,
+    parse_records,
+    parse_single_record,
+    render_format_contract,
+)
 from src.ingestor.notebook_lifecycle import patch_notebooklm_rpc_size_limit
 
 # Same registry entry as every other module in this package: logging.getLogger
@@ -32,6 +47,20 @@ patch_notebooklm_rpc_size_limit()
 
 class QueryTimeoutError(TimeoutError):
     """A single chat.ask exceeded config.chat_timeout_sec and was abandoned."""
+
+
+class QuotaThrottledError(RuntimeError):
+    """Raised when NotebookLM streaming terminates with 0 chunks due to usage/rate limits."""
+
+
+def is_empty_stream_throttle_error(error: BaseException) -> bool:
+    """True when NotebookLM returns 0 parseable chunks in a stream (rate limiting / usage quota)."""
+    text = str(error).lower()
+    return (
+        "no parseable chunks in streaming chat response" in text
+        or "4 lines scanned" in text
+        or "the response was empty" in text
+    )
 
 
 class Q1Payload(BaseModel):
@@ -49,6 +78,9 @@ class QuerySpec:
     prompt: str
     model: Any
     tiers: Tuple[int, ...]
+    fields: Optional[Tuple[FieldSpec, ...]] = None
+    single: bool = False
+    text_prompt: Optional[str] = None
 
 
 _JSON_CONTRACT = (
@@ -119,6 +151,25 @@ _PROGRAM_FIELD_NOTE = (
     "unstated fee is null.\n"
 )
 
+Q1_TEXT_PROMPT = (
+    "Extract the university's main information and contact details from the provided sources.\n\n"
+    + render_format_contract(IDENTITY_FIELDS, plural=False)
+)
+
+
+def _make_degree_text_prompt(level: str, keywords: str, specific_rules: str = "") -> str:
+    rules_block = f"\n{specific_rules}\n" if specific_rules else ""
+    return (
+        f"Extract ALL {level.upper()} degree programmes ({keywords}) offered by this university from the provided sources.{rules_block}\n"
+        + render_format_contract(PROGRAM_FIELDS, plural=True)
+    )
+
+
+FACULTIES_TEXT_PROMPT = (
+    "Extract all faculties, schools, and their constituent departments from the provided sources.\n\n"
+    + render_format_contract(FACULTY_FIELDS, plural=True)
+)
+
 QUERY_SUITE: List[QuerySpec] = [
     QuerySpec(
         key="main_info_contact",
@@ -126,6 +177,9 @@ QUERY_SUITE: List[QuerySpec] = [
         model=Q1Payload,
         # Admissions/fees pages (T2) carry portal links; T4 carries contact details.
         tiers=(1, 2, 3, 4),
+        fields=IDENTITY_FIELDS,
+        single=True,
+        text_prompt=Q1_TEXT_PROMPT,
     ),
     QuerySpec(
         key="bachelors",
@@ -140,6 +194,13 @@ QUERY_SUITE: List[QuerySpec] = [
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
+        fields=PROGRAM_FIELDS,
+        single=False,
+        text_prompt=_make_degree_text_prompt(
+            "bachelors",
+            "BS, BSc, BA, BBA, BE, B.Ed, BFA, MBBS, LLB, PharmD, DPT",
+            "MBBS, PharmD and DPT are bachelors-level entry programmes here; list them in this query, not the PhD one.",
+        ),
     ),
     QuerySpec(
         key="masters",
@@ -153,6 +214,13 @@ QUERY_SUITE: List[QuerySpec] = [
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
+        fields=PROGRAM_FIELDS,
+        single=False,
+        text_prompt=_make_degree_text_prompt(
+            "masters",
+            "MS, MSc, MA, MBA, MPhil, M.Ed, LLM, ME",
+            "Include MPhil programmes here. Exclude postgraduate diplomas and certificates -- those belong to the diploma query.",
+        ),
     ),
     QuerySpec(
         key="phd",
@@ -166,6 +234,13 @@ QUERY_SUITE: List[QuerySpec] = [
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
+        fields=PROGRAM_FIELDS,
+        single=False,
+        text_prompt=_make_degree_text_prompt(
+            "phd",
+            "PhD and research doctorates",
+            "Research doctorates only. Do not include post-doctoral fellowships, which are appointments rather than programmes.",
+        ),
     ),
     # Sixth query, added in C17. Postgraduate diplomas and certificates are a
     # large share of Pakistani enrolment and had no bucket at all under the old
@@ -183,6 +258,13 @@ QUERY_SUITE: List[QuerySpec] = [
         ),
         model=List[ProgramItem],
         tiers=(1, 2),
+        fields=PROGRAM_FIELDS,
+        single=False,
+        text_prompt=_make_degree_text_prompt(
+            "diploma",
+            "DIPLOMA and CERTIFICATE programmes (postgraduate diploma, PGD, advanced diploma, professional certificate)",
+            "Award-bearing programmes only. Do not list individual courses or modules that are part of a degree.",
+        ),
     ),
     QuerySpec(
         key="faculties",
@@ -194,6 +276,9 @@ QUERY_SUITE: List[QuerySpec] = [
         ),
         model=List[FacultyItem],
         tiers=(3, 1),
+        fields=FACULTY_FIELDS,
+        single=False,
+        text_prompt=FACULTIES_TEXT_PROMPT,
     ),
 ]
 
@@ -204,16 +289,23 @@ class ExtractionReport:
     succeeded: List[str] = field(default_factory=list)
     failed: Dict[str, str] = field(default_factory=dict)
     queries_used: int = 0
+    notes: List[str] = field(default_factory=list)
+    consecutive_throttle_errors: int = 0
 
     @property
     def ok(self) -> bool:
         return not self.failed
+
+    def note(self, msg: str) -> None:
+        self.notes.append(msg)
 
     def merge(self, other: "ExtractionReport") -> None:
         """Fold a per-query sub-report into this one."""
         self.succeeded.extend(other.succeeded)
         self.failed.update(other.failed)
         self.queries_used += other.queries_used
+        self.notes.extend(other.notes)
+        self.consecutive_throttle_errors = other.consecutive_throttle_errors
 
 
 async def _ask(
@@ -274,6 +366,79 @@ def is_oversized_response_error(error: BaseException) -> bool:
     return "response exceeded" in text or "responsetoolarge" in type(error).__name__.lower()
 
 
+def _item_type(model: Any) -> Any:
+    """The element type of a List[...] annotation."""
+    args = get_args(model)
+    return args[0] if args else model
+
+
+def _use_text_protocol(spec: QuerySpec) -> bool:
+    return bool(spec.fields) and getattr(config, "response_format", "text") == "text"
+
+
+def _validate_leniently(
+    item_model: Any,
+    records: Sequence[Dict[str, Any]],
+    spec_key: str,
+    report: ExtractionReport,
+) -> List[Any]:
+    """Validate records one at a time, keeping the ones that pass."""
+    valid: List[Any] = []
+    rejected = 0
+    for record in records:
+        try:
+            valid.append(validate_against(item_model, record))
+        except Exception as e:
+            rejected += 1
+            if rejected <= 3:
+                report.note(
+                    f"[{spec_key}] dropped unreadable record "
+                    f"{record.get('name') or record.get('faculty_name') or '<unnamed>'!r}: {e}"
+                )
+    if rejected > 3:
+        report.note(f"[{spec_key}] dropped {rejected} unreadable records in total.")
+    if records and not valid:
+        raise ExtractionError(
+            f"all {len(records)} parsed records failed validation for '{spec_key}'"
+        )
+    return valid
+
+
+def parse_answer(
+    raw: str,
+    spec: QuerySpec,
+    report: ExtractionReport,
+) -> Any:
+    """Parse an answer using either the delimited-text protocol or JSON repair."""
+    use_text = _use_text_protocol(spec)
+    has_text_markers = RECORD_START in raw or RECORD_END in raw
+
+    if (use_text or has_text_markers) and spec.fields:
+        if spec.single:
+            record = parse_single_record(raw, spec.fields)
+            if record:
+                try:
+                    return validate_against(spec.model, record)
+                except Exception as e:
+                    raise ExtractionError(f"schema validation failed for '{spec.key}': {e}") from e
+            elif not has_text_markers:
+                return repair_and_validate_json(raw, spec.model)
+            else:
+                raise ExtractionError(
+                    f"no parseable record in the answer for '{spec.key}' (prefix: {raw[:200]!r})"
+                )
+        else:
+            records = parse_records(raw, spec.fields)
+            if records:
+                return _validate_leniently(_item_type(spec.model), records, spec.key, report)
+            elif not has_text_markers:
+                return repair_and_validate_json(raw, spec.model)
+            else:
+                return []
+
+    return repair_and_validate_json(raw, spec.model)
+
+
 def _returns_a_list(model: Any) -> bool:
     """Whether a QuerySpec's model is List[...] rather than a single object."""
     return get_origin(model) is list
@@ -323,20 +488,30 @@ async def _attempt_query(
     immediately for an oversized response, which no amount of re-asking fixes.
     """
     last_error: Optional[Exception] = None
+    use_text = _use_text_protocol(spec)
+    default_prompt = spec.text_prompt if (use_text and spec.text_prompt) else spec.prompt
 
     for attempt in range(config.max_query_retries + 1):
         # Reset per attempt: a stale answer from an earlier attempt must not be
         # quoted back to the model as "your previous answer" after a transport
         # failure that produced none.
         raw = ""
-        prompt = spec.prompt
+        prompt = default_prompt
         if attempt > 0:
-            prompt = (
-                f"Your previous answer could not be parsed.\n"
-                f"Error: {last_error}\n"
-                f"Previous answer (truncated):\n{raw[:1500]}\n\n"
-                f"Re-emit the SAME data as strictly valid JSON only.\n\n{spec.prompt}"
-            )
+            if use_text:
+                prompt = (
+                    f"Your previous answer could not be parsed.\n"
+                    f"Error: {last_error}\n"
+                    f"Previous answer (truncated):\n{raw[:1500]}\n\n"
+                    f"Re-emit the SAME data in EXACTLY the @@RECORD..@@END format requested.\n\n{default_prompt}"
+                )
+            else:
+                prompt = (
+                    f"Your previous answer could not be parsed.\n"
+                    f"Error: {last_error}\n"
+                    f"Previous answer (truncated):\n{raw[:1500]}\n\n"
+                    f"Re-emit the SAME data as strictly valid JSON only.\n\n{spec.prompt}"
+                )
         try:
             t0 = asyncio.get_event_loop().time()
             raw = await _ask(client, notebook_id, prompt, source_ids)
@@ -350,7 +525,7 @@ async def _attempt_query(
                 response_bytes=len(raw.encode("utf-8")),
                 duration_sec=dur,
             )
-            value = repair_and_validate_json(raw, spec.model)
+            value = parse_answer(raw, spec, report)
             return value, None
         except ExtractionError as e:
             # The ask itself succeeded and was already counted above; only the
@@ -364,6 +539,11 @@ async def _attempt_query(
             if is_oversized_response_error(e):
                 # Deterministic at this scope. Stop burning attempts and let the
                 # caller narrow the question instead.
+                break
+            if is_empty_stream_throttle_error(e):
+                logger.warning(
+                    f"[{spec.key}] Empty stream response detected (usage throttle). Halting retry loop."
+                )
                 break
 
     return None, last_error
@@ -461,8 +641,23 @@ async def run_query(
             error = None
 
     if error is None and value is not None:
+        report.consecutive_throttle_errors = 0
         report.succeeded.append(spec.key)
         return value
+
+    if error is not None and is_empty_stream_throttle_error(error):
+        report.consecutive_throttle_errors += 1
+        if report.consecutive_throttle_errors >= 2:
+            logger.error(
+                f"NotebookLM empty stream rate limit / throttle detected consecutively "
+                f"({report.consecutive_throttle_errors} blocks). Tripping circuit breaker."
+            )
+            report.failed[spec.key] = str(error)
+            raise QuotaThrottledError(
+                f"NotebookLM empty stream throttle detected consecutively across query blocks: {error}"
+            )
+    else:
+        report.consecutive_throttle_errors = 0
 
     report.failed[spec.key] = str(error) if error else "query returned no value"
     return None

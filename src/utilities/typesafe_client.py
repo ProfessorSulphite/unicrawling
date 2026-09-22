@@ -30,6 +30,28 @@ except ImportError:
     TypeSafeError = Exception
 
 
+_SHARED_TYPESAFE_CLIENT: Optional[Any] = None
+
+
+def get_shared_typesafe_client() -> Optional[Any]:
+    """Return a shared persistent AsyncTypeSafeClient instance."""
+    global _SHARED_TYPESAFE_CLIENT
+    if _SHARED_TYPESAFE_CLIENT is None and _SDK_AVAILABLE and config.typesafe_api_key:
+        _SHARED_TYPESAFE_CLIENT = AsyncTypeSafeClient(api_key=config.typesafe_api_key)
+    return _SHARED_TYPESAFE_CLIENT
+
+
+async def close_shared_typesafe_client() -> None:
+    """Close the shared AsyncTypeSafeClient connection pool."""
+    global _SHARED_TYPESAFE_CLIENT
+    if _SHARED_TYPESAFE_CLIENT is not None:
+        try:
+            await _SHARED_TYPESAFE_CLIENT.aclose()
+        except Exception:
+            pass
+        _SHARED_TYPESAFE_CLIENT = None
+
+
 def is_typesafe_available() -> bool:
     """True when typesafe-sdk is installed, enabled, and has an API key configured."""
     return _SDK_AVAILABLE and config.typesafe_enabled and bool(config.typesafe_api_key)

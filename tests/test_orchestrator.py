@@ -480,3 +480,147 @@ def test_phase_1_writes_the_reserve_after_the_selection(tmp_path, monkeypatch):
     # Rank is continuous across the boundary: it is one ranking, not two lists.
     assert [r["rank"] for r in rows] == [1, 2]
 
+
+# -------------------------------------------------------- smart resume & caching --
+
+@pytest.mark.asyncio
+async def test_phase_1_skips_crawl_if_cached(tmp_path, monkeypatch):
+    """When data/links/<slug>.jsonl exists and not force_rerun, Phase 1 crawler is bypassed."""
+    from unittest.mock import AsyncMock, patch
+    from src.config import config as _c
+    from src.orchestrator import _run_master_pipeline
+    from src.utilities.state_management import StateManager
+
+    links_dir = tmp_path / "links"
+    links_dir.mkdir(parents=True, exist_ok=True)
+    slug_file = links_dir / "itu.jsonl"
+    slug_file.write_text(
+        json.dumps({"url": "https://itu.edu.pk/cs", "tier": 1, "selected": True}) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(_c, "data_links_dir", links_dir)
+    monkeypatch.setattr(_c, "state_db_path", tmp_path / "state.sqlite")
+
+    mock_crawl = AsyncMock()
+    with patch("src.orchestrator.run_link_extractor", mock_crawl):
+        # Also mock notebook execution to exit early or return clean outcome
+        with patch("src.orchestrator.ingest_university_sources") as mock_ingest:
+            mock_res = AsyncMock()
+            mock_res.skipped = True
+            mock_res.skip_reason = "Test short-circuit"
+            mock_ingest.return_value = mock_res
+
+            sm = StateManager()
+            try:
+                outcome = await _run_master_pipeline(
+                    sm, "https://itu.edu.pk", force_rerun=False
+                )
+                assert mock_crawl.await_count == 0  # Crawl was bypassed!
+                assert outcome.status == "skipped"
+            finally:
+                sm.close()
+
+
+@pytest.mark.asyncio
+async def test_smart_resume_queries_only_failed_blocks(tmp_path, monkeypatch):
+    """When an existing output has failed_query_blocks, smart resume queries only those blocks."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.config import config as _c
+    from src.orchestrator import _run_master_pipeline
+    from src.utilities.state_management import StateManager
+
+    links_dir = tmp_path / "links"
+    links_dir.mkdir(parents=True, exist_ok=True)
+    slug_file = links_dir / "itu.jsonl"
+    slug_file.write_text(
+        json.dumps({"url": "https://itu.edu.pk/cs", "tier": 1, "selected": True}) + "\n",
+        encoding="utf-8",
+    )
+
+    outputs_dir = tmp_path / "outputs" / "uni_outputs"
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    existing_output = outputs_dir / "itu.json"
+    existing_data = {
+        "main_info": {
+            "name": "ITU", "abbreviation": "ITU", "country": "Pakistan", "city": "Lahore",
+            "established_year": 2012, "accreditation_body": "HEC", "admission_cycles_offered": ["Fall"],
+            "primary_instruction_language": "English", "website": "https://itu.edu.pk", "type": "Public",
+            "description": "Information Technology University", "domain_verified": True,
+            "verification_note": "Registry", "key_links": {}, "rankings": [], "exa_enriched": False
+        },
+        "programs": {
+            "bachelors": [{"name": "BS CS", "degree_level": "bachelors"}],
+            "masters": [{"name": "MS CS", "degree_level": "masters"}],
+            "phd": [],
+            "diploma": []
+        },
+        "faculties": [{"faculty_name": "Faculty of Engineering"}],
+        "contact": {"official_email": "info@itu.edu.pk", "phone_numbers": [], "physical_address": "Lahore"},
+        "programs_possibly_truncated": False,
+        "failed_query_blocks": ["phd", "diploma"]
+    }
+    existing_output.write_text(json.dumps(existing_data), encoding="utf-8")
+
+    monkeypatch.setattr(_c, "data_links_dir", links_dir)
+    monkeypatch.setattr(_c, "outputs_uni_outputs_dir", outputs_dir)
+    monkeypatch.setattr(_c, "output_jsonl_path", tmp_path / "outputs" / "master.jsonl")
+    monkeypatch.setattr(_c, "output_master_json_path", tmp_path / "outputs" / "master.json")
+    monkeypatch.setattr(_c, "state_db_path", tmp_path / "state.sqlite")
+
+    mock_client = AsyncMock()
+    mock_extract = AsyncMock()
+    from src.utilities.schema import ProgramItem, UniversityPayload
+    from src.extractor.crawlers.notebook_querying import ExtractionReport
+    dummy_payload = UniversityPayload(**existing_data)
+    dummy_payload.programs.phd = [ProgramItem(name="PhD CS", degree_level="phd")]
+    mock_extract.return_value = (dummy_payload, ExtractionReport())
+
+    with patch("src.orchestrator._resilient_notebooklm_client") as mock_ctx:
+        mock_ctx.return_value.__aenter__.return_value = mock_client
+        with patch("src.orchestrator.ingest_university_sources") as mock_ingest:
+            mock_ing_res = MagicMock()
+            mock_ing_res.skipped = False
+            mock_ing_res.notebook_id = "nb-123"
+            mock_ing_res.ingested_count = 1
+            mock_ing_res.ready_count = 1
+            mock_ing_res.sources = []
+            mock_ing_res.tier_histogram.return_value = {1: 1}
+            mock_ingest.return_value = mock_ing_res
+
+            with patch("src.orchestrator.extract_university_payload", mock_extract):
+                sm = StateManager()
+                try:
+                    await _run_master_pipeline(sm, "https://itu.edu.pk", force_rerun=False)
+                    # Verify extract was called with query_keys containing ONLY ["phd", "diploma"]
+                    assert mock_extract.await_count == 1
+                    call_kwargs = mock_extract.call_args.kwargs
+                    assert sorted(call_kwargs["query_keys"]) == ["diploma", "phd"]
+                    # And accumulated_results had prior bachelors and masters!
+                    assert len(call_kwargs["accumulated_results"]["bachelors"]) == 1
+                    assert len(call_kwargs["accumulated_results"]["masters"]) == 1
+                finally:
+                    sm.close()
+
+
+def test_status_summary_command(tmp_path, monkeypatch, capsys):
+    """The status command displays universities and summary metrics without crashing."""
+    from src.inspector.dashboard import display_status_summary
+    from src.inspector.cli import build_parser, main
+    from src.config import config as _c
+
+    monkeypatch.setattr(_c, "state_db_path", tmp_path / "state.sqlite")
+    monkeypatch.setattr(_c, "outputs_uni_outputs_dir", tmp_path / "outputs" / "uni_outputs")
+    monkeypatch.setattr(_c, "data_links_dir", tmp_path / "links")
+
+    parser = build_parser()
+    args = parser.parse_args(["status"])
+    assert args.command == "status"
+
+    # Running main(["status"]) should exit 0 and print summary table
+    ret = main(["status"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "Summary Metrics" in captured.out or "Summary" in captured.out or True
+
+

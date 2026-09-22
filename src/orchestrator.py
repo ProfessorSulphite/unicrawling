@@ -48,7 +48,11 @@ from rich.panel import Panel  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
 from src.config import config  # noqa: E402
-from src.extractor.crawlers.notebook_querying import ExtractionReport, Q1Payload  # noqa: E402
+from src.extractor.crawlers.notebook_querying import (  # noqa: E402
+    ExtractionReport,
+    Q1Payload,
+    QuotaThrottledError,
+)
 from src.extractor.crawlers.runner import (  # noqa: E402
     delete_notebook_after_success,
     extract_university_payload,
@@ -71,11 +75,13 @@ from src.logger.pipeline_logger import PipelineLogger, RunKind, load_run  # noqa
 from src.logger.setup import setup_clean_logging  # noqa: E402
 from src.utilities.json_io import append_jsonl, atomic_write_json, stream_compile_master_json  # noqa: E402
 from src.utilities.naming import derive_uni_info  # noqa: E402
+from src.utilities.schema import UniversityPayload  # noqa: E402
 from src.utilities.state_management import (  # noqa: E402
     PARTIAL_EXTRACTION,
     QuotaExceededError,
     StateManager,
 )
+from src.utilities.typesafe_client import close_shared_typesafe_client  # noqa: E402
 from src.utilities.workspace import backup_existing_outputs  # noqa: E402
 
 # Defined on Config (C23) so the inspector's `batch` subcommand can share the
@@ -171,6 +177,7 @@ async def run_master_pipeline(
     exclude_keywords: str = "news|events",
     uptodate: bool = True,
     compile_master: bool = True,
+    force_rerun: bool = False,
 ):
     """
     Run all four phases for one university.
@@ -183,7 +190,7 @@ async def run_master_pipeline(
     try:
         return await _run_master_pipeline(
             state_mgr, url, uni_name_override, max_links,
-            exclude_keywords, uptodate, compile_master,
+            exclude_keywords, uptodate, compile_master, force_rerun,
         )
     finally:
         state_mgr.close()
@@ -197,6 +204,7 @@ async def _run_master_pipeline(
     exclude_keywords: str = "news|events",
     uptodate: bool = True,
     compile_master: bool = True,
+    force_rerun: bool = False,
 ):
     """Phase 1-4 body. See run_master_pipeline for the public entry point."""
     uni_name, uni_slug, uni_domain = derive_uni_info(url, uni_name_override)
@@ -210,39 +218,48 @@ async def _run_master_pipeline(
     # --------------------------------------------------------------------------
     # PHASE 1: LINK HARVESTING & DEDUPLICATION
     # --------------------------------------------------------------------------
-    print(f"📌 [PHASE 1] Harvesting & Sanitizing Links for {uni_name}...")
-
-    # Phase 1 raises CrawlFailure when a site yields nothing. Caught here so the
-    # state row records the failure: uncaught, it left the row on whatever the
-    # previous phase wrote and the university looked merely unstarted.
-    try:
-        await run_link_extractor(
-            url=url,
-            max_links=max_links,
-            exclude_keywords=exclude_keywords,
-            uptodate=uptodate,
-            # Passed explicitly. Omitting them took the linker CLI's argparse
-            # defaults instead of the calibrated Config fields, so every batch
-            # ran at threshold 0.45 and 15 pages no matter what config said.
-            threshold=config.semantic_threshold,
-            max_pages=config.max_crawl_pages,
-            output_links=str(config.base_dir / "extracted_links.txt"),
-            output_detailed=str(config.base_dir / "extracted_links_detailed.txt"),
+    cached_links = _read_harvested_links(uni_slug)
+    if cached_links and not force_rerun:
+        links_list = cached_links
+        selected_count = sum(1 for l in links_list if l.get("selected", True))
+        print(
+            f"✓ [PHASE 1 CACHED] Reusing {selected_count} clean links from "
+            f"data/links/{uni_slug}.jsonl (skipping web crawl)."
         )
-    except Exception as e:
-        error_msg = f"Phase 1 failed: {type(e).__name__}: {e}"
-        state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
-        print(f"❌ [PHASE 1 FAILED] {error_msg}")
-        return PipelineOutcome("failed", error_msg)
+    else:
+        print(f"📌 [PHASE 1] Harvesting & Sanitizing Links for {uni_name}...")
+        # Phase 1 raises CrawlFailure when a site yields nothing. Caught here so the
+        # state row records the failure: uncaught, it left the row on whatever the
+        # previous phase wrote and the university looked merely unstarted.
+        try:
+            await run_link_extractor(
+                url=url,
+                max_links=max_links,
+                exclude_keywords=exclude_keywords,
+                uptodate=uptodate,
+                # Passed explicitly. Omitting them took the linker CLI's argparse
+                # defaults instead of the calibrated Config fields, so every batch
+                # ran at threshold 0.45 and 15 pages no matter what config said.
+                threshold=config.semantic_threshold,
+                max_pages=config.max_crawl_pages,
+                output_links=str(config.base_dir / "extracted_links.txt"),
+                output_detailed=str(config.base_dir / "extracted_links_detailed.txt"),
+            )
+        except Exception as e:
+            error_msg = f"Phase 1 failed: {type(e).__name__}: {e}"
+            state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+            print(f"❌ [PHASE 1 FAILED] {error_msg}")
+            return PipelineOutcome("failed", error_msg)
 
-    links_list = _read_harvested_links(uni_slug)
-    selected_count = sum(1 for l in links_list if l.get("selected", True))
+        links_list = _read_harvested_links(uni_slug)
+        selected_count = sum(1 for l in links_list if l.get("selected", True))
 
-    print(
-        f"✓ [PHASE 1 COMPLETE] Retained {selected_count} clean canonical links"
-        + (f" (+{len(links_list) - selected_count} reserve)."
-           if len(links_list) > selected_count else ".")
-    )
+        print(
+            f"✓ [PHASE 1 COMPLETE] Retained {selected_count} clean canonical links"
+            + (f" (+{len(links_list) - selected_count} reserve)."
+               if len(links_list) > selected_count else ".")
+        )
+
     state_mgr.set_status(uni_slug, "crawled", sources_ingested=0)
 
     if not links_list:
@@ -254,6 +271,42 @@ async def _run_master_pipeline(
     # --------------------------------------------------------------------------
     # PHASE 2: NOTEBOOKLM INGESTION & PHASE 3 EXTRACTION
     # --------------------------------------------------------------------------
+    # Check for existing partial payload to enable smart resume
+    uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+    prior_payload: Optional[UniversityPayload] = None
+    failed_blocks_to_query: Optional[List[str]] = None
+    accumulated_results: Dict[str, Any] = {}
+
+    if uni_json_path.exists() and not force_rerun:
+        try:
+            with open(uni_json_path, "r", encoding="utf-8") as f:
+                existing_payload_data = json.load(f)
+            raw_failed = existing_payload_data.get("failed_query_blocks")
+            if raw_failed:
+                failed_blocks_to_query = list(raw_failed)
+                print(
+                    f"📌 [SMART RESUME] Found existing output for {uni_slug} with "
+                    f"failed blocks: {failed_blocks_to_query}. Only missing blocks will be queried."
+                )
+                try:
+                    prior_payload = UniversityPayload(**existing_payload_data)
+                    if "main_info_contact" not in failed_blocks_to_query:
+                        accumulated_results["main_info_contact"] = Q1Payload(
+                            main_info=prior_payload.main_info,
+                            contact=prior_payload.contact,
+                        )
+                    for qk in ("bachelors", "masters", "phd", "diploma"):
+                        if qk not in failed_blocks_to_query:
+                            accumulated_results[qk] = getattr(prior_payload.programs, qk)
+                    if "faculties" not in failed_blocks_to_query:
+                        accumulated_results["faculties"] = prior_payload.faculties
+                except Exception as parse_err:
+                    print(f"⚠️  [SMART RESUME] Could not parse existing payload: {parse_err}. Re-querying all.")
+                    accumulated_results = {}
+                    failed_blocks_to_query = None
+        except Exception as e:
+            print(f"⚠️  [SMART RESUME] Could not read existing JSON: {e}")
+
     cohorts = partition_links_into_cohorts(links_list, cohort_cap=250)
 
     if len(cohorts) > 1:
@@ -269,15 +322,28 @@ async def _run_master_pipeline(
                 print(f"✓ Provisioned Staged Notebook ID: {notebook_id}")
                 state_mgr.set_status(uni_slug, "ingested", notebook_id=notebook_id, sources_ingested=len(links_list))
 
-                state_mgr.reserve_queries(uni_slug, config.queries_per_university)
-                reserved = config.queries_per_university
+                queries_to_reserve = (
+                    len(failed_blocks_to_query)
+                    if failed_blocks_to_query is not None
+                    else config.queries_per_university
+                )
+                state_mgr.reserve_queries(uni_slug, queries_to_reserve)
+                reserved = queries_to_reserve
                 report = ExtractionReport()
-                accumulated_results: Dict[str, Any] = {}
                 payload = None
                 uploaded_sources_map: Dict[str, Any] = {}
 
                 try:
                     for cohort in cohorts:
+                        needed_query_keys = (
+                            [k for k in cohort.query_keys if k in failed_blocks_to_query]
+                            if failed_blocks_to_query is not None
+                            else cohort.query_keys
+                        )
+                        if not needed_query_keys:
+                            print(f"\n⏭️  [STAGE: {cohort.name.upper()}] All queries ({cohort.query_keys}) already complete. Skipping cohort.")
+                            continue
+
                         print(f"\n🚀 [STAGE: {cohort.name.upper()}] Preparing {cohort.source_count} sources for stage...")
                         new_links = [l for l in cohort.links if l.get("url") and l.get("url") not in uploaded_sources_map]
                         reused_count = cohort.source_count - len(new_links)
@@ -304,7 +370,7 @@ async def _run_master_pipeline(
                                 source_ids_by_tier.setdefault(s.tier, []).append(s.source_id)
 
                         total_stage_sources = sum(len(v) for v in source_ids_by_tier.values())
-                        print(f"  └─ Executing queries {cohort.query_keys} across {total_stage_sources} scoped sources...")
+                        print(f"  └─ Executing queries {needed_query_keys} across {total_stage_sources} scoped sources...")
                         payload, sub_report = await extract_university_payload(
                             client=client,
                             notebook_id=notebook_id,
@@ -313,16 +379,16 @@ async def _run_master_pipeline(
                             source_ids_by_tier=source_ids_by_tier,
                             tier1_source_count=len(source_ids_by_tier.get(1, [])),
                             report=report,
-                            query_keys=cohort.query_keys,
+                            query_keys=needed_query_keys,
                             accumulated_results=accumulated_results,
                         )
 
-                        if "main_info_contact" in cohort.query_keys and payload:
+                        if "main_info_contact" in needed_query_keys and payload:
                             accumulated_results["main_info_contact"] = Q1Payload(main_info=payload.main_info, contact=payload.contact)
-                        for qk in cohort.query_keys:
+                        for qk in needed_query_keys:
                             if payload and hasattr(payload.programs, qk):
                                 accumulated_results[qk] = getattr(payload.programs, qk)
-                        if "faculties" in cohort.query_keys and payload:
+                        if "faculties" in needed_query_keys and payload:
                             accumulated_results["faculties"] = payload.faculties
 
                         if cohort.evict_degree_sources:
@@ -342,6 +408,9 @@ async def _run_master_pipeline(
                     state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
                     await _release_notebook(client, state_mgr, uni_slug, notebook_id)
                     raise
+
+                if payload is None and prior_payload is not None:
+                    payload = prior_payload
 
                 delta = report.queries_used - reserved
                 if delta > 0:
@@ -380,6 +449,11 @@ async def _run_master_pipeline(
 
                 await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
 
+        except QuotaThrottledError as qte:
+            error_msg = f"NotebookLM streaming usage throttled/quota exhausted: {qte}"
+            print(f"⚠️  [PHASE 3 THROTTLED] {error_msg}")
+            state_mgr.set_status(uni_slug, PARTIAL_EXTRACTION, error_log=error_msg)
+            raise
         except Exception as e:
             error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
             print(f"❌ [PIPELINE ERROR] {error_msg}")
@@ -433,19 +507,23 @@ async def _run_master_pipeline(
                 # ------------------------------------------------------------------
                 # PHASE 3: SCHEMA EXTRACTION & EXA FALLBACK
                 # ------------------------------------------------------------------
+                query_keys_to_run = (
+                    [k for k in ("main_info_contact", "bachelors", "masters", "phd", "diploma", "faculties") if k in failed_blocks_to_query]
+                    if failed_blocks_to_query is not None
+                    else None
+                )
+                queries_to_reserve = (
+                    len(query_keys_to_run)
+                    if query_keys_to_run is not None
+                    else config.queries_per_university
+                )
                 print(
-                    f"\n📌 [PHASE 3] Executing {config.queries_per_university}-Query "
+                    f"\n📌 [PHASE 3] Executing {queries_to_reserve}-Query "
                     f"Schema Extraction & Exa Fallback..."
                 )
 
-                # Reserve the whole suite against today's budget BEFORE issuing any
-                # query. The suite itself is serial (see config.query_concurrency --
-                # concurrent unkeyed asks share a conversation and return each
-                # other's answers), but universities are not: reserving up front is
-                # what stops a run walking into the 500/day ceiling mid-suite and
-                # leaving a notebook ingested but never extracted.
-                state_mgr.reserve_queries(uni_slug, config.queries_per_university)
-                reserved = config.queries_per_university
+                state_mgr.reserve_queries(uni_slug, queries_to_reserve)
+                reserved = queries_to_reserve
 
                 # Owned here, not inside the extractor, so that a failed extraction
                 # still reports what it spent. A report the extractor keeps privately
@@ -461,6 +539,8 @@ async def _run_master_pipeline(
                         source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
                         tier1_source_count=ingest_res.tier_histogram().get(1, 0),
                         report=report,
+                        query_keys=query_keys_to_run,
+                        accumulated_results=accumulated_results,
                     )
                 except BaseException:
                     # Includes CancelledError and the university watchdog's timeout.
@@ -471,6 +551,9 @@ async def _run_master_pipeline(
                     state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
                     await _release_notebook(client, state_mgr, uni_slug, notebook_id)
                     raise
+
+                if payload is None and prior_payload is not None:
+                    payload = prior_payload
 
                 # Reconcile the reservation against what the suite actually spent.
                 # Repair retries and narrowed re-asks cost real queries beyond the
@@ -534,6 +617,11 @@ async def _run_master_pipeline(
                 # never looks at rows in a terminal status.
                 await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
 
+        except QuotaThrottledError as qte:
+            error_msg = f"NotebookLM streaming usage throttled/quota exhausted: {qte}"
+            print(f"⚠️  [PHASE 3 THROTTLED] {error_msg}")
+            state_mgr.set_status(uni_slug, PARTIAL_EXTRACTION, error_log=error_msg)
+            raise
         except Exception as e:
             error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
             print(f"❌ [PIPELINE ERROR] {error_msg}")
@@ -828,6 +916,7 @@ async def run_batch_pipeline(
         # one Chromium process and one connection pool throughout.
         await close_shared_crawler()
         await close_http_client()
+        await close_shared_typesafe_client()
 
         console.print("\n[bold cyan]🌐 Aggregating master JSON array (single streamed pass)...[/bold cyan]")
         compile_master_json()
@@ -877,6 +966,7 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                         uptodate=settings.get("uptodate", True),
                         # Aggregated once after the queue drains, not per university.
                         compile_master=False,
+                        force_rerun=settings.get("force_rerun_all", False),
                     ),
                     timeout=config.university_timeout_sec,
                 )
@@ -897,6 +987,15 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                 console.print(f"[bold red]⏱️  {entry['name']} {msg}.[/bold red]")
                 run_log.record(entry["slug"], "failed", error=f"TimeoutError: {msg}")
                 _record_timeout(entry["slug"], msg)
+            except QuotaThrottledError as qte:
+                msg = f"NotebookLM streaming usage throttled/quota exhausted: {qte}"
+                console.print(f"\n[bold red]🛑 {msg}[/bold red]")
+                console.print(
+                    f"[bold yellow]Pausing batch execution to protect account and avoid wasted retries. "
+                    f"Smart resume will continue from this point when re-run.[/bold yellow]\n"
+                )
+                run_log.record(entry["slug"], "partial", error=msg)
+                break
             except Exception as e:
                 # One university's failure must not end the batch. The state row
                 # records the failure; this only keeps the loop alive.
@@ -1012,6 +1111,7 @@ async def _run_single(args) -> None:
             # shared across a batch and must survive one university's failure.
             await close_shared_crawler()
             await close_http_client()
+            await close_shared_typesafe_client()
 
 
 if __name__ == "__main__":

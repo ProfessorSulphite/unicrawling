@@ -1,0 +1,213 @@
+{
+  "universities": {
+    "United States": [
+      {
+        "name": "Massachusetts Institute of Technology",
+        "url": "https://www.mit.edu"
+      },
+      {
+        "name": "Harvard University",
+        "url": "https://www.harvard.edu"
+      },
+      {
+        "name": "Stanford University",
+        "url": "https://www.stanford.edu"
+      },
+      {
+        "name": "Yale University",
+        "url": "https://www.yale.edu"
+      },
+      {
+        "name": "Princeton University",
+        "url": "https://www.princeton.edu"
+      },
+      {
+        "name": "California Institute of Technology",
+        "url": "https://www.caltech.edu"
+      },
+      {
+        "name": "Columbia University",
+        "url": "https://www.columbia.edu"
+      },
+      {
+        "name": "University of Chicago",
+        "url": "https://www.uchicago.edu"
+      },
+      {
+        "name": "University of Pennsylvania",
+        "url": "https://www.upenn.edu"
+      },
+      {
+        "name": "Cornell University",
+        "url": "https://www.cornell.edu"
+      },
+      {
+        "name": "University of California, Berkeley",
+        "url": "https://www.berkeley.edu"
+      },
+      {
+        "name": "Johns Hopkins University",
+        "url": "https://www.jhu.edu"
+      },
+      {
+        "name": "University of California, Los Angeles",
+        "url": "https://www.ucla.edu"
+      },
+      {
+        "name": "University of Michigan",
+        "url": "https://umich.edu"
+      },
+      {
+        "name": "New York University",
+        "url": "https://www.nyu.edu"
+      },
+      {
+        "name": "Duke University",
+        "url": "https://www.duke.edu"
+      },
+      {
+        "name": "Northwestern University",
+        "url": "https://www.northwestern.edu"
+      },
+      {
+        "name": "Dartmouth College",
+        "url": "https://www.dartmouth.edu"
+      },
+      {
+        "name": "Brown University",
+        "url": "https://www.brown.edu"
+      },
+      {
+        "name": "Vanderbilt University",
+        "url": "https://www.vanderbilt.edu"
+      },
+      {
+        "name": "Rice University",
+        "url": "https://www.rice.edu"
+      },
+      {
+        "name": "Washington University in St. Louis",
+        "url": "https://wustl.edu"
+      },
+      {
+        "name": "University of Notre Dame",
+        "url": "https://www.nd.edu"
+      },
+      {
+        "name": "Carnegie Mellon University",
+        "url": "https://www.cmu.edu"
+      },
+      {
+        "name": "Emory University",
+        "url": "https://www.emory.edu"
+      },
+      {
+        "name": "Georgetown University",
+        "url": "https://www.georgetown.edu"
+      },
+      {
+        "name": "University of Virginia",
+        "url": "https://www.virginia.edu"
+      },
+      {
+        "name": "University of North Carolina at Chapel Hill",
+        "url": "https://www.unc.edu"
+      },
+      {
+        "name": "University of California, San Diego",
+        "url": "https://ucsd.edu"
+      },
+      {
+        "name": "University of Southern California",
+        "url": "https://www.usc.edu"
+      },
+      {
+        "name": "University of California, Davis",
+        "url": "https://www.ucdavis.edu"
+      },
+      {
+        "name": "University of California, Irvine",
+        "url": "https://uci.edu"
+      },
+      {
+        "name": "University of California, Santa Barbara",
+        "url": "https://www.ucsb.edu"
+      },
+      {
+        "name": "University of Florida",
+        "url": "https://www.ufl.edu"
+      },
+      {
+        "name": "University of Texas at Austin",
+        "url": "https://www.utexas.edu"
+      },
+      {
+        "name": "Georgia Institute of Technology",
+        "url": "https://www.gatech.edu"
+      },
+      {
+        "name": "University of Illinois Urbana-Champaign",
+        "url": "https://illinois.edu"
+      },
+      {
+        "name": "University of Wisconsin–Madison",
+        "url": "https://www.wisc.edu"
+      },
+      {
+        "name": "Boston University",
+        "url": "https://www.bu.edu"
+      },
+      {
+        "name": "Tufts University",
+        "url": "https://www.tufts.edu"
+      },
+      {
+        "name": "The Ohio State University",
+        "url": "https://www.osu.edu"
+      },
+      {
+        "name": "Purdue University",
+        "url": "https://www.purdue.edu"
+      },
+      {
+        "name": "University of Maryland, College Park",
+        "url": "https://umd.edu"
+      },
+      {
+        "name": "Texas A&M University",
+        "url": "https://www.tamu.edu"
+      },
+      {
+        "name": "University of Washington",
+        "url": "https://www.uw.edu"
+      },
+      {
+        "name": "Rutgers University",
+        "url": "https://www.rutgers.edu"
+      },
+      {
+        "name": "Penn State University",
+        "url": "https://www.psu.edu"
+      },
+      {
+        "name": "University of Minnesota Twin Cities",
+        "url": "https://umn.edu"
+      },
+      {
+        "name": "University of Colorado Boulder",
+        "url": "https://www.colorado.edu"
+      },
+      {
+        "name": "Arizona State University",
+        "url": "https://www.asu.edu"
+      }
+    ]
+  },
+  "pipeline_settings": {
+    "max_links": 100,
+    "exclude_keywords": "news|events",
+    "uptodate": true,
+    "force_rerun_all": false,
+    "clean_logging": true
+  }
+}

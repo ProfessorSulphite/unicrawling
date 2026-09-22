@@ -21,9 +21,25 @@ def are_potential_duplicates(set_a: set, set_b: set) -> bool:
     """Heuristic to identify candidate duplicate pairs worth verifying with Jev Noul."""
     if not set_a or not set_b:
         return False
-    # Direct overlap in discipline tokens (e.g. computer-engineering vs software-engineering)
-    if set_a & set_b:
+
+    # Acronym match (e.g. cs vs computer-science, ee vs electrical-engineering)
+    def _check_acronym(short_set: set, long_set: set) -> bool:
+        for short in short_set:
+            if 2 <= len(short) <= 4:
+                initials = "".join(w[0] for w in sorted(long_set))
+                if all(c in initials for c in short):
+                    return True
+        return False
+
+    if _check_acronym(set_a, set_b) or _check_acronym(set_b, set_a):
         return True
+
+    # High Jaccard token overlap (>= 0.5) for multi-token disciplines
+    intersection = set_a & set_b
+    union = set_a | set_b
+    if union and (len(intersection) / len(union)) >= 0.5:
+        return True
+
     # Abbreviation / prefix match (e.g. bio vs biological, stats vs statistics)
     for t_a in set_a:
         for t_b in set_b:
@@ -34,16 +50,8 @@ def are_potential_duplicates(set_a: set, set_b: set) -> bool:
                     or (len(t_a) >= 4 and len(t_b) >= 4 and t_a[:4] == t_b[:4])
                 ):
                     return True
-    # Acronym match (e.g. cs vs computer-science, ee vs electrical-engineering)
-    def _check_acronym(short_set: set, long_set: set) -> bool:
-        for short in short_set:
-            if 2 <= len(short) <= 4:
-                initials = "".join(w[0] for w in sorted(long_set))
-                if all(c in initials for c in short):
-                    return True
-        return False
 
-    return _check_acronym(set_a, set_b) or _check_acronym(set_b, set_a)
+    return False
 
 
 def get_discipline_tokens(url: str, text: str = "") -> Tuple[str, Tuple[str, ...]]:
@@ -164,11 +172,24 @@ async def deduplicate_canonical_degree_links_async(scored_results: List[Dict[str
                 if are_potential_duplicates(set_a, set_b):
                     candidate_pairs.append((i, j, deduped_candidates[i], deduped_candidates[j]))
 
-        # 2. Evaluate all candidate pairs concurrently with Jev Noul
+        # 2. Evaluate candidate pairs concurrently with Jev Noul, capped to avoid excessive latency
+        MAX_JEV_DEDUP_PAIRS = 40
+        if len(candidate_pairs) > MAX_JEV_DEDUP_PAIRS:
+            logger.info(
+                f"Capping candidate duplicate pairs from {len(candidate_pairs)} to {MAX_JEV_DEDUP_PAIRS} to avoid excessive API latency."
+            )
+            candidate_pairs = candidate_pairs[:MAX_JEV_DEDUP_PAIRS]
+
         if candidate_pairs:
             logger.debug(f"Evaluating {len(candidate_pairs)} candidate duplicate degree pairs concurrently with Jev Noul...")
+            sem = asyncio.Semaphore(10)
+
+            async def _eval_one(p):
+                async with sem:
+                    return await are_duplicate_degree_variants_jev(p[2], p[3])
+
             eval_results = await asyncio.gather(
-                *(are_duplicate_degree_variants_jev(p[2], p[3]) for p in candidate_pairs),
+                *(_eval_one(p) for p in candidate_pairs),
                 return_exceptions=True,
             )
 

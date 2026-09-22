@@ -8,6 +8,7 @@ otherwise -- see Finding 6. Triggering a run lives in cli.py.
 """
 import asyncio
 import json
+from pathlib import Path
 from typing import Optional
 
 from rich.panel import Panel
@@ -574,6 +575,96 @@ def inspect_state():
         console.print(table)
     except Exception as e:
         console.print(f"[bold red]Error reading SQLite state database:[/bold red] {e}")
+
+
+def display_status_summary(config_path: Optional[Path] = None):
+    """
+    Display a comprehensive pipeline status table joining pipeline_state with uni_outputs.
+    """
+    from src.utilities.state_management import StateManager, PARTIAL_EXTRACTION
+    try:
+        sm = StateManager()
+        records = sm.list_all()
+
+        uni_outputs = {}
+        if config.outputs_uni_outputs_dir.exists():
+            for p in config.outputs_uni_outputs_dir.glob("*.json"):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        uni_outputs[p.stem] = json.load(f)
+                except Exception:
+                    pass
+
+        table = Table(title="📊 Master Pipeline Extraction Status & Health", show_lines=True)
+        table.add_column("Slug", style="bold cyan")
+        table.add_column("Status", style="bold")
+        table.add_column("Missing / Failed Blocks", style="bold red")
+        table.add_column("Progs (UG/GR/PhD/Dip)", style="green")
+        table.add_column("Cached Links", style="dim")
+        table.add_column("Last Updated", style="dim")
+
+        completed_c = 0
+        partial_c = 0
+        failed_c = 0
+        pending_c = 0
+
+        for r in records:
+            slug = r["university_slug"]
+            status = r["status"]
+            if status == "completed":
+                completed_c += 1
+                status_styled = "[bold green]completed[/bold green]"
+            elif status == PARTIAL_EXTRACTION:
+                partial_c += 1
+                status_styled = "[bold yellow]partial ⚠[/bold yellow]"
+            elif status == "failed":
+                failed_c += 1
+                status_styled = "[bold red]failed[/bold red]"
+            else:
+                pending_c += 1
+                status_styled = "[bold cyan]pending[/bold cyan]"
+
+            out_data = uni_outputs.get(slug, {})
+            failed_blocks = out_data.get("failed_query_blocks", [])
+            if not failed_blocks and r.get("error_log") and "failed after retries" in r.get("error_log", ""):
+                failed_blocks = r["error_log"].split(":")[-1].strip()
+
+            fb_str = ", ".join(failed_blocks) if isinstance(failed_blocks, list) else str(failed_blocks)
+            if not fb_str or fb_str == "[]":
+                fb_str = "[dim]None (Clean)[/dim]"
+
+            progs = out_data.get("programs", {})
+            ug = len(progs.get("bachelors", []))
+            gr = len(progs.get("masters", []))
+            phd = len(progs.get("phd", []))
+            dip = len(progs.get("diploma", []))
+            prog_str = f"{ug} / {gr} / {phd} / {dip}" if out_data else "—"
+
+            links_cached = (config.data_links_dir / f"{slug}.jsonl").exists()
+            links_str = "✓ Cached" if links_cached else "✗ No"
+
+            table.add_row(
+                slug,
+                status_styled,
+                fb_str,
+                prog_str,
+                links_str,
+                str(r.get("updated_at", "N/A")),
+            )
+
+        console.print(table)
+        console.print(
+            Panel(
+                f"Total Processed Universities: [bold]{len(records)}[/bold] | "
+                f"[bold green]Completed: {completed_c}[/bold green] | "
+                f"[bold yellow]Partial: {partial_c}[/bold yellow] | "
+                f"[bold red]Failed: {failed_c}[/bold red] | "
+                f"[bold cyan]Pending: {pending_c}[/bold cyan]",
+                title="Summary Metrics",
+            )
+        )
+    except Exception as e:
+        console.print(f"[bold red]Error generating status summary:[/bold red] {e}")
 
 
 # ------------------------------------------------------------------------------

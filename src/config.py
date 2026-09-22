@@ -234,6 +234,7 @@ class Config:
     # what has to give -- daily_query_budget is a real external quota, not a knob.
     daily_query_budget: int = 500            # Hard daily cap enforced by the state ledger; must match the real NotebookLM quota
     queries_per_university: int = 6          # Queries in the suite; reserved up-front per university, so it must match QUERY_SUITE
+    response_format: str = "text"            # Wire protocol format: 'text' (delimited @@RECORD protocol) or 'json' (legacy)
 
     # ═══════════════════════════════════════════════════════════════════════
     # AUDIT THRESHOLDS (plan section 5; consumed by inspector/auditor.py)

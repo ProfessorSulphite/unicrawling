@@ -23,6 +23,7 @@ from src.inspector.analytics import audit_analytics
 from src.inspector.auditor import audit_corpus
 from src.inspector.dashboard import (
     compare_universities,
+    display_status_summary,
     inspect_notebooks,
     inspect_schema,
     inspect_state,
@@ -242,6 +243,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     batch_parser.add_argument("--rerun-all", action="store_true", help="Force backup and rerun all configured universities")
 
+    # Command: status
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Display overview summary of universities, output JSONs, and failed query blocks",
+    )
+    status_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional path to config JSON (e.g. configs/american_universities.json) to scope the status table",
+    )
+
     # Command: interactive
     subparsers.add_parser("interactive", help="Launch Rich Interactive TUI Menu")
 
@@ -249,11 +262,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     if args.command == "batch":
         from src.orchestrator import run_batch_pipeline  # lazy: see retry_pipeline
         asyncio.run(run_batch_pipeline(config_file_path=args.config, force_rerun_all=args.rerun_all))
+    elif args.command == "status":
+        display_status_summary(args.config)
     elif args.command == "inspect":
         inspect_university(args.query)
     elif args.command == "diff":
