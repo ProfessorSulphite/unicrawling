@@ -12,13 +12,13 @@ flowchart TD
         A[Agent 1: Web Crawling & Link Extraction Agent] -->|Produces extracted_links.txt & detailed report| B[Quality Filter, Tier Classifier & Deduplicator]
     end
 
-    subgraph Phase 2: Programmatic Ingestion & Notebook Lifecycle
-        B -->|Prioritized Quality URLs| C[Agent 2: NotebookLM Ingestion & Lifecycle Manager Agent]
-        C -->|Provisions Notebooks & Uploads Sources| D[NotebookLM Source Queue]
+    subgraph Phase 2: Corpus Assembly
+        B -->|Prioritized Quality URLs| C[Agent 2: Corpus Fetching Agent]
+        C -->|Labelled Page-Text Corpus| D[Extraction Context]
     end
 
     subgraph Phase 3: Schema-Guided Extraction & Exa Enrichment
-        D -->|Ready Web Sources| E[Agent 3: Schema Query & Exa Enrichment Agent]
+        D -->|Corpus + Schema| E[Agent 3: Dual-Engine Schema Extraction & Enrichment Agent]
         E <-->|Exa API Search for Missing Rankings/Portals| F[Exa Web Search API]
         E -->|Structured 4-Block JSON Payload| G[(Local store: JSONL ledger + per-university JSON)]
     end
@@ -51,22 +51,21 @@ flowchart TD
 
 ---
 
-### Agent 2: NotebookLM Ingestion & Lifecycle Manager Agent (Phase 2)
-* **Role**: NotebookLM workspace provisioning and batch source ingestion agent.
+### Agent 2: Corpus Fetching Agent (Phase 2)
+* **Role**: Turns the harvested links into the single text corpus the extraction engines read.
 * **Responsibilities**:
-  - Provision isolated NotebookLM notebooks per university (`notebooklm create "UniName_Counseling_DB"`).
-  - Manage Pro account quotas (300 sources per notebook, 500 queries per day).
-  - Batch upload URLs from the per-university partition (`data/links/<slug>.jsonl`) into NotebookLM sources, over a shared HTTP/2 connection pool.
-  - Monitor processing readiness **per source**, with jittered exponential backoff and failure isolation: a source that times out or errors is reported as not-ready without discarding the sources that did succeed, so the notebook remains queryable against its ready corpus.
-  - Persist the `url -> source_id -> tier` map to SQLite so Agent 3 can scope each query with `source_ids`.
-  - Automatically delete notebooks after JSON extraction to clear workspace slots while preserving raw link files and JSON outputs.
+  - Read the per-university partition (`data/links/<slug>.jsonl`) in Phase 1's rank order, honouring each link's tier and its `selected` flag.
+  - Fetch the top-ranked pages concurrently over one shared `httpx.AsyncClient`, bounded by a semaphore, and strip each page to readable text (scripts, styles, nav, header and footer removed).
+  - Isolate failures: a page that 404s, times out or returns nothing is simply absent from the corpus, and the pages that did answer are still extracted from.
+  - Assemble the pages into one labelled context (`--- SOURCE URL: ... ---`) bounded by a character budget, so the request stays well inside the model's context window.
+  - Implemented in `src/extractor/crawlers/deepseek_extractor.py` (`fetch_corpus_text_for_links`, `_build_combined_context`) and shared verbatim by both engines.
 
 ---
 
-### Agent 3: Schema Query & Exa Enrichment Agent (Phase 3)
-* **Role**: Schema-guided query extraction, Exa API fallback, and Jev grounding verification agent.
+### Agent 3: Dual-Engine Schema Extraction & Enrichment Agent (Phase 3)
+* **Role**: Schema-guided extraction against DeepSeek or Gemini, Exa API fallback, and Jev grounding verification agent.
 * **Responsibilities**:
-  - Execute a 5 to 6 targeted query suite per university against NotebookLM using strict JSON schema prompt files:
+  - Extract six schema blocks per university in **two consolidated requests** -- one for every degree level, one for identity, contact and faculties. The six blocks remain individually addressable for smart resume, and are re-asked one at a time when fewer than three are outstanding:
     - **Q1**: `main_info` (Metadata, Rankings, Academics/Admissions/Application Portal URLs).
     - **Q2**: `programs.bachelors` (BS, BSc, BA, BBA, MBBS, LLB, PharmD, DPT with full-paragraph descriptions, fees, eligibility, admission requirements, deadlines).
     - **Q3**: `programs.masters` (MS, MSc, MA, MBA, MPhil, LLM with full-paragraph descriptions, fees, eligibility, admission requirements, deadlines).
@@ -74,9 +73,9 @@ flowchart TD
     - **Q4b**: `programs.diploma` (postgraduate diplomas, PGDs, certificates) — added in C17.
     - **Q5**: `faculties` (Faculties, Schools, and constituent departments).
     - **Q6**: `contact` (Emails, phone numbers, physical address, admissions desk).
-  - Reserve the suite against the 500/day NotebookLM budget **before** issuing any query, refusing to start a university that cannot complete within the remaining allowance.
+  - Select the engine: `auto` prefers DeepSeek when its key is present and falls back to Gemini otherwise, including mid-run when DeepSeek reports an exhausted balance. Gemini enforces the schema natively through the `google-genai` SDK; DeepSeek uses JSON mode with lenient repair. A quota error leaves the university `partial` and stops the batch rather than burning the queue.
   - Enforce the **Jev Grounding & Citation Verification Gate** (`src/extractor/crawlers/verification.py`): verify high-risk extracted claims (`tuition_fee`, `eligibility_requirements`, `application_deadlines`) against source text using Jev `Noul` ($p \ge 0.75$), nullifying ungrounded claims to maintain the strict zero-hallucination policy.
-  - Trigger **Exa API web search fallback** if ranking data or application portal URLs are missing from NotebookLM sources.
+  - Trigger **free web search and Exa API fallback** if ranking data or application portal URLs are missing from the corpus.
   - Assemble complete 4-block JSON payload and append to the fsynced append-only ledger `university_counseling_data.jsonl`. The master JSON array is aggregated separately in one streamed pass at the end of a run, never per-university.
 
 ---
@@ -103,8 +102,8 @@ The four agents above are implemented as packages under `src/`, sequenced by
 | Agent | Package | Entry point |
 | :--- | :--- | :--- |
 | 1 — Crawling & link extraction | `src/extractor/linkers/` | `run_pipeline()` |
-| 2 — Ingestion & notebook lifecycle | `src/ingestor/` | `ingest_university_sources()` |
-| 3 — Schema query & enrichment | `src/extractor/crawlers/` | `extract_university_payload()` |
+| 2 — Corpus fetching | `src/extractor/crawlers/` | `fetch_corpus_text_for_links()` |
+| 3 — Schema extraction & enrichment | `src/extractor/crawlers/` | `extract_with_deepseek_engine()`, `extract_with_gemini_engine()` |
 | 4 — Quality audit & inspection | `src/inspector/` | `cli.py`, `audit_corpus()` |
 
 Shared, dependency-free leaf layer: `src/utilities/` (schema, state, JSON I/O,
@@ -121,10 +120,12 @@ orchestrator may import the inspector, never the reverse.
    bachelors, masters, phd, diploma.
 3. **Fees keep the currency the university published them in.** Currency is
    labelled, never converted.
-4. **Quota is reserved before it is spent**, and a pre-flight health check can
-   refuse a university before a notebook is created.
-5. **Phase 3 queries one notebook serially.** Concurrent asks share a
-   conversation and return each other's answers.
+4. **One key is enough.** No run requires two credentials or two accounts.
+   Gemini takes its key from `GEMINI_API_KEYS`, `GEMINI_API_KEY` or
+   `GOOGLE_API_KEY`; several comma-separated keys are rotated round-robin and
+   multiply the per-minute allowance, but one is a complete setup.
+5. **A spent quota stops the batch, not the data.** The university is left
+   `partial` and resumed next run, rather than written out empty.
 6. **TypeSafe Jev System One Primitives**:
    - Link relevance & deduplication: `Choice` (priority tiering) and `Noul` (entity duplicate alignment).
    - Citation & grounding verification: `Noul` ($p \ge 0.75$) eliminates hallucinated fees and deadlines.

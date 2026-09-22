@@ -277,3 +277,23 @@ async def test_gemini_reuses_the_deepseek_corpus_fetching():
     source = inspect.getsource(gemini_extractor)
     assert "from src.extractor.crawlers.deepseek_extractor import" in source
     assert "fetch_corpus_text_for_links" in source
+
+
+# ---------------------------------------------------------------------------
+# Schema enforcement
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("model", [ProgramsResponse, IdentityResponse])
+def test_the_response_schemas_convert_to_gemini_wire_schemas(model):
+    """
+    The one failure a mocked engine cannot catch: Gemini rejects a response
+    schema it cannot express, and it would do so on every real request while
+    every test still passed. The payload models nest four levels deep and carry
+    string enums, so this is converted for real rather than assumed.
+    """
+    pytest.importorskip("google.genai")
+    from google.genai import _transformers
+
+    schema = _transformers.t_schema(None, model)
+    properties = schema.model_dump(exclude_none=True).get("properties", {})
+    assert set(properties) == set(model.model_fields)

@@ -408,3 +408,70 @@ Suite grew from 629 to 667 tests. Each defect above is pinned by a regression te
 score. Two quota tests were rewritten to derive their expectations from `config.tier_quotas()`
 rather than transcribing the old shares as literals, which pinned one setting rather than the
 allocation behaviour.
+
+---
+
+## 7. Replacing NotebookLM with the Gemini API (C33, 2026-09-22)
+
+The pipeline had two extraction engines with nothing in common: DeepSeek scraped pages and
+prompted a model, while NotebookLM provisioned a cloud workspace, uploaded every link as a
+source, polled each one for readiness, then asked six questions serially over a
+reverse-engineered RPC transport. The second one is now gone. Gemini takes its place, built the
+same way DeepSeek already was, and the two engines are the same architecture with a different
+API at the end of it.
+
+### 7.1 Why
+
+- **The session was the weakest part of the system.** NotebookLM authenticated from a
+  reverse-engineered browser session in `~/.notebooklm/`, which expired on its own schedule. An
+  overnight batch could die at 3am on an auth error that no amount of retry logic could fix.
+- **Ingestion cost more than extraction.** Provisioning, uploading ~150 sources and waiting for
+  each to index took 1.5-3 minutes per university before a single question could be asked, and
+  a 200MB RPC buffer ceiling meant a large answer failed on size rather than on content.
+- **Six queries against a 500/day ceiling** capped a run at ~83 universities, and only if
+  nothing was ever retried.
+
+Direct extraction has none of those properties. A university is now two API requests over an
+official SDK, against a key in an environment variable.
+
+### 7.2 What changed
+
+| | Before | After |
+| :--- | :--- | :--- |
+| Engines | DeepSeek + NotebookLM (unrelated architectures) | DeepSeek + Gemini (one architecture) |
+| Per university | provision, upload, poll, 6 serial asks | fetch pages, 2 consolidated requests |
+| Auth | a browser session that expires | an API key |
+| Credentials needed | a Google account with NotebookLM Pro | one key, any of three variable names |
+| Failure to recover from | expired cookies, RPC buffer limits, cross-talk between concurrent asks | rate limits, which retry and then stop the batch cleanly |
+
+**New**: `src/utilities/gemini_client.py` (key discovery, round-robin rotation, free-tier pacing,
+quota classification), `src/extractor/crawlers/gemini_extractor.py` (the engine),
+`src/extractor/crawlers/query_schemas.py` (the suite, the report and both consolidated prompts,
+shared by DeepSeek and Gemini so neither can drift).
+
+**Deleted**: the whole `src/ingestor/` package, `notebook_querying.py`, `text_protocol.py`,
+`crawlers/runner.py`, `logger/notebook_audit.py`, `logger/notebook_logger.py`,
+`logger/migrate_audit.py`, the `notebooks` inspector command, `notebooklm-py`, and 25 config
+knobs that controlled none of the remaining code. A test now refuses to let those knobs return.
+
+### 7.3 One key, on purpose
+
+Nothing in the pipeline requires two keys or two accounts. `_get_api_keys()` reads
+`config.gemini_api_keys` first, then `GEMINI_API_KEYS`, `GEMINI_API_KEY` and `GOOGLE_API_KEY`,
+splitting on commas or whitespace. One key rotates to itself and works exactly as N keys do;
+several exist only to multiply the per-minute allowance, which the client's request pacing then
+spends. `is_gemini_available()` additionally checks that `google-genai` is importable, so
+`--engine auto` can never select an engine that cannot run.
+
+### 7.4 Verification
+
+787 tests before, 675 after. The difference is tests for code that no longer exists: ~124
+covering the ingestor, the wire protocol, notebook querying and the notebook loggers were
+deleted, and 34 new ones added for the Gemini client and engine. No coverage was lost, and no
+test was weakened to accommodate the change.
+
+`tests/test_pipeline.py`'s end-to-end suite was rewritten rather than deleted: it still drives
+all four phases with two seams stubbed, but the second seam is now a fake `generate_content`
+call instead of a fake notebook client. Every assertion that still describes real behaviour was
+kept; those about notebook provisioning, tier-scoped source ids and the notebook audit trail
+were dropped, because there is nothing left for them to assert about.

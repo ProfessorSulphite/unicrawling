@@ -3,7 +3,8 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Pydantic V2](https://img.shields.io/badge/pydantic-v2.13-red.svg)](https://docs.pydantic.dev/)
 [![Crawl4AI](https://img.shields.io/badge/Crawl4AI-v0.4.3--latest-green.svg)](https://github.com/unclecode/crawl4ai)
-[![NotebookLM](https://img.shields.io/badge/NotebookLM-v0.7.3--py-purple.svg)](https://github.com/teng-lin/notebooklm-py)
+[![Gemini](https://img.shields.io/badge/Gemini-google--genai-purple.svg)](https://ai.google.dev/)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek-V4.1--Flash-blue.svg)](https://api-docs.deepseek.com/)
 [![Rich](https://img.shields.io/badge/CLI-Rich-orange.svg)](https://github.com/Textualize/rich)
 
 An autonomous, multi-agent 4-phase data extraction, transformation, universal schema normalization, and inspection pipeline designed for building a production-ready **Education Counseling RAG Vector Database** covering universities globally (**Pakistan**, **Germany**, **United States**, **United Kingdom**, **Europe**).
@@ -14,13 +15,21 @@ An autonomous, multi-agent 4-phase data extraction, transformation, universal sc
 
 ---
 
-## 💡 How NotebookLM Workspaces are Managed in Batch Execution
+## 💡 How Extraction Works
 
 > [!IMPORTANT]
-> **NotebookLM Provisioning & Lifecycle Policy**:
-> - **Isolated Notebooks Per University**: During a batch run, the system creates an **isolated NotebookLM cloud workspace for each university individually** (e.g. `"ITU_Counseling_DB"`, `"LMU_Counseling_DB"`, `"MIT_Counseling_DB"`).
-> - **No Notebook Clutter / Merging**: Sources are NOT dumped into a single monolithic notebook. Each university's candidate links are processed in its dedicated workspace.
-> - **Automated Lifecycle Cleanup**: Once the 5-query schema extraction succeeds and passes Pydantic V2 validation, the pipeline calls `delete_notebook_after_success()`. This **deletes the cloud notebook automatically**, keeping your NotebookLM account quota clean (well below the 100-notebook account limit) while permanently preserving the raw links and extracted JSON payloads locally.
+> **Dual-engine, direct extraction**:
+> - **Two engines, one architecture**: DeepSeek and Gemini both work the same way -- fetch the
+>   page text behind the harvested links, assemble one labelled corpus, and extract the schema
+>   from it. There is no ingestion step, no cloud workspace and no per-account state to expire.
+> - **Two requests per university**: one consolidated pass returns all four degree levels, a
+>   second returns identity, contact and faculties. Six schema blocks, two API calls.
+> - **One key is enough**: `--engine auto` uses DeepSeek when `DEEPSEEK_API_KEY` is set and
+>   Gemini otherwise, including falling back mid-run when DeepSeek reports an exhausted balance.
+>   Gemini reads `GEMINI_API_KEYS`, `GEMINI_API_KEY` or `GOOGLE_API_KEY`; a single key is a
+>   complete setup, and several may be given comma-separated to be rotated round-robin.
+> - **Smart resume**: a university whose payload has `failed_query_blocks` is re-asked for those
+>   blocks only, with the blocks that already succeeded carried forward untouched.
 
 ---
 
@@ -44,16 +53,15 @@ unicrawling/
 │   │   └── loaders.py                    # .env loading
 │   ├── extractor/
 │   │   ├── linkers/                      # Phase 1: crawl, filter, dedupe, score
-│   │   ├── crawlers/                     # Phase 3: query suite, JSON repair, Exa fallback
+│   │   ├── crawlers/                     # Phases 2-3: corpus fetch, both engines, JSON repair
 │   │   └── normalizers/                  # Currency, eligibility, degree levels, carry-over
-│   ├── ingestor/                         # Phase 2: notebooks, sources, health check, quota
 │   ├── inspector/                        # Phase 4: dashboard, auditor, analytics, export
-│   └── logger/                           # Run manifests + per-notebook audit trail
+│   └── logger/                           # Per-run manifests
 ├── tests/                                # Mirrors src/, plus the end-to-end suite
 │   ├── test_pipeline.py                  # End-to-end: all four phases, stubbed at the seams
 │   ├── test_orchestrator.py              # Queue, run log, --resume
 │   ├── test_docs.py                      # Every documented command must actually run
-│   └── test_utilities/ test_extractor/ test_ingestor/ test_inspector/ test_logger/
+│   └── test_utilities/ test_extractor/ test_inspector/ test_logger/
 ├── data/
 │   ├── links/                            # Per-university link partitions (.jsonl, tiered)
 │   ├── outputs/
@@ -61,10 +69,9 @@ unicrawling/
 │   │   ├── uni_outputs/                  # 📄 Per-university validated JSON payloads
 │   │   ├── all_uni_outputs/              # 📄 Master JSONL ledger + compiled JSON array
 │   │   └── result.json                   # 📊 Batch execution analytics summary
-│   └── state.sqlite                      # Pipeline manifest + the daily query ledger
+│   └── state.sqlite                      # Pipeline manifest + the daily request ledger
 ├── loggings/
-│   ├── single_logs/  complete_logs/      # s_{id}.json / c_{id}.json run manifests
-│   └── notebook_logs/                    # One JSON audit document per notebook
+│   └── single_logs/  complete_logs/      # s_{id}.json / c_{id}.json run manifests
 ├── resources/
 │   ├── rankings_global.json              # Sourced identity & rankings registry
 │   └── refactoring_plan.md               # Architecture & migration plan
@@ -105,7 +112,7 @@ Specify target universities grouped by country and set pipeline parameters in `r
 
 > [!TIP]
 > Entries may be objects (`{"name": ..., "url": ...}`) or bare URL strings, but **prefer
-> objects**. An explicit `name` produces a correct notebook title and a reliable rankings-registry
+> objects**. An explicit `name` produces a correct slug and a reliable rankings-registry
 > lookup; without it the name is derived from the domain (`itu.edu.pk` → `ITU`).
 
 ### 2. Run Batch Execution
@@ -230,23 +237,22 @@ link discovery only needs hrefs and anchor text — not images, CSS, or fonts.
 *Verified live against `itu.edu.pk`: one browser launch reused across crawls, Chromium process
 count returning to its pre-run baseline with zero orphaned processes.*
 
-### Connection reuse & resilient readiness
-Pre-flight verification and text-fallback fetches share a single **HTTP/2 `httpx.AsyncClient`**
-(50 max connections, 20 keep-alive) instead of paying a TCP + TLS handshake per URL.
-
-Source readiness is polled **per source, with jitter and failure isolation**. Previously a
-single bad source made the batch wait raise and collapse the ready count to zero; now two
-failures out of twenty-five correctly report **23 ready** and the notebook stays usable.
+### Connection reuse & failure isolation
+The corpus fetch shares one `httpx.AsyncClient` across a university's pages, bounded by a
+semaphore, instead of paying a TCP + TLS handshake per URL. A page that 404s, times out or
+returns nothing is simply absent from the corpus: the remaining pages still answer, so two bad
+links out of twenty-five cost two links, not the university.
 
 ### Crash safety
 Every whole-file write lands in a fsynced `.tmp` sibling and is then atomically renamed
 (`src/json_io.py`). A crash leaves either the previous complete file or the new one — never a
-half-written payload, and never a truncated link partition handed to Phase 2.
+half-written payload, and never a truncated link partition handed to the corpus fetch.
 
-### Enforced quota
-Phase 3 reserves its 5 queries against the **500/day NotebookLM Pro ceiling before issuing any
-query**, and refuses to start a university that cannot complete within the remaining budget.
-Retry overage is charged afterwards, so the ledger reflects real consumption.
+### Quota exhaustion stops the batch, not the data
+A rate limit surviving retry, or a spent daily allowance, leaves the university `partial` and
+halts the queue rather than burning the remaining universities against a quota that is already
+gone. The next run resumes from exactly there. Gemini requests are additionally spaced to the
+configured per-minute allowance, multiplied by however many keys are configured.
 
 ### Faster state layer
 `StateManager` holds one persistent thread-local SQLite connection (`WAL`, `synchronous=NORMAL`,
