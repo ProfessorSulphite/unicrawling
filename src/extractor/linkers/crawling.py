@@ -46,6 +46,18 @@ _SHARED_CRAWLER: Optional[AsyncWebCrawler] = None
 _SHARED_CRAWLER_LOOP: Optional[Any] = None
 
 
+EXPAND_DOM_JS = """
+(() => {
+    try {
+        document.querySelectorAll('details:not([open])').forEach(d => d.setAttribute('open', ''));
+        document.querySelectorAll('button[aria-expanded="false"], [role="button"][aria-expanded="false"]').forEach(b => {
+            try { b.click(); } catch(e) {}
+        });
+    } catch (err) {}
+})();
+"""
+
+
 def build_browser_config() -> BrowserConfig:
     """Memory-bounded browser settings for link discovery."""
     return BrowserConfig(
@@ -179,7 +191,19 @@ async def crawl_site_links(
     last_error: Optional[str] = None
 
     for target_candidate in candidates:
-        run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, score_links=True)
+        run_config = CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            score_links=True,
+            wait_until="networkidle",
+            wait_for_timeout=1500,
+            scan_full_page=True,
+            scroll_delay=0.2,
+            max_scroll_steps=8,
+            js_code=EXPAND_DOM_JS,
+            flatten_shadow_dom=True,
+            remove_overlay_elements=True,
+            remove_consent_popups=True,
+        )
         scorer = KeywordRelevanceScorer(keywords=CRAWL4AI_SCORER_KEYWORDS, weight=1.0)
         strategy = BestFirstCrawlingStrategy(
             max_depth=max_depth,

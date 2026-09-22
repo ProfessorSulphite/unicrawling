@@ -263,6 +263,48 @@ def is_same_institution(url: str, base_url: str) -> bool:
 
 
 
+def is_satellite_campus_leak(url: str, base_url: str) -> bool:
+    """
+    Prevents cross-campus contamination between main campus and satellite subdomains.
+
+    If base_url is 'https://www.tamu.edu' (main campus), links leading to
+    'qatar.tamu.edu' or 'galveston.tamu.edu' are leaked satellite links and must be filtered out.
+    Conversely, if base_url is 'https://qatar.tamu.edu', links leading back to main campus
+    or another satellite are filtered out to keep the satellite crawl cleanly scoped.
+    """
+    if not base_url or not url:
+        return False
+    from src.utilities.naming import SATELLITE_CAMPUS_PREFIXES
+
+    link_netloc = urlparse(url).netloc.lower()
+    if link_netloc.startswith("www."):
+        link_netloc = link_netloc[4:]
+
+    base_netloc = urlparse(base_url).netloc.lower()
+    if base_netloc.startswith("www."):
+        base_netloc = base_netloc[4:]
+
+    if not link_netloc or not base_netloc or link_netloc == base_netloc:
+        return False
+
+    base_parts = base_netloc.split(".")
+    link_parts = link_netloc.split(".")
+
+    is_base_satellite = len(base_parts) >= 3 and base_parts[0] in SATELLITE_CAMPUS_PREFIXES
+    is_link_satellite = len(link_parts) >= 3 and link_parts[0] in SATELLITE_CAMPUS_PREFIXES
+
+    if is_base_satellite:
+        # Crawling a satellite campus: reject any link that isn't on this exact satellite host
+        return link_netloc != base_netloc
+    else:
+        # Crawling main campus: reject links to branch/satellite campuses under this domain
+        if is_link_satellite:
+            parent_link_domain = ".".join(link_parts[1:])
+            if parent_link_domain == base_netloc or base_netloc.endswith(f".{parent_link_domain}"):
+                return True
+    return False
+
+
 def preprocess_and_filter_links(
     links: List[Dict[str, str]],
     base_url: str = "",
@@ -295,6 +337,10 @@ def preprocess_and_filter_links(
         domain = parsed.netloc.lower()
 
         if any(exc_domain in domain for exc_domain in EXCLUDED_DOMAINS):
+            continue
+
+        if is_satellite_campus_leak(normalized_url, base_url):
+            logger.debug(f"Filtered out satellite campus leak link: {normalized_url} (base: {base_url})")
             continue
 
         # Sources must belong to the university being described. `base_url` was
