@@ -204,6 +204,9 @@
     ]
   },
   "pipeline_settings": {
+    "gemini_model": "gemini-3.6-flash",
+    "deepseek_model": "deepseek-flash",
+    "engine": "auto",
     "max_links": 100,
     "exclude_keywords": "news|events",
     "uptodate": true,

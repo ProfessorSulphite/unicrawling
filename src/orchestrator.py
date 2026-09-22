@@ -170,6 +170,7 @@ async def run_master_pipeline(
     compile_master: bool = True,
     force_rerun: bool = False,
     engine: Optional[str] = None,
+    model: Optional[str] = None,
 ):
     """
     Run all four phases for one university.
@@ -184,6 +185,7 @@ async def run_master_pipeline(
             state_mgr, url, uni_name_override, max_links,
             exclude_keywords, uptodate, compile_master, force_rerun,
             engine=engine,
+            model=model,
         )
     finally:
         state_mgr.close()
@@ -199,6 +201,7 @@ async def _run_master_pipeline(
     compile_master: bool = True,
     force_rerun: bool = False,
     engine: Optional[str] = None,
+    model: Optional[str] = None,
 ):
     """Phase 1-4 body. See run_master_pipeline for the public entry point."""
     uni_name, uni_slug, uni_domain = derive_uni_info(url, uni_name_override)
@@ -331,6 +334,12 @@ async def _run_master_pipeline(
         use_deepseek = True
     elif active_engine == "gemini":
         use_gemini = True
+
+    if model:
+        if (active_engine == "deepseek") or (use_deepseek and "deepseek" in model):
+            config.deepseek_model = model
+        else:
+            config.gemini_model = model
 
     if use_deepseek:
         from src.utilities.deepseek_client import DeepSeekQuotaError
@@ -556,6 +565,13 @@ async def run_batch_pipeline(
     if engine:
         settings["engine"] = engine
 
+    if "gemini_model" in settings:
+        config.gemini_model = str(settings["gemini_model"]).strip()
+    elif "model" in settings:
+        config.gemini_model = str(settings["model"]).strip()
+    if "deepseek_model" in settings:
+        config.deepseek_model = str(settings["deepseek_model"]).strip()
+
     if settings.get("clean_logging", True):
         setup_clean_logging()
 
@@ -670,6 +686,7 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                         compile_master=False,
                         force_rerun=settings.get("force_rerun_all", False),
                         engine=settings.get("engine"),
+                        model=settings.get("gemini_model") or settings.get("model") or settings.get("deepseek_model"),
                     ),
                     timeout=config.university_timeout_sec,
                 )
@@ -756,6 +773,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Extraction engine: 'auto' (DeepSeek if its key is present, else Gemini), 'deepseek', or 'gemini'",
     )
     parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Override LLM extraction model (e.g. gemini-3.6-flash, deepseek-flash)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Expand the queue and write a run log without executing any phase or spending quota",
@@ -780,6 +803,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         console.print("[bold red]Error:[/bold red] --url and --resume are mutually exclusive.")
         return 2
 
+    if args.model:
+        if (args.engine or "").lower() == "deepseek" or "deepseek" in args.model.lower():
+            config.deepseek_model = args.model
+        else:
+            config.gemini_model = args.model
+
     if args.url:
         asyncio.run(_run_single(args))
     else:
@@ -803,6 +832,7 @@ async def _run_single(args) -> None:
         "exclude_keywords": args.exclude_keywords,
         "uptodate": args.uptodate,
         "engine": args.engine,
+        "model": args.model,
     }
     with PipelineLogger(
         kind=RunKind.SINGLE,
@@ -817,6 +847,7 @@ async def _run_single(args) -> None:
                 exclude_keywords=args.exclude_keywords,
                 uptodate=args.uptodate,
                 engine=args.engine,
+                model=args.model,
             )
             run_log.record(slug, "processed", url=args.url)
         finally:
