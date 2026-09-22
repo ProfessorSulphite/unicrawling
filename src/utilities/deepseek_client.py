@@ -65,8 +65,30 @@ INTERVAL_PATTERNS = [
 ]
 
 
+class DeepSeekQuotaError(RuntimeError):
+    """Raised when DeepSeek returns HTTP 402 (Insufficient Balance) or quota exhaustion."""
+    pass
+
+
+_DEEPSEEK_EXHAUSTED = False
+
+
+def mark_deepseek_exhausted() -> None:
+    """Mark DeepSeek as exhausted for the current process session."""
+    global _DEEPSEEK_EXHAUSTED
+    _DEEPSEEK_EXHAUSTED = True
+
+
+def reset_deepseek_exhausted() -> None:
+    """Reset the exhausted state (useful in testing)."""
+    global _DEEPSEEK_EXHAUSTED
+    _DEEPSEEK_EXHAUSTED = False
+
+
 def is_deepseek_available() -> bool:
-    """Return True if a DeepSeek API key is configured in settings or environment."""
+    """Return True if a DeepSeek API key is configured and not marked exhausted."""
+    if _DEEPSEEK_EXHAUSTED:
+        return False
     key = config.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
     return bool(key.strip())
 
@@ -207,6 +229,8 @@ async def normalize_tuition_batch(
                 logger.info(f"DeepSeek normalized tuition fees for {len(normalized_items)} programs.")
                 return programs
             else:
+                if resp.status_code in (401, 402):
+                    mark_deepseek_exhausted()
                 logger.warning(f"DeepSeek API returned HTTP {resp.status_code}: {resp.text[:120]}. Using offline fallback.")
     except Exception as e:
         logger.warning(f"DeepSeek normalization call failed ({type(e).__name__}: {e}). Using offline fallback.")
@@ -280,6 +304,10 @@ async def extract_field_from_text(
                 result = json.loads(cleaned)
                 val = result.get("extracted_value")
                 return str(val).strip() if val else None
+            elif resp.status_code in (401, 402):
+                mark_deepseek_exhausted()
+                logger.warning(f"DeepSeek API returned HTTP {resp.status_code}. Balance/quota exhausted.")
+                return None
     except Exception as e:
         logger.warning(f"DeepSeek direct field extraction failed ({field_name}): {e}")
 

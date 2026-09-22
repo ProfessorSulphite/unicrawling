@@ -325,58 +325,70 @@ async def _run_master_pipeline(
         use_deepseek = True
 
     if use_deepseek:
-        print(f"\n⚡ [ENGINE: DEEPSEEK DIRECT] Running DeepSeek-V4.1-Flash extraction engine for {uni_name}...")
-        from src.extractor.crawlers.deepseek_extractor import extract_with_deepseek_engine
-
-        state_mgr.set_status(uni_slug, "ingested", sources_ingested=len(links_list))
-        payload, report = await extract_with_deepseek_engine(
-            links_list=links_list,
-            uni_name=uni_name,
-            uni_slug=uni_slug,
-            uni_domain=uni_domain,
-            failed_blocks=failed_blocks_to_query,
-            accumulated_results=accumulated_results,
-        )
-
-        output_file = config.output_jsonl_path
-        append_jsonl(output_file, payload.model_dump_json())
-
-        config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
-        uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
-        atomic_write_json(uni_json_path, payload.model_dump())
-
-        print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
-        print(f"  └─ JSONL  : {output_file}")
-        print(f"  └─ Slug   : {uni_json_path}")
-
-        partial_note = (
-            f"Partial extraction: {len(report.failed)} query block(s) failed: {sorted(report.failed)}"
-            if not report.ok else None
-        )
-        state_mgr.set_status(
-            uni_slug,
-            PARTIAL_EXTRACTION if partial_note else "completed",
-            queries_executed=report.queries_used,
-            error_log=partial_note,
-            intake_year=config.default_intake_year,
-            data_version=1,
-        )
-        if partial_note:
-            print(f"⚠️  [PHASE 3] {partial_note}")
-
-        # Phase 4 Inspector Check
-        print(f"\n🔍 [PHASE 4: DATA QUALITY AUDIT] Auditing extracted corpus health...")
+        from src.utilities.deepseek_client import DeepSeekQuotaError
         try:
-            from src.inspector.auditor import audit_corpus
-            verdict = audit_corpus()
-            status_str = "READY FOR SUPABASE" if verdict.ready else "GAPS DETECTED (STRICT AUDIT)"
-            print(f"✓ [PHASE 4 AUDIT COMPLETE] Verdict: {status_str}")
-        except Exception as audit_err:
-            print(f"⚠️  [PHASE 4 AUDIT] Inspection skipped: {audit_err}")
+            print(f"\n⚡ [ENGINE: DEEPSEEK DIRECT] Running DeepSeek-V4.1-Flash extraction engine for {uni_name}...")
+            from src.extractor.crawlers.deepseek_extractor import extract_with_deepseek_engine
 
-        if compile_master:
-            compile_master_json()
-        return PipelineOutcome("completed", None)
+            state_mgr.set_status(uni_slug, "ingested", sources_ingested=len(links_list))
+            payload, report = await extract_with_deepseek_engine(
+                links_list=links_list,
+                uni_name=uni_name,
+                uni_slug=uni_slug,
+                uni_domain=uni_domain,
+                failed_blocks=failed_blocks_to_query,
+                accumulated_results=accumulated_results,
+            )
+
+            output_file = config.output_jsonl_path
+            append_jsonl(output_file, payload.model_dump_json())
+
+            config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+            uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+            atomic_write_json(uni_json_path, payload.model_dump())
+
+            print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
+            print(f"  └─ JSONL  : {output_file}")
+            print(f"  └─ Slug   : {uni_json_path}")
+
+            partial_note = (
+                f"Partial extraction: {len(report.failed)} query block(s) failed: {sorted(report.failed)}"
+                if not report.ok else None
+            )
+            state_mgr.set_status(
+                uni_slug,
+                PARTIAL_EXTRACTION if partial_note else "completed",
+                queries_executed=report.queries_used,
+                error_log=partial_note,
+                intake_year=config.default_intake_year,
+                data_version=1,
+            )
+            if partial_note:
+                print(f"⚠️  [PHASE 3] {partial_note}")
+
+            # Phase 4 Inspector Check
+            print(f"\n🔍 [PHASE 4: DATA QUALITY AUDIT] Auditing extracted corpus health...")
+            try:
+                from src.inspector.auditor import audit_corpus
+                verdict = audit_corpus()
+                status_str = "READY FOR SUPABASE" if verdict.ready else "GAPS DETECTED (STRICT AUDIT)"
+                print(f"✓ [PHASE 4 AUDIT COMPLETE] Verdict: {status_str}")
+            except Exception as audit_err:
+                print(f"⚠️  [PHASE 4 AUDIT] Inspection skipped: {audit_err}")
+
+            if compile_master:
+                compile_master_json()
+            return PipelineOutcome("completed", None)
+
+        except DeepSeekQuotaError as quota_err:
+            if active_engine == "auto":
+                print(f"\n⚠️  [ENGINE FALLBACK] DeepSeek balance/quota exhausted: {quota_err}")
+                print(f"    Automatically falling back to NotebookLM engine for {uni_name} and remaining batch...\n")
+                # Fall through to NotebookLM pipeline below!
+            else:
+                print(f"\n❌ [DEEPSEEK ERROR] Insufficient balance: {quota_err}")
+                state_mgr.set_status(uni_slug, "failed", error_log=str(quota_err))
+                return PipelineOutcome("failed", str(quota_err))
 
     cohorts = partition_links_into_cohorts(links_list, cohort_cap=250)
 

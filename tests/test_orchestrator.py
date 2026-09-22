@@ -662,4 +662,45 @@ async def test_run_master_pipeline_skips_already_completed(tmp_path, monkeypatch
     assert outcome.status == "completed"
 
 
+@pytest.mark.asyncio
+async def test_orchestrator_auto_engine_falls_back_to_notebooklm_on_quota_error(tmp_path, monkeypatch):
+    """When engine='auto' and DeepSeek encounters quota exhaustion, fall back to NotebookLM."""
+    from src.orchestrator import _run_master_pipeline
+    from src.utilities.state_management import StateManager
+    from src.utilities.deepseek_client import DeepSeekQuotaError, reset_deepseek_exhausted
+    from src.ingestor.source_management import IngestResult
+
+    reset_deepseek_exhausted()
+    seen = {}
+
+    async def fake_deepseek_extract(*args, **kwargs):
+        raise DeepSeekQuotaError("Insufficient Balance (HTTP 402)")
+
+    async def fake_ingest(*, uni_slug, uni_name, links, client, **kw):
+        seen["ingest_called"] = True
+        return IngestResult(skipped=True, skip_reason="stubbed NotebookLM fallback")
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr("src.orchestrator._read_harvested_links", lambda slug: [{"url": "https://itu.edu.pk/p1", "tier": 1}])
+    monkeypatch.setattr("src.utilities.deepseek_client.is_deepseek_available", lambda: True)
+    monkeypatch.setattr("src.extractor.crawlers.deepseek_extractor.extract_with_deepseek_engine", fake_deepseek_extract)
+    monkeypatch.setattr("src.orchestrator.ingest_university_sources", fake_ingest)
+    monkeypatch.setattr("src.orchestrator.NotebookLMClient.from_storage", staticmethod(lambda *a, **k: _FakeClient()))
+
+    state = StateManager(db_path=tmp_path / "state.sqlite")
+    try:
+        await _run_master_pipeline(state, "https://itu.edu.pk", engine="auto")
+    finally:
+        state.close()
+        reset_deepseek_exhausted()
+
+    assert seen.get("ingest_called") is True, "NotebookLM ingest was not invoked after DeepSeek quota error!"
+
+
+
 
