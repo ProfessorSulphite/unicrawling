@@ -9,7 +9,7 @@ from src.extractor.crawlers.deepseek_extractor import (
     extract_with_deepseek_engine,
 )
 from src.extractor.crawlers.notebook_querying import QUERY_SUITE, Q1Payload
-from src.utilities.schema import DegreeLevel, UniversityPayload, ProgramItem
+from src.utilities.schema import DegreeLevel, UniversityPayload, ProgramItem, ContactInfo
 
 
 def test_clean_html_to_markdown_summary():
@@ -113,17 +113,42 @@ async def test_extract_with_deepseek_engine_mock():
         )
     ]
 
-    async def mock_query_block(spec, corpus, name, domain):
-        if spec.key == "main_info_contact":
-            return mock_q1
-        elif spec.key == "bachelors":
-            return mock_bachelors
-        return []
+    mock_programs = {
+        "bachelors": [
+            ProgramItem(
+                name="BS in Computer Science and Engineering",
+                degree_level=DegreeLevel.BACHELORS,
+                tuition_fee="$62,150 per year",
+                duration="4 Years",
+            )
+        ],
+        "masters": [],
+        "phd": [],
+        "diploma": [],
+    }
+
+    mock_identity = (
+        Q1Payload(
+            main_info={
+                "name": "Massachusetts Institute of Technology",
+                "website": "https://mit.edu",
+                "type": "private",
+                "description": "Leading science institute.",
+                "key_links": {"application_portal_url": "https://mit.edu/apply"},
+            },
+            contact={"official_email": "info@mit.edu", "phone_numbers": []},
+        ).main_info,
+        ContactInfo(official_email="info@mit.edu"),
+        [],
+    )
 
     with patch("src.extractor.crawlers.deepseek_extractor.fetch_corpus_text_for_links", new_callable=AsyncMock) as mock_fetch, \
-         patch("src.extractor.crawlers.deepseek_extractor.query_deepseek_block", side_effect=mock_query_block), \
+         patch("src.extractor.crawlers.deepseek_extractor.query_deepseek_consolidated_programs", new_callable=AsyncMock) as mock_prog, \
+         patch("src.extractor.crawlers.deepseek_extractor.query_deepseek_consolidated_identity", new_callable=AsyncMock) as mock_ident, \
          patch("src.extractor.crawlers.deepseek_extractor.is_typesafe_available", return_value=False):
         mock_fetch.return_value = {"https://mit.edu/cs": "Computer Science degree details."}
+        mock_prog.return_value = mock_programs
+        mock_ident.return_value = mock_identity
 
         payload, report = await extract_with_deepseek_engine(
             links_list=mock_links,
@@ -141,6 +166,25 @@ async def test_extract_with_deepseek_engine_mock():
         assert payload.intake_year == "2026"
         assert payload.data_version == 1
         assert report.ok is True
+
+
+@pytest.mark.asyncio
+async def test_deepseek_quota_error_exhaustion():
+    """Verify HTTP 402 raises DeepSeekQuotaError and marks engine exhausted."""
+    from src.utilities.deepseek_client import is_deepseek_available, reset_deepseek_exhausted, DeepSeekQuotaError
+    from src.extractor.crawlers.deepseek_extractor import _execute_deepseek_json_call
+
+    reset_deepseek_exhausted()
+    mock_resp = AsyncMock()
+    mock_resp.status_code = 402
+    mock_resp.text = '{"error":{"message":"Insufficient Balance"}}'
+
+    with patch("httpx.AsyncClient.post", return_value=mock_resp):
+        with pytest.raises(DeepSeekQuotaError):
+            await _execute_deepseek_json_call("prompt", "sys")
+
+        assert is_deepseek_available() is False
+    reset_deepseek_exhausted()
 
 
 @pytest.mark.asyncio
