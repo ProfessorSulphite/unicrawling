@@ -9,7 +9,7 @@ outcome, so a partially-failed extraction is never reported as clean.
 import asyncio
 import logging
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from notebooklm import NotebookLMClient
 from notebooklm.exceptions import RPCResponseTooLargeError
 from pydantic import BaseModel
@@ -18,6 +18,16 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, get_args, get_ori
 from src.config import config
 from src.logger.notebook_logger import log_query_executed
 from src.utilities.schema import ContactInfo, FacultyItem, MainInfo, ProgramItem
+
+# Shared with the direct-extraction engines (C33). The suite, the report and the
+# Q1 payload live in query_schemas now; this module adds only the text-protocol
+# attributes NotebookLM's wire format needs on top of them.
+from src.extractor.crawlers.query_schemas import (  # noqa: F401  (re-exported)
+    ExtractionReport,
+    Q1Payload,
+    QuerySpec,
+)
+from src.extractor.crawlers.query_schemas import QUERY_SUITE as _BASE_QUERY_SUITE
 
 from src.extractor.crawlers.json_repairing import (
     ExtractionError,
@@ -62,95 +72,6 @@ def is_empty_stream_throttle_error(error: BaseException) -> bool:
         or "the response was empty" in text
     )
 
-
-class Q1Payload(BaseModel):
-    main_info: MainInfo
-    contact: ContactInfo
-
-# ---------------------------------------------------------------------------
-# Query suite
-# ---------------------------------------------------------------------------
-
-@dataclass
-class QuerySpec:
-    """One query in the suite, bound to the source tiers that can answer it."""
-    key: str
-    prompt: str
-    model: Any
-    tiers: Tuple[int, ...]
-    fields: Optional[Tuple[FieldSpec, ...]] = None
-    single: bool = False
-    text_prompt: Optional[str] = None
-
-
-_JSON_CONTRACT = (
-    "Return ONLY a single valid JSON value and nothing else. No prose, no markdown "
-    "fences, no explanation. Use null for unknown scalar fields and [] for unknown "
-    "lists. Never invent a value that is not supported by the provided sources."
-)
-
-Q1_PROMPT = """Extract the university's main information and contact details.
-Match this exact structure:
-{
-  "main_info": {
-    "name": "<University Name>", "abbreviation": "<or null>", "country": "<Country e.g. Pakistan, Germany, USA>",
-    "city": "<City location of main campus, or null>", "established_year": null,
-    "accreditation_body": "<e.g. HEC, ABET, WASC, or null>",
-    "admission_cycles_offered": ["<terms as the university names them; [] if unstated>"],
-    "primary_instruction_language": "<main teaching language, or null>",
-    "website": "<Website URL>", "type": "public" or "private",
-    "description": "<Concise overview>",
-    "key_links": {
-      "academics_url": "<or null>",
-      "admissions_url": "<or null>",
-      "application_portal_url": "<the page where an applicant actually submits an application, or null>"
-    },
-    "rankings": []
-  },
-  "contact": {
-    "official_email": "<or null>", "phone_numbers": [], "physical_address": "<or null>",
-    "admissions_office_location": "<or null>", "sub_campuses_contact": []
-  }
-}
-Leave "rankings" as an empty array; do not state any numeric rank.
-""" + _JSON_CONTRACT
-
-# Every field plan section 5 lists as required per programme. C18 replaced the
-# three-line summary with a full-paragraph `description` and added
-# `admission_requirements`; deadlines became a list because a programme with
-# Fall and Spring intakes has two, and the singular field forced one to be
-# dropped. `currency` is a LABEL for whatever the university published -- the
-# pipeline never converts (Finding 8).
-_PROGRAM_STRUCTURE = """[
-  {
-    "name": "<Program Name>", "program_info_link": "<URL or null>",
-    "department": "<or null>", "degree_level": "%s",
-    "duration": "<e.g. 4 Years>", "tuition_fee": "<fee exactly as published, or null>",
-    "currency": "<currency the university publishes the fee in, e.g. PKR, EUR, USD>",
-    "scholarships_info": "<or null>", "intake_terms": ["<intake terms as the university names them; [] if unstated>"],
-    "delivery_mode": "<On-Campus, Online or Hybrid, or null>", "application_fee": "<or null>",
-    "career_prospects": "<or null>", "courses_taught": [],
-    "description": "<ONE FULL PARAGRAPH: what the programme covers, its focus areas, learning outcomes, career prospects, and any distinctive specializations>",
-    "admission_requirements": "<how to apply and what is required beyond marks: documents, interviews, portfolios, prerequisites, entry-test steps, or null>",
-    "eligibility_requirements": {
-      "minimum_marks_percentage": "<or null>", "entry_tests_accepted": [],
-      "aggregate_formula": "<or null>"
-    },
-    "application_status": "open" | "closed" | "rolling" | "upcoming",
-    "application_deadlines": ["<one entry per published deadline; [] if none stated>"]
-  }
-]"""
-
-# Appended to every programme query. `description` is the plan's headline
-# deliverable and the field a model is most likely to skimp on, so it is called
-# out separately from the structure block rather than left as one line of JSON.
-_PROGRAM_FIELD_NOTE = (
-    "\"description\" must be a full paragraph, not a phrase and not a list -- a "
-    "student should be able to read it alone and know what the programme is. "
-    "Leave a field null rather than guessing; an unstated deadline is [] and an "
-    "unstated fee is null.\n"
-)
-
 Q1_TEXT_PROMPT = (
     "Extract the university's main information and contact details from the provided sources.\n\n"
     + render_format_contract(IDENTITY_FIELDS, plural=False)
@@ -170,150 +91,40 @@ FACULTIES_TEXT_PROMPT = (
     + render_format_contract(FACULTY_FIELDS, plural=True)
 )
 
+# The shared suite carries the JSON prompts; NotebookLM additionally needs the
+# delimited text-protocol prompt and field spec per block, layered on here so
+# the prompt text itself is never duplicated between the two engines.
+_TEXT_PROTOCOL_OVERRIDES: Dict[str, Tuple[Tuple[FieldSpec, ...], str]] = {
+    "main_info_contact": (IDENTITY_FIELDS, Q1_TEXT_PROMPT),
+    "bachelors": (PROGRAM_FIELDS, _make_degree_text_prompt(
+        "bachelors",
+        "BS, BSc, BA, BBA, BE, B.Ed, BFA, MBBS, LLB, PharmD, DPT",
+        "MBBS, PharmD and DPT are bachelors-level entry programmes here; list them in this query, not the PhD one.",
+    )),
+    "masters": (PROGRAM_FIELDS, _make_degree_text_prompt(
+        "masters",
+        "MS, MSc, MA, MBA, MPhil, M.Ed, LLM, ME",
+        "Include MPhil programmes here. Exclude postgraduate diplomas and certificates -- those belong to the diploma query.",
+    )),
+    "phd": (PROGRAM_FIELDS, _make_degree_text_prompt(
+        "phd",
+        "PhD and research doctorates",
+        "Research doctorates only. Do not include post-doctoral fellowships, which are appointments rather than programmes.",
+    )),
+    "diploma": (PROGRAM_FIELDS, _make_degree_text_prompt(
+        "diploma",
+        "DIPLOMA and CERTIFICATE programmes (postgraduate diploma, PGD, advanced diploma, professional certificate)",
+        "Award-bearing programmes only. Do not list individual courses or modules that are part of a degree.",
+    )),
+    "faculties": (FACULTY_FIELDS, FACULTIES_TEXT_PROMPT),
+}
+
 QUERY_SUITE: List[QuerySpec] = [
-    QuerySpec(
-        key="main_info_contact",
-        prompt=Q1_PROMPT,
-        model=Q1Payload,
-        # Admissions/fees pages (T2) carry portal links; T4 carries contact details.
-        tiers=(1, 2, 3, 4),
-        fields=IDENTITY_FIELDS,
-        single=True,
-        text_prompt=Q1_TEXT_PROMPT,
-    ),
-    QuerySpec(
-        key="bachelors",
-        prompt=(
-            "List every BACHELORS degree programme (BS, BSc, BA, BBA, BE, B.Ed, BFA, "
-            "MBBS, LLB, PharmD, DPT) offered by this university, as a JSON array "
-            "matching:\n"
-            + (_PROGRAM_STRUCTURE % "bachelors") + "\n"
-            + "MBBS, PharmD and DPT are bachelors-level entry programmes here; list "
-            "them in this query, not the PhD one.\n"
-            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
-        ),
-        model=List[ProgramItem],
-        tiers=(1, 2),
-        fields=PROGRAM_FIELDS,
-        single=False,
-        text_prompt=_make_degree_text_prompt(
-            "bachelors",
-            "BS, BSc, BA, BBA, BE, B.Ed, BFA, MBBS, LLB, PharmD, DPT",
-            "MBBS, PharmD and DPT are bachelors-level entry programmes here; list them in this query, not the PhD one.",
-        ),
-    ),
-    QuerySpec(
-        key="masters",
-        prompt=(
-            "List every MASTERS degree programme (MS, MSc, MA, MBA, MPhil, M.Ed, LLM, "
-            "ME) offered by this university, as a JSON array matching:\n"
-            + (_PROGRAM_STRUCTURE % "masters") + "\n"
-            + "Include MPhil programmes here. Exclude postgraduate diplomas and "
-            "certificates -- those belong to the diploma query.\n"
-            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
-        ),
-        model=List[ProgramItem],
-        tiers=(1, 2),
-        fields=PROGRAM_FIELDS,
-        single=False,
-        text_prompt=_make_degree_text_prompt(
-            "masters",
-            "MS, MSc, MA, MBA, MPhil, M.Ed, LLM, ME",
-            "Include MPhil programmes here. Exclude postgraduate diplomas and certificates -- those belong to the diploma query.",
-        ),
-    ),
-    QuerySpec(
-        key="phd",
-        prompt=(
-            "List every PhD and research doctorate programme offered by this "
-            "university, as a JSON array matching:\n"
-            + (_PROGRAM_STRUCTURE % "phd") + "\n"
-            + "Research doctorates only. Do not include post-doctoral fellowships, "
-            "which are appointments rather than programmes.\n"
-            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
-        ),
-        model=List[ProgramItem],
-        tiers=(1, 2),
-        fields=PROGRAM_FIELDS,
-        single=False,
-        text_prompt=_make_degree_text_prompt(
-            "phd",
-            "PhD and research doctorates",
-            "Research doctorates only. Do not include post-doctoral fellowships, which are appointments rather than programmes.",
-        ),
-    ),
-    # Sixth query, added in C17. Postgraduate diplomas and certificates are a
-    # large share of Pakistani enrolment and had no bucket at all under the old
-    # three-level taxonomy -- they were either dropped or misfiled as masters.
-    QuerySpec(
-        key="diploma",
-        prompt=(
-            "List every DIPLOMA and CERTIFICATE programme (postgraduate diploma, PGD, "
-            "advanced diploma, professional certificate) offered by this university, "
-            "as a JSON array matching:\n"
-            + (_PROGRAM_STRUCTURE % "diploma") + "\n"
-            + "Award-bearing programmes only. Do not list individual courses or "
-            "modules that are part of a degree.\n"
-            + _PROGRAM_FIELD_NOTE + _JSON_CONTRACT
-        ),
-        model=List[ProgramItem],
-        tiers=(1, 2),
-        fields=PROGRAM_FIELDS,
-        single=False,
-        text_prompt=_make_degree_text_prompt(
-            "diploma",
-            "DIPLOMA and CERTIFICATE programmes (postgraduate diploma, PGD, advanced diploma, professional certificate)",
-            "Award-bearing programmes only. Do not list individual courses or modules that are part of a degree.",
-        ),
-    ),
-    QuerySpec(
-        key="faculties",
-        prompt=(
-            "List all faculties, schools, and their constituent departments, as a JSON "
-            "array matching:\n"
-            '[{"faculty_name": "<Name>", "description": "<or null>", '
-            '"departments": [], "faculty_website": "<URL or null>"}]\n' + _JSON_CONTRACT
-        ),
-        model=List[FacultyItem],
-        tiers=(3, 1),
-        fields=FACULTY_FIELDS,
-        single=False,
-        text_prompt=FACULTIES_TEXT_PROMPT,
-    ),
+    replace(spec, fields=_TEXT_PROTOCOL_OVERRIDES[spec.key][0],
+            text_prompt=_TEXT_PROTOCOL_OVERRIDES[spec.key][1])
+    if spec.key in _TEXT_PROTOCOL_OVERRIDES else spec
+    for spec in _BASE_QUERY_SUITE
 ]
-
-
-@dataclass
-class ExtractionReport:
-    """Per-query outcome, so a partially-failed extraction is never silently clean."""
-    succeeded: List[str] = field(default_factory=list)
-    failed: Dict[str, str] = field(default_factory=dict)
-    queries_used: int = 0
-    notes: List[str] = field(default_factory=list)
-    consecutive_throttle_errors: int = 0
-
-    @property
-    def ok(self) -> bool:
-        return not self.failed
-
-    def record_success(self, key: str, duration_sec: float = 0.0) -> None:
-        self.succeeded.append(key)
-        self.queries_used += 1
-
-    def record_failure(self, key: str, err: str) -> None:
-        self.failed[key] = err
-        self.queries_used += 1
-
-    def note(self, msg: str) -> None:
-        self.notes.append(msg)
-
-    def merge(self, other: "ExtractionReport") -> None:
-        """Fold a per-query sub-report into this one."""
-        self.succeeded.extend(other.succeeded)
-        self.failed.update(other.failed)
-        self.queries_used += other.queries_used
-        self.notes.extend(other.notes)
-        self.consecutive_throttle_errors = other.consecutive_throttle_errors
 
 
 async def _ask(

@@ -22,11 +22,18 @@ from pydantic import ValidationError
 
 from src.config import config
 from src.extractor.crawlers.free_search_enrichment import free_search_find_portal
-from src.extractor.crawlers.notebook_querying import (
-    ExtractionReport,
+from src.extractor.crawlers.query_schemas import (
+    CONSOLIDATED_IDENTITY_SYSTEM_PROMPT,
+    CONSOLIDATED_PROGRAMS_SYSTEM_PROMPT,
+    PROGRAM_LEVELS,
     QUERY_SUITE,
+    TARGETED_BLOCK_SYSTEM_PROMPT,
+    ExtractionReport,
     Q1Payload,
     QuerySpec,
+    build_consolidated_identity_prompt,
+    build_consolidated_programs_prompt,
+    build_targeted_block_prompt,
 )
 from src.extractor.crawlers.verification import verify_program_batch
 from src.utilities.deepseek_client import (
@@ -205,47 +212,8 @@ async def query_deepseek_consolidated_programs(
     Extract all four program categories (bachelors, masters, phd, diploma)
     in a SINGLE high-efficiency pass, reducing prompt tokens and costs by ~75%.
     """
-    system_prompt = (
-        "You are an expert, strict, zero-hallucination data extraction agent for an international university education counseling system.\n"
-        "Extract the requested academic degree programs STRICTLY from the provided university document sources.\n"
-        "Rules:\n"
-        "1. Never invent or hallucinate facts, programs, fees, or deadlines. If a field is not stated in the source text, use null (or [] for lists).\n"
-        "2. Keep tuition fees in their original stated currency and format.\n"
-        "3. description must be a complete, informative paragraph explaining the programme focus, curriculum, and career outcomes.\n"
-        "4. Output ONLY a valid JSON object matching the requested schema.\n"
-    )
-
-    user_prompt = (
-        f"Target University: {uni_name} ({uni_domain})\n\n"
-        "Task: Extract ALL degree programmes offered by this university from the sources, "
-        "categorized by degree level into 'bachelors', 'masters', 'phd', and 'diploma'.\n\n"
-        "Schema Contract:\n"
-        "{\n"
-        '  "bachelors": [ ...list of bachelors degrees (BS, BSc, BA, BBA, BE, B.Ed, BFA, MBBS, LLB, PharmD, DPT)... ],\n'
-        '  "masters": [ ...list of masters degrees (MS, MSc, MA, MBA, MPhil, M.Ed, LLM, ME)... ],\n'
-        '  "phd": [ ...list of PhD and research doctorates (exclude post-doctoral fellowships)... ],\n'
-        '  "diploma": [ ...list of award-bearing diploma and certificate programs (PGDs, certificates)... ]\n'
-        "}\n\n"
-        "Each programme in the lists must match:\n"
-        "{\n"
-        '  "name": "<Program Name>", "program_info_link": "<URL or null>",\n'
-        '  "department": "<or null>", "degree_level": "bachelors" | "masters" | "phd" | "diploma",\n'
-        '  "duration": "<e.g. 4 Years or null>", "tuition_fee": "<fee exactly as published, or null>",\n'
-        '  "currency": "<currency published in, e.g. USD, PKR, EUR, or null>",\n'
-        '  "scholarships_info": "<or null>", "intake_terms": ["<e.g. Fall; [] if unstated>"],\n'
-        '  "delivery_mode": "<On-Campus, Online, or Hybrid, or null>", "application_fee": "<or null>",\n'
-        '  "career_prospects": "<or null>",\n'
-        '  "description": "<ONE FULL PARAGRAPH: overview, focus areas, career prospects>",\n'
-        '  "admission_requirements": "<how to apply and requirements beyond marks, or null>",\n'
-        '  "eligibility_requirements": {\n'
-        '    "minimum_marks_percentage": "<or null>", "entry_tests_accepted": [], "aggregate_formula": "<or null>"\n'
-        '  },\n'
-        '  "application_status": "open" | "closed" | "rolling" | "upcoming" | null,\n'
-        '  "application_deadlines": ["<one entry per deadline; [] if unstated>"]\n'
-        "}\n\n"
-        f"Document Sources:\n{corpus_text}\n"
-    )
-
+    system_prompt = CONSOLIDATED_PROGRAMS_SYSTEM_PROMPT
+    user_prompt = build_consolidated_programs_prompt(uni_name, uni_domain, corpus_text)
     parsed_json = await _execute_deepseek_json_call(user_prompt, system_prompt, timeout=75.0, max_tokens=8192)
 
     categorized: Dict[str, List[ProgramItem]] = {
@@ -280,43 +248,8 @@ async def query_deepseek_consolidated_identity(
     """
     Extract identity metadata, contact details, and faculties in a SINGLE pass.
     """
-    system_prompt = (
-        "You are an expert, strict, zero-hallucination data extraction agent for an international university education counseling system.\n"
-        "Extract the requested identity, contact, and faculty information STRICTLY from the provided university document sources.\n"
-        "Rules:\n"
-        "1. Never invent or hallucinate facts or rankings. Leave rankings as [].\n"
-        "2. Output ONLY a valid JSON object matching the requested schema.\n"
-    )
-
-    user_prompt = (
-        f"Target University: {uni_name} ({uni_domain})\n\n"
-        "Task: Extract university identity details, contact information, and constituent faculties/schools.\n\n"
-        "Schema Contract:\n"
-        "{\n"
-        '  "main_info": {\n'
-        '    "name": "<University Name>", "abbreviation": "<or null>", "country": "<Country e.g. USA, Pakistan, Germany>",\n'
-        '    "city": "<City or null>", "established_year": null, "accreditation_body": "<or null>",\n'
-        '    "admission_cycles_offered": [], "primary_instruction_language": "<or null>",\n'
-        '    "website": "<URL>", "type": "public" or "private", "description": "<Concise overview>",\n'
-        '    "key_links": {\n'
-        '      "academics_url": "<or null>", "admissions_url": "<or null>", "application_portal_url": "<or null>"\n'
-        '    },\n'
-        '    "rankings": []\n'
-        '  },\n'
-        '  "contact": {\n'
-        '    "official_email": "<or null>", "phone_numbers": [], "physical_address": "<or null>",\n'
-        '    "admissions_office_location": "<or null>", "sub_campuses_contact": []\n'
-        '  },\n'
-        '  "faculties": [\n'
-        '    {\n'
-        '      "faculty_name": "<Faculty or School Name>", "description": "<or null>",\n'
-        '      "departments": ["<Department 1>", "<Department 2>"], "faculty_website": "<or null>"\n'
-        '    }\n'
-        '  ]\n'
-        "}\n\n"
-        f"Document Sources:\n{corpus_text}\n"
-    )
-
+    system_prompt = CONSOLIDATED_IDENTITY_SYSTEM_PROMPT
+    user_prompt = build_consolidated_identity_prompt(uni_name, uni_domain, corpus_text)
     parsed_json = await _execute_deepseek_json_call(user_prompt, system_prompt, timeout=60.0, max_tokens=4096)
 
     # Parse main_info
@@ -360,30 +293,8 @@ async def query_deepseek_block(
     Execute a single targeted schema query block against DeepSeek-V4.1-Flash.
     Used for targeted smart resume of specific failed blocks.
     """
-    system_prompt = (
-        "You are an expert, strict, zero-hallucination data extraction agent for an international university education counseling system.\n"
-        "Extract the requested academic information STRICTLY from the provided university document sources.\n"
-        "Rules:\n"
-        "1. Never invent or hallucinate facts, programs, fees, or deadlines. If a field is not stated in the source text, use null (or [] for lists).\n"
-        "2. Keep tuition fees in their original stated currency and format.\n"
-        "3. Respond ONLY with a valid JSON object matching the requested schema.\n"
-    )
-
-    if spec.single:
-        user_prompt = (
-            f"Target University: {uni_name} ({uni_domain})\n\n"
-            f"Extraction Task:\n{spec.prompt}\n\n"
-            f"Document Sources:\n{corpus_text}\n"
-        )
-    else:
-        user_prompt = (
-            f"Target University: {uni_name} ({uni_domain})\n\n"
-            f"Extraction Task:\n{spec.prompt}\n\n"
-            f"IMPORTANT: Output your result as a JSON object with a single key 'items':\n"
-            f"{{\"items\": [ ...list of items matching the requested schema... ]}}\n\n"
-            f"Document Sources:\n{corpus_text}\n"
-        )
-
+    system_prompt = TARGETED_BLOCK_SYSTEM_PROMPT
+    user_prompt = build_targeted_block_prompt(spec, uni_name, uni_domain, corpus_text)
     parsed_json = await _execute_deepseek_json_call(user_prompt, system_prompt, timeout=60.0, max_tokens=8192)
 
     if spec.single:

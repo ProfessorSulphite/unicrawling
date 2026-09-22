@@ -262,7 +262,14 @@ class Config:
     deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))    # DeepSeek API credential used for fast direct extraction and financial normalization
     deepseek_model: str = "deepseek-flash"                                                       # DeepSeek-V4.1-Flash model offering 1M token context and 2500 concurrency
     deepseek_base_url: str = "https://api.deepseek.com"                                          # Standard OpenAI-compatible API base endpoint for DeepSeek services
-    exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
+    # Gemini. One key is the normal setup; several may be given comma-separated
+    # and are rotated round-robin, which multiplies the per-minute allowance.
+    # gemini_client also accepts GEMINI_API_KEY or GOOGLE_API_KEY, so no run
+    # depends on a particular variable name or on having more than one key.
+    gemini_api_keys: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEYS", "") or os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""))  # Gemini credential(s); one key, or several separated by commas
+    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "") or "gemini-2.0-flash")   # Gemini model used for schema extraction; override per account entitlement
+    gemini_rpm_per_key: int = 15                                                                             # Free-tier requests per minute per key; requests are spaced to respect it across all configured keys
+    exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                            # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
     typesafe_api_key: str = field(default_factory=lambda: os.getenv("TYPESAFE_API_KEY", ""))                    # TypeSafe AI API key; enables Jev System One semantic decisions
     typesafe_model: str = "jev-latest"                                                                           # TypeSafe System One model identifier used for evaluation
     typesafe_enabled: bool = True                                                                                # Master toggle for Jev System One decisions; disabling falls back to deterministic rules
