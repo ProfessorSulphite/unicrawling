@@ -54,9 +54,12 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
         target = workspace / relative
         if not target.suffix:
             target.mkdir(parents=True, exist_ok=True)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(config, name, target)
+
+    # In tests, default extraction engine to notebooklm so existing mocks for
+    # NotebookLM ingestion/querying execute without hitting external APIs,
+    # unless a test explicitly requests deepseek.
+    monkeypatch.setattr(config, "extraction_engine", "notebooklm")
 
     # The registry is read-only, so it keeps pointing at the real resource file:
     # tests assert against its actual contents.

@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, get_args, get_origin
 from urllib.parse import urlparse
 
 import httpx
@@ -183,18 +183,40 @@ async def query_deepseek_block(
             {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
         "temperature": 0.0,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
     }
 
-    async with httpx.AsyncClient(timeout=45.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(endpoint, json=payload, headers=headers)
         if resp.status_code != 200:
             raise RuntimeError(f"DeepSeek returned HTTP {resp.status_code}: {resp.text[:150]}")
 
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
-        parsed_json = json.loads(content)
+        cleaned = content.strip() if content else ""
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+            cleaned = cleaned.strip()
+
+        if not cleaned:
+            logger.warning(f"Empty content returned by DeepSeek for [{spec.key}].")
+            parsed_json = {} if spec.single else {"items": []}
+        else:
+            try:
+                parsed_json = json.loads(cleaned)
+            except json.JSONDecodeError:
+                from src.extractor.crawlers.json_repairing import extract_json_str, sanitize_invalid_escapes
+                try:
+                    candidate = extract_json_str(cleaned)
+                    candidate = sanitize_invalid_escapes(candidate)
+                    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+                    parsed_json = json.loads(candidate)
+                except Exception as parse_err:
+                    logger.error(f"Failed to parse JSON for [{spec.key}]: {parse_err}. Raw: {cleaned[:150]}")
+                    raise
 
         if spec.single:
             return spec.model(**parsed_json)
@@ -209,12 +231,23 @@ async def query_deepseek_block(
             if raw_list is None:
                 raw_list = []
 
+            # Extract item model class if spec.model is a typing generic alias (e.g. List[ProgramItem])
+            model_cls = spec.model
+            origin = get_origin(model_cls)
+            if origin in (list, List):
+                args = get_args(model_cls)
+                model_cls = args[0] if args else dict
+
             items = []
             for item_data in raw_list:
+                if not isinstance(item_data, dict):
+                    continue
                 try:
-                    items.append(spec.model(**item_data))
+                    items.append(model_cls(**item_data))
                 except ValidationError as ve:
                     logger.debug(f"Failed to parse item in {spec.key}: {ve}")
+                except Exception as e:
+                    logger.debug(f"Unexpected error constructing item in {spec.key}: {e}")
             return items
 
 

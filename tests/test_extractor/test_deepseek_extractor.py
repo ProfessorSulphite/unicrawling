@@ -141,3 +141,68 @@ async def test_extract_with_deepseek_engine_mock():
         assert payload.intake_year == "2026"
         assert payload.data_version == 1
         assert report.ok is True
+
+
+@pytest.mark.asyncio
+async def test_query_deepseek_block_items_generic_unwrapping():
+    """Verify that List[ProgramItem] and List[FacultyItem] models are correctly unwrapped."""
+    masters_spec = next(s for s in QUERY_SUITE if s.key == "masters")
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({
+                        "items": [
+                            {
+                                "name": "Master of Engineering in Aerospace Engineering",
+                                "degree_level": "masters",
+                                "duration": "2 semesters",
+                            }
+                        ]
+                    })
+                }
+            }
+        ]
+    }
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json = lambda: mock_response
+
+        res = await query_deepseek_block(masters_spec, "Corpus...", "Cornell", "cornell.edu")
+        assert isinstance(res, list)
+        assert len(res) == 1
+        assert isinstance(res[0], ProgramItem)
+        assert res[0].name == "Master of Engineering in Aerospace Engineering"
+
+
+@pytest.mark.asyncio
+async def test_query_deepseek_block_markdown_and_payload():
+    """Verify markdown fences are stripped and payload sets thinking disabled and max_tokens 8192."""
+    faculties_spec = next(s for s in QUERY_SUITE if s.key == "faculties")
+    fenced_json = "```json\n" + json.dumps({"items": [{"faculty_name": "Faculty of Engineering"}]}) + "\n```"
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": fenced_json
+                }
+            }
+        ]
+    }
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json = lambda: mock_response
+
+        res = await query_deepseek_block(faculties_spec, "Corpus...", "Cornell", "cornell.edu")
+        assert len(res) == 1
+        assert res[0].faculty_name == "Faculty of Engineering"
+
+        # Verify post payload arguments
+        _, kwargs = mock_post.call_args
+        sent_payload = kwargs.get("json", {})
+        assert sent_payload.get("thinking") == {"type": "disabled"}
+        assert sent_payload.get("max_tokens") == 8192
+        assert sent_payload.get("response_format") == {"type": "json_object"}
+

@@ -175,17 +175,23 @@ async def normalize_tuition_batch(
             {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
         "temperature": 0.0,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
     }
 
     try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.post(endpoint, json=payload, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                parsed_json = json.loads(content)
+                cleaned = content.strip() if content else ""
+                if cleaned.startswith("```"):
+                    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+                    cleaned = re.sub(r"\s*```$", "", cleaned)
+                    cleaned = cleaned.strip()
+                parsed_json = json.loads(cleaned)
                 normalized_items = parsed_json.get("normalized", [])
 
                 for item in normalized_items:
@@ -255,17 +261,23 @@ async def extract_field_from_text(
             {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
         "temperature": 0.0,
-        "max_tokens": 256,
+        "max_tokens": 512,
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(endpoint, json=payload, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                result = json.loads(content)
+                cleaned = content.strip() if content else ""
+                if cleaned.startswith("```"):
+                    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+                    cleaned = re.sub(r"\s*```$", "", cleaned)
+                    cleaned = cleaned.strip()
+                result = json.loads(cleaned)
                 val = result.get("extracted_value")
                 return str(val).strip() if val else None
     except Exception as e:

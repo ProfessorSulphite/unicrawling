@@ -365,11 +365,12 @@ async def _run_master_pipeline(
             print(f"⚠️  [PHASE 3] {partial_note}")
 
         # Phase 4 Inspector Check
-        print(f"\n🔍 [PHASE 4: DATA QUALITY AUDIT] Auditing extracted payload for {uni_name}...")
+        print(f"\n🔍 [PHASE 4: DATA QUALITY AUDIT] Auditing extracted corpus health...")
         try:
             from src.inspector.auditor import audit_corpus
-            report_audit = audit_corpus([payload])
-            print(f"✓ [PHASE 4 AUDIT COMPLETE] Overall field completeness: {report_audit.overall_completeness:.1f}%")
+            verdict = audit_corpus()
+            status_str = "READY FOR SUPABASE" if verdict.ready else "GAPS DETECTED (STRICT AUDIT)"
+            print(f"✓ [PHASE 4 AUDIT COMPLETE] Verdict: {status_str}")
         except Exception as audit_err:
             print(f"⚠️  [PHASE 4 AUDIT] Inspection skipped: {audit_err}")
 
