@@ -371,7 +371,7 @@ async def _run_master_pipeline(
     if use_gemini:
         from src.utilities.gemini_client import GeminiQuotaError, describe_gemini_keys
         try:
-            model_name = config.gemini_model or "gemini-2.0-flash"
+            model_name = config.gemini_model or "gemini-3.6-flash"
             print(f"\n⚡ [ENGINE: GEMINI] Running {model_name} extraction for {uni_name} ({describe_gemini_keys()})...")
             from src.extractor.crawlers.gemini_extractor import extract_with_gemini_engine
 

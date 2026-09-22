@@ -200,7 +200,7 @@ async def gemini_generate_json(
             f"google-genai is not installed; cannot run the Gemini engine ({exc})."
         ) from exc
 
-    target_model = model or getattr(config, "gemini_model", "") or "gemini-2.0-flash"
+    target_model = model or getattr(config, "gemini_model", "") or "gemini-3.6-flash"
     request_config: dict = {
         "response_mime_type": "application/json",
         "response_schema": response_schema,

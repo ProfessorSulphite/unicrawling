@@ -64,7 +64,7 @@ win over the file**, so an explicitly exported key is never silently overridden.
 ```bash
 DEEPSEEK_API_KEY=...         # DeepSeek engine credential
 GEMINI_API_KEY=...           # Gemini engine credential -- ONE key is enough
-GEMINI_MODEL=...             # optional: defaults to gemini-2.0-flash
+GEMINI_MODEL=...             # optional: defaults to gemini-3.6-flash
 TYPESAFE_API_KEY=...         # optional: Jev grounding and counselor reranking
 EXA_API_KEY=...              # optional: application-portal gap filling in Phase 3
 ```
@@ -428,7 +428,7 @@ Edit the `Config` dataclass to change these.
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
 | `extraction_engine` | `auto` | `auto`, `deepseek` or `gemini`; `auto` prefers DeepSeek and falls back to Gemini |
-| `gemini_model` | `gemini-2.0-flash` | Gemini model used for extraction; override with `GEMINI_MODEL` |
+| `gemini_model` | `gemini-3.6-flash` | Gemini model used for extraction; override with `GEMINI_MODEL` |
 | `gemini_rpm_per_key` | `15` | Free-tier requests per minute **per key**; requests are spaced to respect it across every configured key |
 | `deepseek_model` | `deepseek-flash` | DeepSeek model used for extraction |
 | `university_timeout_sec` | `4200` | Wall-clock ceiling for one university across all phases |

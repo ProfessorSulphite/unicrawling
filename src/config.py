@@ -181,7 +181,7 @@ class Config:
     # gemini_client also accepts GEMINI_API_KEY or GOOGLE_API_KEY, so no run
     # depends on a particular variable name or on having more than one key.
     gemini_api_keys: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEYS", "") or os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""))  # Gemini credential(s); one key, or several separated by commas
-    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "") or "gemini-2.0-flash")   # Gemini model used for schema extraction; override per account entitlement
+    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "") or "gemini-3.6-flash")   # Gemini model used for schema extraction; override per account entitlement
     gemini_rpm_per_key: int = 15                                                                             # Free-tier requests per minute per key; requests are spaced to respect it across all configured keys
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                            # Exa web search key; enables fallback enrichment when the extracted data is incomplete
     typesafe_api_key: str = field(default_factory=lambda: os.getenv("TYPESAFE_API_KEY", ""))                    # TypeSafe AI API key; enables Jev System One semantic decisions

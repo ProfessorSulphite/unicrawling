@@ -256,7 +256,7 @@ async def extract_with_gemini_engine(
     should_consolidate = failed_blocks is None or len(blocks_to_query) >= 3
 
     if should_consolidate:
-        model_name = getattr(config, "gemini_model", "") or "gemini-2.0-flash"
+        model_name = getattr(config, "gemini_model", "") or "gemini-3.6-flash"
         print(f"📌 [GEMINI ENGINE] High-Efficiency 2-Pass Extraction via {model_name}...")
 
         # Pass 1: academic programmes.
