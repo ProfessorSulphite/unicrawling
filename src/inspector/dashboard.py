@@ -22,6 +22,7 @@ from src.inspector.formatting import (
     console,
     extract_numeric_fee,
     format_deadlines,
+    get_program_normalized_usd,
     show,
 )
 from src.inspector.records import find_university_record, load_all_records
@@ -372,7 +373,7 @@ async def search_programs_async(keyword: str, level: Optional[str] = None, max_f
 
                 if kw_clean in full_text:
                     fee_str = p.get("tuition_fee", "")
-                    num_fee = extract_numeric_fee(fee_str)
+                    num_fee = get_program_normalized_usd(p)
 
                     if max_fee is not None and num_fee is not None and num_fee > max_fee:
                         continue
@@ -479,7 +480,7 @@ def search_programs(keyword: str, level: Optional[str] = None, max_fee: Optional
 
                 if kw_clean in full_text:
                     fee_str = p.get("tuition_fee", "")
-                    num_fee = extract_numeric_fee(fee_str)
+                    num_fee = get_program_normalized_usd(p)
 
                     if max_fee is not None and num_fee is not None and num_fee > max_fee:
                         continue

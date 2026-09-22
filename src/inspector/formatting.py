@@ -63,3 +63,16 @@ def extract_numeric_fee(fee_str: Optional[str]) -> Optional[float]:
         return num
     except ValueError:
         return None
+
+
+def get_program_normalized_usd(prog: Dict[str, Any]) -> Optional[float]:
+    """
+    Retrieve the normalized USD tuition fee from a program dictionary.
+    Falls back to extract_numeric_fee if tuition_fee_normalized is not populated.
+    """
+    norm = prog.get("tuition_fee_normalized")
+    if isinstance(norm, dict) and norm.get("normalized_usd") is not None:
+        return float(norm["normalized_usd"])
+    if hasattr(norm, "normalized_usd") and getattr(norm, "normalized_usd") is not None:
+        return float(getattr(norm, "normalized_usd"))
+    return extract_numeric_fee(prog.get("tuition_fee"))
