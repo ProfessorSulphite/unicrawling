@@ -3,8 +3,8 @@
 The pipeline's single entry point: sequence the four phases, own nothing else.
 
     Phase 1  link harvesting and deduplication        extractor.linkers
-    Phase 2  NotebookLM ingestion and readiness wait   ingestor
-    Phase 3  the query suite and Exa fallback          extractor.crawlers
+    Phase 2  page-text corpus fetching                 extractor.crawlers
+    Phase 3  schema extraction and web enrichment      extractor.crawlers
     Phase 4  aggregation and the data-quality audit    inspector
 
 Replaces pipeline.py (C22). Thin by rule, not by accident -- plan section 1
@@ -33,42 +33,26 @@ import argparse
 import asyncio
 import json
 import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-import httpx
 
 # Kept ahead of the src imports: `python src/orchestrator.py` still has to work,
 # and run that way sys.path[0] is src/, so the `src` package is not importable yet.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from notebooklm import NotebookLMClient  # noqa: E402
 from rich.panel import Panel  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
 from src.config import config  # noqa: E402
-from src.extractor.crawlers.notebook_querying import (  # noqa: E402
+from src.extractor.crawlers.query_schemas import (  # noqa: E402
     ExtractionReport,
     Q1Payload,
-    QuotaThrottledError,
-)
-from src.extractor.crawlers.runner import (  # noqa: E402
-    delete_notebook_after_success,
-    extract_university_payload,
 )
 from src.extractor.linkers.crawling import close_shared_crawler  # noqa: E402
 from src.extractor.linkers.runner import run_pipeline as run_link_extractor  # noqa: E402
 from src.extractor.normalizers.runner import load_global_registry  # noqa: E402
-from src.ingestor.cohort_partitioning import partition_links_into_cohorts  # noqa: E402
-from src.ingestor.http_client import close_http_client  # noqa: E402
-from src.ingestor.notebook_lifecycle import patch_notebooklm_rpc_size_limit  # noqa: E402
-from src.ingestor.source_management import (  # noqa: E402
-    evict_sources,
-    ingest_university_sources,
-    upload_cohort_sources,
-)
-from src.inspector.analytics import audit_analytics, generate_result_analytics  # noqa: E402
+from src.inspector.analytics import generate_result_analytics  # noqa: E402
 from src.inspector.formatting import console  # noqa: E402
 from src.inspector.sync import export_dataset  # noqa: E402
 from src.logger.pipeline_logger import PipelineLogger, RunKind, load_run  # noqa: E402
@@ -81,6 +65,7 @@ from src.utilities.state_management import (  # noqa: E402
     QuotaExceededError,
     StateManager,
 )
+from src.utilities.gemini_client import GeminiQuotaError  # noqa: E402
 from src.utilities.typesafe_client import close_shared_typesafe_client  # noqa: E402
 from src.utilities.workspace import backup_existing_outputs  # noqa: E402
 
@@ -104,6 +89,62 @@ class PipelineOutcome(NamedTuple):
     detail: str = ""
 
 
+def _persist_extraction_outputs(
+    payload: UniversityPayload,
+    report: ExtractionReport,
+    uni_name: str,
+    uni_slug: str,
+    state_mgr: StateManager,
+    compile_master: bool,
+) -> "PipelineOutcome":
+    """
+    Write one university's payload, record its status, and run the audit.
+
+    Shared by both engines. They differ only in which API answered the prompts;
+    everything after the payload exists is identical, and duplicating it once per
+    engine is how the two drift apart.
+    """
+    output_file = config.output_jsonl_path
+    append_jsonl(output_file, payload.model_dump_json())
+
+    config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+    uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+    atomic_write_json(uni_json_path, payload.model_dump())
+
+    print(f"\u2713 [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
+    print(f"  \u2514\u2500 JSONL  : {output_file}")
+    print(f"  \u2514\u2500 Slug   : {uni_json_path}")
+
+    partial_note = (
+        f"Partial extraction: {len(report.failed)} query block(s) failed: {sorted(report.failed)}"
+        if not report.ok else None
+    )
+    state_mgr.set_status(
+        uni_slug,
+        PARTIAL_EXTRACTION if partial_note else "completed",
+        queries_executed=report.queries_used,
+        error_log=partial_note,
+        intake_year=config.default_intake_year,
+        data_version=1,
+    )
+    if partial_note:
+        print(f"\u26a0\ufe0f  [PHASE 3] {partial_note}")
+
+    print(f"\n\U0001f50d [PHASE 4: DATA QUALITY AUDIT] Auditing extracted corpus health...")
+    try:
+        from src.inspector.auditor import audit_corpus
+        verdict = audit_corpus()
+        status_str = "READY FOR SUPABASE" if verdict.ready else "GAPS DETECTED (STRICT AUDIT)"
+        print(f"\u2713 [PHASE 4 AUDIT COMPLETE] Verdict: {status_str}")
+    except Exception as audit_err:  # noqa: BLE001 -- the payload is already durable
+        print(f"\u26a0\ufe0f  [PHASE 4 AUDIT] Inspection skipped: {audit_err}")
+
+    if compile_master:
+        compile_master_json()
+    print(f"\n🎉 MASTER RAG PIPELINE COMPLETED SUCCESSFULLY FOR {uni_name}!")
+    return PipelineOutcome("processed")
+
+
 def compile_master_json() -> Path:
     """
     Rebuild the master JSON array from the JSONL ledger.
@@ -116,56 +157,6 @@ def compile_master_json() -> Path:
     count = stream_compile_master_json(config.output_jsonl_path, master_path)
     print(f"  └─ Master : {master_path} ({count} records)")
     return master_path
-
-
-@asynccontextmanager
-async def _resilient_notebooklm_client(max_retries: int = 3, initial_delay: float = 2.0):
-    """
-    Acquire NotebookLMClient with retry against transient DNS and network connection drops.
-    """
-    patch_notebooklm_rpc_size_limit()
-    client = None
-    delay = initial_delay
-    for attempt in range(1, max_retries + 1):
-        try:
-            client = await NotebookLMClient.from_storage().__aenter__()
-            break
-        except (httpx.ConnectError, httpx.NetworkError, TimeoutError, OSError) as e:
-            if attempt == max_retries:
-                raise
-            print(f"⚠️  [NOTEBOOKLM] Client connection attempt {attempt}/{max_retries} encountered transient error ({e}). Retrying in {delay:.1f}s...")
-            await asyncio.sleep(delay)
-            delay *= 2.0
-
-    try:
-        yield client
-    finally:
-        if client is not None:
-            await client.__aexit__(None, None, None)
-
-
-async def _release_notebook(client, state_mgr, uni_slug: str, notebook_id: str) -> None:
-    """
-    Give a notebook back after a failed or abandoned extraction.
-
-    Shielded, because the most common caller is a task that is itself being
-    cancelled -- a watchdog timeout or a Ctrl-C. A plain `await` in that state
-    raises CancelledError before the request is ever sent; the shield lets the
-    delete run to completion on the loop while this coroutine unwinds.
-
-    Best-effort by design: whatever happens here, the exception that brought us
-    in is the one the caller re-raises. A notebook that survives anyway is caught
-    on the next run by reap_orphaned_notebooks(), which reads from sqlite and so
-    also covers the case no handler can -- a process killed outright.
-    """
-    try:
-        await asyncio.shield(
-            delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
-        )
-        state_mgr.clear_notebook(uni_slug)
-        print(f"  └─ Released notebook {notebook_id} after a failed extraction.")
-    except BaseException as e:  # noqa: BLE001 -- must never mask the real failure
-        print(f"⚠️  Could not release notebook {notebook_id}: {type(e).__name__}: {e}")
 
 
 # ------------------------------------------------------------ one university --
@@ -318,11 +309,28 @@ async def _run_master_pipeline(
 
     active_engine = (engine or config.extraction_engine).lower().strip()
     use_deepseek = False
+    use_gemini = False
     if active_engine == "auto":
+        # DeepSeek first when its key is present, Gemini otherwise. Both are
+        # direct-extraction engines, so the choice costs nothing structurally.
         from src.utilities.deepseek_client import is_deepseek_available
-        use_deepseek = is_deepseek_available()
+        from src.utilities.gemini_client import is_gemini_available
+        if is_deepseek_available():
+            use_deepseek = True
+        elif is_gemini_available():
+            use_gemini = True
+        else:
+            error_msg = (
+                "No extraction engine is available: set DEEPSEEK_API_KEY, or "
+                "GEMINI_API_KEY (one key is enough) for the Gemini engine."
+            )
+            print(f"\n❌ [ENGINE] {error_msg}")
+            state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
+            return PipelineOutcome("failed", error_msg)
     elif active_engine == "deepseek":
         use_deepseek = True
+    elif active_engine == "gemini":
+        use_gemini = True
 
     if use_deepseek:
         from src.utilities.deepseek_client import DeepSeekQuotaError
@@ -339,202 +347,53 @@ async def _run_master_pipeline(
                 failed_blocks=failed_blocks_to_query,
                 accumulated_results=accumulated_results,
             )
-
-            output_file = config.output_jsonl_path
-            append_jsonl(output_file, payload.model_dump_json())
-
-            config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
-            uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
-            atomic_write_json(uni_json_path, payload.model_dump())
-
-            print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
-            print(f"  └─ JSONL  : {output_file}")
-            print(f"  └─ Slug   : {uni_json_path}")
-
-            partial_note = (
-                f"Partial extraction: {len(report.failed)} query block(s) failed: {sorted(report.failed)}"
-                if not report.ok else None
+            return _persist_extraction_outputs(
+                payload, report, uni_name, uni_slug, state_mgr, compile_master
             )
-            state_mgr.set_status(
-                uni_slug,
-                PARTIAL_EXTRACTION if partial_note else "completed",
-                queries_executed=report.queries_used,
-                error_log=partial_note,
-                intake_year=config.default_intake_year,
-                data_version=1,
-            )
-            if partial_note:
-                print(f"⚠️  [PHASE 3] {partial_note}")
-
-            # Phase 4 Inspector Check
-            print(f"\n🔍 [PHASE 4: DATA QUALITY AUDIT] Auditing extracted corpus health...")
-            try:
-                from src.inspector.auditor import audit_corpus
-                verdict = audit_corpus()
-                status_str = "READY FOR SUPABASE" if verdict.ready else "GAPS DETECTED (STRICT AUDIT)"
-                print(f"✓ [PHASE 4 AUDIT COMPLETE] Verdict: {status_str}")
-            except Exception as audit_err:
-                print(f"⚠️  [PHASE 4 AUDIT] Inspection skipped: {audit_err}")
-
-            if compile_master:
-                compile_master_json()
-            return PipelineOutcome("completed", None)
 
         except DeepSeekQuotaError as quota_err:
             if active_engine == "auto":
-                print(f"\n⚠️  [ENGINE FALLBACK] DeepSeek balance/quota exhausted: {quota_err}")
-                print(f"    Automatically falling back to NotebookLM engine for {uni_name} and remaining batch...\n")
-                # Fall through to NotebookLM pipeline below!
+                from src.utilities.gemini_client import is_gemini_available
+                if is_gemini_available():
+                    print(f"\n⚠️  [ENGINE FALLBACK] DeepSeek balance/quota exhausted: {quota_err}")
+                    print(f"    Falling back to the Gemini engine for {uni_name} and the rest of the batch...\n")
+                    use_gemini = True
+                else:
+                    msg = f"{quota_err} (no Gemini key configured to fall back to)"
+                    print(f"\n❌ [DEEPSEEK ERROR] {msg}")
+                    state_mgr.set_status(uni_slug, "failed", error_log=msg)
+                    return PipelineOutcome("failed", msg)
             else:
                 print(f"\n❌ [DEEPSEEK ERROR] Insufficient balance: {quota_err}")
                 state_mgr.set_status(uni_slug, "failed", error_log=str(quota_err))
                 return PipelineOutcome("failed", str(quota_err))
 
-    cohorts = partition_links_into_cohorts(links_list, cohort_cap=250)
-
-    if len(cohorts) > 1:
-        print(f"\n📌 [PHASE 2 & 3: STAGED COHORT INGESTION] Partitioned {len(links_list)} links into {len(cohorts)} degree cohorts:")
-        for c in cohorts:
-            print(f"  └─ Cohort [{c.name}]: {c.source_count} sources -> queries: {c.query_keys}")
-
+    if use_gemini:
+        from src.utilities.gemini_client import GeminiQuotaError, describe_gemini_keys
         try:
-            async with _resilient_notebooklm_client() as client:
-                title = f"{uni_name}_Counseling_DB"
-                notebook = await client.notebooks.create(title=title)
-                notebook_id = notebook.id
-                print(f"✓ Provisioned Staged Notebook ID: {notebook_id}")
-                state_mgr.set_status(uni_slug, "ingested", notebook_id=notebook_id, sources_ingested=len(links_list))
+            model_name = config.gemini_model or "gemini-2.0-flash"
+            print(f"\n⚡ [ENGINE: GEMINI] Running {model_name} extraction for {uni_name} ({describe_gemini_keys()})...")
+            from src.extractor.crawlers.gemini_extractor import extract_with_gemini_engine
 
-                queries_to_reserve = (
-                    len(failed_blocks_to_query)
-                    if failed_blocks_to_query is not None
-                    else config.queries_per_university
-                )
-                state_mgr.reserve_queries(uni_slug, queries_to_reserve)
-                reserved = queries_to_reserve
-                report = ExtractionReport()
-                payload = None
-                uploaded_sources_map: Dict[str, Any] = {}
+            state_mgr.set_status(uni_slug, "ingested", sources_ingested=len(links_list))
+            payload, report = await extract_with_gemini_engine(
+                links_list=links_list,
+                uni_name=uni_name,
+                uni_slug=uni_slug,
+                uni_domain=uni_domain,
+                failed_blocks=failed_blocks_to_query,
+                accumulated_results=accumulated_results,
+            )
+            return _persist_extraction_outputs(
+                payload, report, uni_name, uni_slug, state_mgr, compile_master
+            )
 
-                try:
-                    for cohort in cohorts:
-                        needed_query_keys = (
-                            [k for k in cohort.query_keys if k in failed_blocks_to_query]
-                            if failed_blocks_to_query is not None
-                            else cohort.query_keys
-                        )
-                        if not needed_query_keys:
-                            print(f"\n⏭️  [STAGE: {cohort.name.upper()}] All queries ({cohort.query_keys}) already complete. Skipping cohort.")
-                            continue
-
-                        print(f"\n🚀 [STAGE: {cohort.name.upper()}] Preparing {cohort.source_count} sources for stage...")
-                        new_links = [l for l in cohort.links if l.get("url") and l.get("url") not in uploaded_sources_map]
-                        reused_count = cohort.source_count - len(new_links)
-                        if reused_count > 0:
-                            print(f"  └─ Reusing {reused_count} already-uploaded baseline sources.")
-
-                        if new_links:
-                            print(f"  └─ Ingesting {len(new_links)} new stage-specific sources...")
-                            ingest_res = await upload_cohort_sources(
-                                client=client,
-                                notebook_id=notebook_id,
-                                uni_slug=uni_slug,
-                                cohort_links=new_links,
-                            )
-                            for s in ingest_res.sources:
-                                uploaded_sources_map[s.url] = s
-                            print(f"  └─ Uploaded {ingest_res.ingested_count} sources ({ingest_res.ready_count} ready).")
-
-                        source_ids_by_tier: Dict[int, List[str]] = {}
-                        for l in cohort.links:
-                            url = l.get("url")
-                            if url in uploaded_sources_map:
-                                s = uploaded_sources_map[url]
-                                source_ids_by_tier.setdefault(s.tier, []).append(s.source_id)
-
-                        total_stage_sources = sum(len(v) for v in source_ids_by_tier.values())
-                        print(f"  └─ Executing queries {needed_query_keys} across {total_stage_sources} scoped sources...")
-                        payload, sub_report = await extract_university_payload(
-                            client=client,
-                            notebook_id=notebook_id,
-                            uni_name=uni_name,
-                            uni_domain=uni_domain,
-                            source_ids_by_tier=source_ids_by_tier,
-                            tier1_source_count=len(source_ids_by_tier.get(1, [])),
-                            report=report,
-                            query_keys=needed_query_keys,
-                            accumulated_results=accumulated_results,
-                        )
-
-                        if "main_info_contact" in needed_query_keys and payload:
-                            accumulated_results["main_info_contact"] = Q1Payload(main_info=payload.main_info, contact=payload.contact)
-                        for qk in needed_query_keys:
-                            if payload and hasattr(payload.programs, qk):
-                                accumulated_results[qk] = getattr(payload.programs, qk)
-                        if "faculties" in needed_query_keys and payload:
-                            accumulated_results["faculties"] = payload.faculties
-
-                        if cohort.evict_degree_sources:
-                            degree_sids = [
-                                uploaded_sources_map[l["url"]].source_id
-                                for l in cohort.links
-                                if l.get("tier", 1) == 1 and l.get("url") in uploaded_sources_map
-                            ]
-                            if degree_sids:
-                                print(f"  └─ Evicting {len(degree_sids)} completed degree sources...")
-                                await evict_sources(client, notebook_id, degree_sids)
-                                for l in cohort.links:
-                                    if l.get("tier", 1) == 1 and l.get("url") in uploaded_sources_map:
-                                        del uploaded_sources_map[l["url"]]
-
-                except BaseException:
-                    state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
-                    await _release_notebook(client, state_mgr, uni_slug, notebook_id)
-                    raise
-
-                if payload is None and prior_payload is not None:
-                    payload = prior_payload
-
-                delta = report.queries_used - reserved
-                if delta > 0:
-                    try:
-                        state_mgr.reserve_queries(uni_slug, delta)
-                    except QuotaExceededError as qe:
-                        print(f"⚠️  [QUOTA] Retry overage exceeded the daily budget: {qe}")
-                elif delta < 0:
-                    state_mgr.release_queries(uni_slug, -delta)
-
-                output_file = config.output_jsonl_path
-                append_jsonl(output_file, payload.model_dump_json())
-
-                config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
-                uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
-                atomic_write_json(uni_json_path, payload.model_dump())
-
-                print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
-                print(f"  └─ JSONL  : {output_file}")
-                print(f"  └─ Slug   : {uni_json_path}")
-
-                partial_note = (
-                    f"Partial extraction: {len(report.failed)} query block(s) failed "
-                    f"after retries: {sorted(report.failed)}"
-                    if not report.ok else None
-                )
-                state_mgr.set_status(
-                    uni_slug,
-                    PARTIAL_EXTRACTION if partial_note else "completed",
-                    notebook_id=notebook_id,
-                    queries_executed=report.queries_used,
-                    error_log=partial_note,
-                )
-                if partial_note:
-                    print(f"⚠️  [PHASE 3] {partial_note}")
-
-                await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
-
-        except QuotaThrottledError as qte:
-            error_msg = f"NotebookLM streaming usage throttled/quota exhausted: {qte}"
-            print(f"⚠️  [PHASE 3 THROTTLED] {error_msg}")
+        except GeminiQuotaError as quota_err:
+            # Raised rather than returned: the batch loop stops on this, so the
+            # remaining universities are not burned against a spent quota and
+            # smart resume picks them up on the next run.
+            error_msg = f"Gemini quota/rate limit exhausted: {quota_err}"
+            print(f"\n❌ [GEMINI ERROR] {error_msg}")
             state_mgr.set_status(uni_slug, PARTIAL_EXTRACTION, error_log=error_msg)
             raise
         except Exception as e:
@@ -542,188 +401,6 @@ async def _run_master_pipeline(
             print(f"❌ [PIPELINE ERROR] {error_msg}")
             state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
             raise e
-
-    else:
-        # Standard Single-Pass Execution (<= 300 links)
-        print(f"\n📌 [PHASE 2] Ingesting Sources into NotebookLM...")
-
-        try:
-            async with _resilient_notebooklm_client() as client:
-                ingest_res = await ingest_university_sources(
-                    uni_slug=uni_slug,
-                    uni_name=uni_name,
-                    links=links_list,
-                    client=client,
-                )
-                # The pre-flight health check can refuse the batch before any
-                # notebook or query budget is spent. That is a skip, not a crash:
-                # record it and move to the next university.
-                if ingest_res.skipped:
-                    error_msg = f"Phase 2 skipped: {ingest_res.skip_reason}."
-                    state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
-                    print(f"⏭️  [PHASE 2 SKIPPED] {error_msg}")
-                    return PipelineOutcome("skipped", error_msg)
-
-                notebook_id = ingest_res.notebook_id
-                ingested_count = ingest_res.ingested_count
-                print(
-                    f"✓ [PHASE 2 COMPLETE] Provisioned Notebook ID: {notebook_id} "
-                    f"({ingested_count} uploaded, {ingest_res.ready_count} ready)."
-                )
-                state_mgr.set_status(
-                    uni_slug,
-                    "ingested",
-                    notebook_id=notebook_id,
-                    sources_ingested=ingested_count,
-                )
-
-                # Persist url -> source_id -> tier so Phase 3 can scope its queries.
-                # Cleared first: a previous run's notebook is deleted on success, so
-                # its source_ids are dead and must not survive into this run's scope.
-                if ingest_res.sources:
-                    state_mgr.clear_sources(uni_slug)
-                    state_mgr.record_sources(
-                        uni_slug,
-                        ((s.source_id, s.url, s.tier) for s in ingest_res.sources),
-                    )
-
-                # ------------------------------------------------------------------
-                # PHASE 3: SCHEMA EXTRACTION & EXA FALLBACK
-                # ------------------------------------------------------------------
-                query_keys_to_run = (
-                    [k for k in ("main_info_contact", "bachelors", "masters", "phd", "diploma", "faculties") if k in failed_blocks_to_query]
-                    if failed_blocks_to_query is not None
-                    else None
-                )
-                queries_to_reserve = (
-                    len(query_keys_to_run)
-                    if query_keys_to_run is not None
-                    else config.queries_per_university
-                )
-                print(
-                    f"\n📌 [PHASE 3] Executing {queries_to_reserve}-Query "
-                    f"Schema Extraction & Exa Fallback..."
-                )
-
-                state_mgr.reserve_queries(uni_slug, queries_to_reserve)
-                reserved = queries_to_reserve
-
-                # Owned here, not inside the extractor, so that a failed extraction
-                # still reports what it spent. A report the extractor keeps privately
-                # dies with the call, and the refund below would then hand back the
-                # whole suite including the queries that really were issued.
-                report = ExtractionReport()
-                try:
-                    payload, report = await extract_university_payload(
-                        client=client,
-                        notebook_id=notebook_id,
-                        uni_name=uni_name,
-                        uni_domain=uni_domain,
-                        source_ids_by_tier=state_mgr.source_ids_by_tier(uni_slug),
-                        tier1_source_count=ingest_res.tier_histogram().get(1, 0),
-                        report=report,
-                        query_keys=query_keys_to_run,
-                        accumulated_results=accumulated_results,
-                    )
-                except BaseException:
-                    # Includes CancelledError and the university watchdog's timeout.
-                    # Two things are owed back here and neither was ever returned:
-                    # the unspent part of the reservation, and the notebook itself.
-                    # COMSATS was billed all 6 queries for the 2 it issued, and its
-                    # notebook 714feb18 is still holding a workspace slot.
-                    state_mgr.release_queries(uni_slug, max(0, reserved - report.queries_used))
-                    await _release_notebook(client, state_mgr, uni_slug, notebook_id)
-                    raise
-
-                if payload is None and prior_payload is not None:
-                    payload = prior_payload
-
-                # Reconcile the reservation against what the suite actually spent.
-                # Repair retries and narrowed re-asks cost real queries beyond the
-                # suite; a run that ended early spent fewer. Only the overage was
-                # ever settled, so the ledger drifted upward and the daily budget
-                # ran out earlier than the real quota did.
-                delta = report.queries_used - reserved
-                if delta > 0:
-                    try:
-                        state_mgr.reserve_queries(uni_slug, delta)
-                    except QuotaExceededError as qe:
-                        print(f"⚠️  [QUOTA] Retry overage exceeded the daily budget: {qe}")
-                elif delta < 0:
-                    state_mgr.release_queries(uni_slug, -delta)
-
-                output_file = config.output_jsonl_path
-                append_jsonl(output_file, payload.model_dump_json())
-
-                config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
-                uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
-                atomic_write_json(uni_json_path, payload.model_dump())
-
-                print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
-                print(f"  └─ JSONL  : {output_file}")
-                print(f"  └─ Slug   : {uni_json_path}")
-
-                # A query block that failed every retry does not fail the pipeline --
-                # the other five blocks are still real data worth keeping -- but it
-                # must not vanish silently either. Before this, `report.failed` was
-                # only ever printed to stdout: nothing captured it, `set_status`
-                # always wrote a bare "completed", and the run log recorded no
-                # error. A university could ship with an entire degree-level bucket
-                # empty from a transient API failure and nothing downstream -- not
-                # `cli.py state`, not the run manifest, not the payload itself --
-                # could distinguish that from "this university genuinely offers
-                # none". Persisting it here is what let ITU's missing bachelors
-                # bucket (query failed silently, 2026-09-03) go unnoticed.
-                partial_note = (
-                    f"Partial extraction: {len(report.failed)} query block(s) failed "
-                    f"after retries: {sorted(report.failed)}"
-                    if not report.ok else None
-                )
-                # 'partial', not 'completed'. get_completed_slugs() drives what a
-                # resumed batch skips, so writing "completed" here meant one
-                # transient API failure cost a degree level permanently: the next
-                # run saw a completed university and never asked again.
-                state_mgr.set_status(
-                    uni_slug,
-                    PARTIAL_EXTRACTION if partial_note else "completed",
-                    notebook_id=notebook_id,
-                    queries_executed=report.queries_used,
-                    error_log=partial_note,
-                )
-                if partial_note:
-                    print(f"⚠️  [PHASE 3] {partial_note}")
-
-                # Free the notebook workspace slot now that the payload is durable
-                # and the terminal status is written. The id stays on the row on
-                # purpose -- it is the only thing tying this university to its
-                # loggings/notebook_logs/<id>.json audit document, and the reaper
-                # never looks at rows in a terminal status.
-                await delete_notebook_after_success(client, notebook_id, uni_slug=uni_slug)
-
-        except QuotaThrottledError as qte:
-            error_msg = f"NotebookLM streaming usage throttled/quota exhausted: {qte}"
-            print(f"⚠️  [PHASE 3 THROTTLED] {error_msg}")
-            state_mgr.set_status(uni_slug, PARTIAL_EXTRACTION, error_log=error_msg)
-            raise
-        except Exception as e:
-            error_msg = f"Pipeline execution error: {type(e).__name__}: {e}"
-            print(f"❌ [PIPELINE ERROR] {error_msg}")
-            state_mgr.set_status(uni_slug, "failed", error_log=error_msg)
-            raise e
-
-    # --------------------------------------------------------------------------
-    # PHASE 4: INSPECTION & DATA HEALTH AUDIT
-    # --------------------------------------------------------------------------
-    print(f"\n📌 [PHASE 4] Data Quality & Pipeline Audit:")
-    # Batch runs defer this to a single sweep after the whole queue drains; a
-    # standalone --url run has no later sweep, so it aggregates here.
-    if compile_master:
-        compile_master_json()
-    audit_analytics(config.output_jsonl_path)
-    print(f"\n================================================================================")
-    print(f"🎉 MASTER RAG PIPELINE COMPLETED SUCCESSFULLY FOR {uni_name}!")
-    print(f"================================================================================\n")
-    return PipelineOutcome("processed")
 
 
 def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
@@ -787,64 +464,6 @@ def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
                     for line in f if line.strip()
                 ]
     return records
-
-
-# ------------------------------------------------------------ orphan reaper --
-
-async def reap_orphaned_notebooks() -> int:
-    """
-    Delete notebooks left behind by runs that never reached a terminal state.
-
-    A notebook is created in Phase 2 and deleted at the end of Phase 3, so a
-    university sitting at 'crawled' or 'ingested' while still holding a
-    notebook_id is holding a workspace slot nothing will ever free. Run c_1 was
-    killed mid-extraction on 2026-09-05 and leaked COMSATS notebook
-    714feb18-841a-4f22-888e-91b69e5b075e; no in-process cleanup handler can cover
-    that case, because the process does not survive to run one.
-
-    Runs before the queue for exactly that reason -- the slots have to be free
-    before this batch starts asking for more. Returns the number reaped, and
-    never raises: a workspace it cannot reach is not a reason to refuse the run.
-    """
-    state_mgr = StateManager()
-    try:
-        orphans = state_mgr.get_orphaned_notebooks()
-    except Exception as e:  # noqa: BLE001
-        console.print(f"[yellow]Could not read orphaned notebooks: {e}[/yellow]")
-        state_mgr.close()
-        return 0
-
-    if not orphans:
-        state_mgr.close()
-        return 0
-
-    console.print(
-        f"\n[bold cyan]🧹 Reaping {len(orphans)} notebook(s) left behind by an "
-        f"earlier run...[/bold cyan]"
-    )
-    reaped = 0
-    try:
-        async with _resilient_notebooklm_client() as client:
-            for row in orphans:
-                slug, notebook_id = row["university_slug"], row["notebook_id"]
-                if await delete_notebook_after_success(client, notebook_id, uni_slug=slug):
-                    state_mgr.clear_notebook(slug)
-                    reaped += 1
-                    console.print(f"  └─ freed {notebook_id} ({slug}, was '{row['status']}')")
-                else:
-                    # Already gone is the common case, and indistinguishable from
-                    # a transient API error at this layer. Dropping the id either
-                    # way stops the reaper retrying a ghost on every future run.
-                    state_mgr.clear_notebook(slug)
-                    console.print(
-                        f"  └─ [yellow]{notebook_id} ({slug}) could not be deleted; "
-                        f"clearing the stale reference[/yellow]"
-                    )
-    except Exception as e:  # noqa: BLE001 -- never block a batch on cleanup
-        console.print(f"[yellow]Notebook reaping stopped early: {e}[/yellow]")
-    finally:
-        state_mgr.close()
-    return reaped
 
 
 # ------------------------------------------------------------------- batch --
@@ -985,8 +604,6 @@ async def run_batch_pipeline(
                 "Run with --rerun-all to re-extract.[/bold green]"
             )
         else:
-            if not dry_run:
-                await reap_orphaned_notebooks()
             await _drain_queue(queue, settings, dry_run, run_log)
 
         if dry_run:
@@ -999,10 +616,9 @@ async def run_batch_pipeline(
             )
             return run_log.path
 
-        # Both deliberately outlive individual universities so the batch reuses
-        # one Chromium process and one connection pool throughout.
+        # Deliberately outlives individual universities so the batch reuses one
+        # Chromium process throughout.
         await close_shared_crawler()
-        await close_http_client()
         await close_shared_typesafe_client()
 
         console.print("\n[bold cyan]🌐 Aggregating master JSON array (single streamed pass)...[/bold cyan]")
@@ -1075,8 +691,8 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                 console.print(f"[bold red]⏱️  {entry['name']} {msg}.[/bold red]")
                 run_log.record(entry["slug"], "failed", error=f"TimeoutError: {msg}")
                 _record_timeout(entry["slug"], msg)
-            except QuotaThrottledError as qte:
-                msg = f"NotebookLM streaming usage throttled/quota exhausted: {qte}"
+            except GeminiQuotaError as qte:
+                msg = f"Gemini quota/rate limit exhausted: {qte}"
                 console.print(f"\n[bold red]🛑 {msg}[/bold red]")
                 console.print(
                     f"[bold yellow]Pausing batch execution to protect account and avoid wasted retries. "
@@ -1137,8 +753,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--engine",
         type=str,
         default=config.extraction_engine,
-        choices=["auto", "deepseek", "notebooklm"],
-        help="Extraction engine: 'auto' (DeepSeek if API key present, else NotebookLM), 'deepseek', or 'notebooklm'",
+        choices=["auto", "deepseek", "gemini"],
+        help="Extraction engine: 'auto' (DeepSeek if its key is present, else Gemini), 'deepseek', or 'gemini'",
     )
     parser.add_argument(
         "--dry-run",
@@ -1208,7 +824,6 @@ async def _run_single(args) -> None:
             # Closed here rather than in run_master_pipeline: both resources are
             # shared across a batch and must survive one university's failure.
             await close_shared_crawler()
-            await close_http_client()
             await close_shared_typesafe_client()
 
 

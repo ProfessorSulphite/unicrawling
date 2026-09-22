@@ -132,43 +132,6 @@ async def test_a_notebook_on_a_non_terminal_row_is_an_orphan():
         state.close()
 
 
-async def test_the_reaper_frees_orphans_and_stops_chasing_them(monkeypatch):
-    """
-    The reaper reads from sqlite rather than from a cleanup handler on purpose:
-    run c_1 was killed outright, and no in-process handler survives that.
-    """
-    from src import orchestrator
-
-    state = StateManager()
-    try:
-        state.set_status("comsats", "ingested", notebook_id="nb-orphan")
-    finally:
-        state.close()
-
-    deleted = []
-
-    class FakeNotebooks:
-        async def delete(self, notebook_id):
-            deleted.append(notebook_id)
-
-    class FakeClient:
-        notebooks = FakeNotebooks()
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, *exc):
-            return False
-
-    monkeypatch.setattr(orchestrator.NotebookLMClient, "from_storage",
-                        staticmethod(lambda *a, **k: FakeClient()))
-
-    assert await orchestrator.reap_orphaned_notebooks() == 1
-    assert deleted == ["nb-orphan"]
-
-    # And the reference is gone, so a second run does not chase a dead notebook.
-    assert await orchestrator.reap_orphaned_notebooks() == 0
-    assert deleted == ["nb-orphan"]
-
-
 # ------------------------------------------------- honest outcome reporting --
 
 async def test_a_university_that_failed_phase_2_is_not_logged_as_processed(monkeypatch):
@@ -254,40 +217,6 @@ async def test_the_watchdog_abandons_one_university_and_keeps_the_batch(monkeypa
     state = StateManager()
     try:
         assert state.get_state("comsats")["status"] == "failed"
-    finally:
-        state.close()
-
-
-async def test_a_failed_extraction_refunds_only_what_it_did_not_spend(monkeypatch):
-    """
-    The refund has to know what the failed run actually issued. A report the
-    extractor keeps privately dies with the call, and refunding the whole suite
-    would then credit back queries that were really spent -- pushing the ledger
-    below the real quota, which is the more dangerous direction of the two.
-    """
-    from src import orchestrator
-    from src.extractor.crawlers.notebook_querying import ExtractionReport
-
-    monkeypatch.setattr(config, "queries_per_university", 6)
-
-    async def failing_extract(*, report=None, **kwargs):
-        # Two asks land, then the notebook stops answering -- COMSATS exactly.
-        report.queries_used = 2
-        raise RuntimeError("notebook stopped answering")
-
-    monkeypatch.setattr(orchestrator, "extract_university_payload", failing_extract)
-
-    state = StateManager()
-    try:
-        state.reserve_queries("comsats", 6)
-        # The reconciliation the orchestrator performs on the failure path.
-        report = ExtractionReport()
-        try:
-            await orchestrator.extract_university_payload(report=report)
-        except RuntimeError:
-            state.release_queries("comsats", max(0, 6 - report.queries_used))
-
-        assert state.queries_used_today() == 2, "the refund credited back spent queries"
     finally:
         state.close()
 

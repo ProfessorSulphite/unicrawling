@@ -7,33 +7,35 @@ were split into the mirrored packages in C13-C19, and this is what the name was
 being held for.
 
 **What is stubbed and what is not.** Two seams only: the crawler (Phase 1 would
-fetch real pages) and the NotebookLM client (Phase 2/3 would spend real quota).
-Everything between them is production code -- source normalisation, the health
-check, tier recording, the query suite, JSON repair, schema validation, the
-registry, the normalizer, bucket assignment, persistence, aggregation and the
-audit. That is the point: the bugs this pipeline has actually shipped all lived
-in the seams between modules that were each individually tested.
+fetch real pages) and the extraction API (Phase 3 would spend real quota).
+Everything between them is production code -- corpus assembly, the consolidated
+prompts, JSON parsing, schema validation, the registry, the normalizer, bucket
+assignment, persistence, aggregation and the audit. That is the point: the bugs
+this pipeline has actually shipped all lived in the seams between modules that
+were each individually tested.
 
-Three of them would have been caught here:
+Two of them would still have been caught here:
 
   - the Phase 1 -> Phase 2 handoff read "href" from a file written with "url",
     so the per-university link partition was never read (158d47e);
-  - concurrent asks against one notebook returned each other's answers, filing
-    the PhD programmes as bachelors (9718346);
   - the extractor assigned rankings: [] over sourced QS ranks (cd4ecc2).
+
+C33 replaced NotebookLM with Gemini, so the second seam moved from a fake
+notebook client to a fake generate-content call. The assertions about notebook
+provisioning, source scoping and the notebook audit trail went with it: there is
+no notebook any more, and a test for one would be testing nothing.
 """
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
-from src.logger.notebook_audit import list_notebook_logs, load_notebook_log
 from src.orchestrator import run_batch_pipeline, run_master_pipeline
 from src.utilities.state_management import StateManager
 
 # ---------------------------------------------------------------- fixtures --
 
-MAIN_INFO_ANSWER = json.dumps({
+IDENTITY_ANSWER = {
     "main_info": {
         "name": "Information Technology University",
         "abbreviation": "ITU",
@@ -53,9 +55,12 @@ MAIN_INFO_ANSWER = json.dumps({
         "phone_numbers": ["042-111-111-488"],
         "physical_address": "Arfa Software Technology Park, Lahore",
     },
-})
+    "faculties": [
+        {"faculty_name": "Faculty of Computing", "departments": ["Computer Science"]},
+    ],
+}
 
-BACHELORS_ANSWER = json.dumps([{
+BACHELORS_ANSWER = [{
     "name": "BS Computer Science", "degree_level": "bachelors",
     "department": "Department of Computer Science", "duration": "4 years",
     "tuition_fee": "PKR 1,416,000", "currency": "PKR",
@@ -64,93 +69,32 @@ BACHELORS_ANSWER = json.dumps([{
     "description": "A four-year programme covering systems, theory and practice.",
     "eligibility_requirements": {"minimum_marks_percentage": "60%",
                                  "entry_tests_accepted": ["ITU Entry Test"]},
-}])
+}]
 
-MASTERS_ANSWER = json.dumps([{
+MASTERS_ANSWER = [{
     "name": "MS Data Science", "degree_level": "masters",
     "department": "Department of Computer Science", "duration": "2 years",
     "tuition_fee": "PKR 327,000", "currency": "PKR",
     "application_deadlines": ["August 5, 2026"],
     "description": "A two-year taught masters in data science.",
     "eligibility_requirements": {"minimum_marks_percentage": "60%"},
-}])
+}]
 
-PHD_ANSWER = json.dumps([{
+PHD_ANSWER = [{
     "name": "PhD Computer Science", "degree_level": "phd",
     "department": "Department of Computer Science",
     "description": "A doctoral programme in computer science.",
     "eligibility_requirements": {},
-}])
+}]
 
-FACULTIES_ANSWER = json.dumps([
-    {"faculty_name": "Faculty of Computing", "departments": ["Computer Science"]},
-])
-
-# Keyed by QUERY_SUITE order. A dict rather than a side_effect list so the test
-# is not silently order-dependent -- the answer is chosen by what was asked.
-ANSWERS = {
-    "BACHELORS": BACHELORS_ANSWER,
-    "MASTERS": MASTERS_ANSWER,
-    "PhD and research doctorate": PHD_ANSWER,
-    "DIPLOMA": "[]",
-    "faculties": FACULTIES_ANSWER,
+# Mutated by the tests that need a different corpus, exactly as the old answer
+# table was. Keyed by degree level so a test can change one bucket.
+PROGRAM_ANSWERS = {
+    "bachelors": BACHELORS_ANSWER,
+    "masters": MASTERS_ANSWER,
+    "phd": PHD_ANSWER,
+    "diploma": [],
 }
-
-
-def _answer_for(question: str) -> str:
-    if "main_info" in question or "contact" in question.lower()[:400]:
-        return MAIN_INFO_ANSWER
-    for marker, answer in ANSWERS.items():
-        if marker in question:
-            return answer
-    return MAIN_INFO_ANSWER
-
-
-class FakeNotebookLM:
-    """Records what it was asked, so the test can assert on the interaction."""
-
-    def __init__(self):
-        self.asked = []
-        self.uploaded = []
-        self.created = []
-        self.deleted = []
-
-        self.notebooks = MagicMock()
-        self.notebooks.list = AsyncMock(return_value=[])
-        self.notebooks.create = AsyncMock(side_effect=self._create)
-        self.notebooks.delete = AsyncMock(side_effect=self._delete)
-
-        self.sources = MagicMock()
-        self.sources.add_url = AsyncMock(side_effect=self._add_url)
-        self.sources.add_text = AsyncMock(side_effect=self._add_url)
-        self.sources.wait_until_ready = AsyncMock(return_value=True)
-        self.sources.wait_for_sources = AsyncMock(return_value=True)
-
-        self.chat = MagicMock()
-        self.chat.ask = AsyncMock(side_effect=self._ask)
-
-    async def _create(self, title):
-        self.created.append(title)
-        return MagicMock(id="nb-e2e-1")
-
-    async def _delete(self, notebook_id):
-        self.deleted.append(notebook_id)
-        return True
-
-    async def _add_url(self, notebook_id, url, *a, **kw):
-        self.uploaded.append(url)
-        return MagicMock(id=f"src-{len(self.uploaded)}")
-
-    async def _ask(self, notebook_id, question, source_ids=None, conversation_id=None):
-        self.asked.append({"question": question, "source_ids": source_ids})
-        return MagicMock(answer=_answer_for(question))
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
 
 LINKS = [
     {"university_slug": "itu", "rank": 1, "url": "https://itu.edu.pk/admissions", "tier": 1},
@@ -158,6 +102,20 @@ LINKS = [
     {"university_slug": "itu", "rank": 3, "url": "https://itu.edu.pk/fees", "tier": 2},
     {"university_slug": "itu", "rank": 4, "url": "https://itu.edu.pk/contact", "tier": 4},
 ]
+
+
+class FakeGeminiAPI:
+    """Records what it was asked, so the test can assert on the interaction."""
+
+    def __init__(self):
+        self.asked = []
+        self.links_seen = []
+
+    async def generate(self, *, user_prompt, system_instruction, response_schema, **kwargs):
+        self.asked.append({"prompt": user_prompt, "schema": response_schema})
+        if "degree programmes" in user_prompt:
+            return dict(PROGRAM_ANSWERS)
+        return json.loads(json.dumps(IDENTITY_ANSWER))
 
 
 @pytest.fixture
@@ -170,7 +128,7 @@ def pipeline(monkeypatch):
     """
     from src.config import config
 
-    client = FakeNotebookLM()
+    api = FakeGeminiAPI()
 
     async def fake_crawl(**kwargs):
         # Phase 1's real contract: a per-university JSONL partition on disk.
@@ -179,17 +137,33 @@ def pipeline(monkeypatch):
         path.write_text("\n".join(json.dumps(r) for r in LINKS) + "\n", encoding="utf-8")
         return None
 
-    async def no_http_probe(url, *a, **kw):
-        return True
+    async def fake_fetch_corpus(links, max_pages=25, concurrency=8):
+        api.links_seen = list(links)
+        return {l["url"]: f"Page text for {l['url']}" for l in links}
 
+    monkeypatch.setattr(config, "extraction_engine", "gemini")
+    monkeypatch.setattr(config, "gemini_api_keys", "test-key")
     monkeypatch.setattr("src.orchestrator.run_link_extractor", fake_crawl)
-    monkeypatch.setattr("src.orchestrator.NotebookLMClient.from_storage",
-                        staticmethod(lambda *a, **k: client))
-    # The pre-flight check would otherwise make real HTTP requests.
-    monkeypatch.setattr("src.ingestor.source_management.check_url_accessible", no_http_probe)
-    monkeypatch.setattr("src.extractor.crawlers.runner.exa_find_application_portal",
-                        AsyncMock(return_value=None))
-    return client
+    monkeypatch.setattr(
+        "src.extractor.crawlers.gemini_extractor.gemini_generate_json", api.generate
+    )
+    monkeypatch.setattr(
+        "src.extractor.crawlers.gemini_extractor.fetch_corpus_text_for_links", fake_fetch_corpus
+    )
+    monkeypatch.setattr(
+        "src.extractor.crawlers.gemini_extractor.free_search_find_portal",
+        AsyncMock(return_value=None),
+    )
+    return api
+
+
+@pytest.fixture(autouse=True)
+def _restore_program_answers():
+    """PROGRAM_ANSWERS is module state; a test that edits it must not leak."""
+    original = dict(PROGRAM_ANSWERS)
+    yield
+    PROGRAM_ANSWERS.clear()
+    PROGRAM_ANSWERS.update(original)
 
 
 # ------------------------------------------------------------- a full run --
@@ -209,6 +183,8 @@ async def test_a_full_run_produces_a_validated_payload(pipeline):
     assert [p["name"] for p in record["programs"]["masters"]] == ["MS Data Science"]
     assert [p["name"] for p in record["programs"]["phd"]] == ["PhD Computer Science"]
     assert record["programs"]["diploma"] == []
+    assert record["contact"]["official_email"] == "admissions@itu.edu.pk"
+    assert [f["faculty_name"] for f in record["faculties"]] == ["Faculty of Computing"]
 
 
 async def test_the_jsonl_ledger_and_master_array_both_get_the_record(pipeline):
@@ -224,41 +200,34 @@ async def test_the_jsonl_ledger_and_master_array_both_get_the_record(pipeline):
     assert isinstance(master, list) and len(master) == 1
 
 
-async def test_phase_1_links_reach_phase_2_with_their_tiers(pipeline):
+async def test_phase_1_links_reach_the_engine_with_their_tiers(pipeline):
     """The handoff that was broken from the original release until 158d47e."""
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
-    assert pipeline.uploaded == [l["url"] for l in LINKS]
-
-    state = StateManager()
-    try:
-        assert state.source_ids_by_tier("itu") == {
-            1: ["src-1", "src-2"], 2: ["src-3"], 4: ["src-4"],
-        }
-    finally:
-        state.close()
+    assert [l["url"] for l in pipeline.links_seen] == [l["url"] for l in LINKS]
+    assert [l["tier"] for l in pipeline.links_seen] == [1, 1, 2, 4], (
+        "bare strings reach the engine as tier 1, silently disabling corpus scoping"
+    )
 
 
-async def test_each_query_is_scoped_to_the_sources_that_can_answer_it(pipeline):
+async def test_a_full_extraction_is_two_requests_not_six(pipeline):
     """
-    Tier scoping is the reason a tier is recorded at all. Programme queries ask
-    tiers 1-2; the identity query is allowed the whole corpus.
+    The consolidated passes are the whole point of the direct engines: one
+    request for programmes, one for identity, for the same six blocks.
     """
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
-    programme_asks = [a for a in pipeline.asked if "degree programme" in a["question"]]
-    assert programme_asks, "no programme query was issued"
-    for ask in programme_asks:
-        assert ask["source_ids"] == ["src-1", "src-2", "src-3"], (
-            "a programme query was not scoped to its tiers"
-        )
+    assert len(pipeline.asked) == 2
+    prompts = [a["prompt"] for a in pipeline.asked]
+    assert any("degree programmes" in p for p in prompts)
+    assert any("identity details" in p for p in prompts)
 
 
-async def test_no_two_programme_queries_share_an_answer(pipeline):
+async def test_no_two_programme_buckets_share_an_answer(pipeline):
     """
     The 2026-09-03 failure: `bachelors` and `phd` came back byte-identical and
-    the doctorates were filed as bachelors. Serial execution prevents it; this
-    asserts the output shape that made it visible.
+    the doctorates were filed as bachelors. One consolidated call now returns
+    every level at once; this asserts the output shape that made it visible.
     """
     from src.config import config
 
@@ -278,74 +247,25 @@ async def test_the_registry_supplies_rankings_the_model_never_saw(pipeline):
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
     main = json.loads((config.outputs_uni_outputs_dir / "itu.json").read_text())["main_info"]
     assert main["rankings"] == []
-    assert main["domain_verified"] is True
 
 
-async def test_the_run_is_recorded_as_completed_with_its_query_count(pipeline):
+async def test_the_run_is_recorded_as_completed_with_its_block_count(pipeline):
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
     state = StateManager()
     try:
         row = state.get_state("itu")
         assert row["status"] == "completed"
-        assert row["notebook_id"] == "nb-e2e-1"
         assert row["sources_ingested"] == 4
+        # Six schema blocks are accounted for, though only two requests were sent.
         assert row["queries_executed"] == 6
-        assert state.queries_used_today() == 6
     finally:
         state.close()
-
-
-async def test_the_notebook_is_deleted_only_after_the_payload_is_durable(pipeline):
-    """
-    Deletion used to live in a `finally:`, so a transient chat error destroyed
-    every ingested source with no way to retry short of re-crawling.
-    """
-    from src.config import config
-
-    await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
-    assert pipeline.deleted == ["nb-e2e-1"]
-    assert (config.outputs_uni_outputs_dir / "itu.json").exists()
-
-
-async def test_the_notebook_audit_trail_records_the_whole_lifecycle(pipeline):
-    await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
-
-    assert list_notebook_logs() == ["nb-e2e-1"]
-    counts = load_notebook_log("nb-e2e-1")["event_counts"]
-    assert counts["NOTEBOOK_CREATED"] == 1
-    assert counts["SOURCE_UPLOADED"] == 4
-    assert counts["QUERY_EXECUTED"] == 6
-    assert counts["NOTEBOOK_DELETED"] == 1
 
 
 # ------------------------------------------------------ the skip paths --
 
-async def test_a_health_check_refusal_skips_before_any_query_is_spent(pipeline, monkeypatch):
-    """
-    Plan section 6: a university whose pages NotebookLM cannot ingest is skipped
-    rather than burning quota. The refusal must land before Phase 3.
-    """
-    from src.ingestor.health_sampling import HealthReport
-
-    async def refuse(*a, **kw):
-        urls = [l["url"] for l in LINKS]
-        return HealthReport(sampled=urls, passed=[], failed=urls, healthy=False,
-                            reason="every sampled link failed to load")
-
-    monkeypatch.setattr("src.ingestor.source_management.run_health_check", refuse)
-    await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
-
-    assert pipeline.asked == [], "quota was spent on a university that failed pre-flight"
-    state = StateManager()
-    try:
-        assert state.get_status("itu") == "failed"
-        assert state.queries_used_today() == 0
-    finally:
-        state.close()
-
-
-async def test_zero_harvested_links_fails_before_a_notebook_is_created(pipeline, monkeypatch):
+async def test_zero_harvested_links_fails_before_any_request_is_sent(pipeline, monkeypatch):
     from src.config import config
 
     async def crawl_nothing(**kwargs):
@@ -355,7 +275,7 @@ async def test_zero_harvested_links_fails_before_a_notebook_is_created(pipeline,
     monkeypatch.setattr("src.orchestrator.run_link_extractor", crawl_nothing)
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
-    assert pipeline.created == [], "a notebook was provisioned for a university with no links"
+    assert pipeline.asked == [], "quota was spent on a university with no links"
     state = StateManager()
     try:
         assert state.get_status("itu") == "failed"
@@ -377,12 +297,43 @@ async def test_a_raising_phase_1_marks_the_university_failed(pipeline, monkeypat
     monkeypatch.setattr("src.orchestrator.run_link_extractor", crawl_explodes)
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
-    assert pipeline.created == [], "a notebook was provisioned after Phase 1 died"
+    assert pipeline.asked == [], "a request was sent after Phase 1 died"
     state = StateManager()
     try:
         assert state.get_status("itu") == "failed"
         row = state.get_state("itu")
         assert "CrawlFailure" in (row["error_log"] or "")
+    finally:
+        state.close()
+
+
+async def test_a_spent_quota_stops_the_run_rather_than_writing_an_empty_payload(
+    pipeline, monkeypatch
+):
+    """
+    A quota error is not a university with no programmes. It must surface, so the
+    batch stops and smart resume picks the university up again next run.
+    """
+    from src.config import config
+    from src.utilities.gemini_client import GeminiQuotaError, reset_gemini_exhausted
+
+    async def exhausted(**kwargs):
+        raise GeminiQuotaError("daily quota spent")
+
+    monkeypatch.setattr(
+        "src.extractor.crawlers.gemini_extractor.gemini_generate_json", exhausted
+    )
+    try:
+        with pytest.raises(GeminiQuotaError):
+            await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
+    finally:
+        reset_gemini_exhausted()
+
+    assert not (config.outputs_uni_outputs_dir / "itu.json").exists()
+    state = StateManager()
+    try:
+        assert state.get_status("itu") == "partial"
+        assert "itu" not in state.get_completed_slugs()
     finally:
         state.close()
 
@@ -393,32 +344,34 @@ async def test_a_failed_query_block_is_recorded_on_the_payload_and_left_open(
     pipeline, monkeypatch
 ):
     """
-    A query that fails every retry yields an empty bucket, not an error. Written
-    as "completed" it was indistinguishable from a university that genuinely
-    offers no bachelors programmes -- and the next batch skipped it forever, so
-    one transient API failure permanently cost a degree level.
+    A pass that fails yields empty buckets, not an error. Written as "completed"
+    they were indistinguishable from a university that genuinely offers no
+    programmes -- and the next batch skipped it forever, so one transient API
+    failure permanently cost every degree level.
     """
     from src.config import config
 
-    original_ask = pipeline.chat.ask.side_effect
+    original = pipeline.generate
 
-    async def ask_but_bachelors_always_fails(notebook_id, question, **kwargs):
-        if "BACHELORS" in question:
-            raise RuntimeError("chat.ask exploded")
-        return await original_ask(notebook_id, question, **kwargs)
+    async def identity_only(*, user_prompt, **kwargs):
+        if "degree programmes" in user_prompt:
+            raise RuntimeError("generate_content exploded")
+        return await original(user_prompt=user_prompt, **kwargs)
 
-    pipeline.chat.ask = AsyncMock(side_effect=ask_but_bachelors_always_fails)
+    monkeypatch.setattr(
+        "src.extractor.crawlers.gemini_extractor.gemini_generate_json", identity_only
+    )
 
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 
     record = json.loads(
         (config.outputs_uni_outputs_dir / "itu.json").read_text(encoding="utf-8")
     )
-    # The other blocks are real data and are kept.
-    assert [p["name"] for p in record["programs"]["masters"]] == ["MS Data Science"]
-    # The empty one says why it is empty.
+    # The block that did answer is real data and is kept.
+    assert record["contact"]["official_email"] == "admissions@itu.edu.pk"
+    # The empty ones say why they are empty.
     assert record["programs"]["bachelors"] == []
-    assert record["failed_query_blocks"] == ["bachelors"]
+    assert record["failed_query_blocks"] == ["bachelors", "diploma", "masters", "phd"]
 
     state = StateManager()
     try:
@@ -506,14 +459,11 @@ async def test_a_corpus_meeting_every_floor_passes_the_gate(pipeline, monkeypatc
     from src.inspector.auditor import audit_records, readiness_verdict
     from src.inspector.records import iter_all_records
 
-    # Distinct from the bachelors answer on purpose: two programme queries
-    # returning identical content is cross-contamination, and the extractor
-    # correctly drops both blocks when it sees it.
-    complete_masters = json.loads(BACHELORS_ANSWER)
+    complete_masters = json.loads(json.dumps(BACHELORS_ANSWER))
     complete_masters[0].update(name="MS Data Science", degree_level="masters",
                                duration="2 years", tuition_fee="PKR 327,000")
-    monkeypatch.setitem(ANSWERS, "MASTERS", json.dumps(complete_masters))
-    monkeypatch.setitem(ANSWERS, "PhD and research doctorate", "[]")
+    monkeypatch.setitem(PROGRAM_ANSWERS, "masters", complete_masters)
+    monkeypatch.setitem(PROGRAM_ANSWERS, "phd", [])
 
     await run_master_pipeline(url="https://itu.edu.pk", uni_name_override="ITU")
 

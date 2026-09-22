@@ -4,8 +4,8 @@ Orchestration: the queue, the run log, and what --resume actually resumes.
 The old pipeline.py had no tests at all -- it was 557 lines on the critical path
 with zero coverage, which is why C22's gate is a dry run rather than a promise.
 `--dry-run` walks the full queue and writes a real run log without executing a
-phase, so the orchestration can be exercised end-to-end without a NotebookLM
-account or a single query of quota.
+phase, so the orchestration can be exercised end-to-end without an API key or
+a single request of quota.
 
 D3 option A is the thing most worth pinning here: the run log is a manifest plus
 audit trail, and `state.sqlite` is the sole authority on completion. A resume
@@ -15,9 +15,26 @@ import json
 
 import pytest
 
+from src.extractor.crawlers.query_schemas import ExtractionReport
 from src.orchestrator import build_queue, run_batch_pipeline
 from src.utilities.naming import derive_uni_info
+from src.utilities.schema import ContactInfo, KeyLinks, MainInfo, ProgramCategoryBlock, UniversityPayload
 from src.utilities.state_management import StateManager
+
+
+def _dummy_payload(uni_name: str, uni_domain: str) -> UniversityPayload:
+    """The smallest valid payload an extraction engine could return."""
+    return UniversityPayload(
+        main_info=MainInfo(
+            name=uni_name,
+            website=f"https://{uni_domain}",
+            description=f"Stub payload for {uni_name}.",
+            key_links=KeyLinks(),
+        ),
+        programs=ProgramCategoryBlock(),
+        faculties=[],
+        contact=ContactInfo(),
+    )
 
 TWO_UNIVERSITIES = {
     "universities": {
@@ -358,21 +375,17 @@ def test_what_phase_1_writes_is_what_phase_2_accepts(links_dir):
         assert isinstance(item.get("tier"), int)
 
 
-async def test_phase_1_hands_phase_2_tiered_records_not_bare_urls(
+async def test_phase_1_hands_the_engine_tiered_records_not_bare_urls(
     monkeypatch, links_dir, tmp_path
 ):
     """
     The handoff, exercised inside _run_master_pipeline rather than asserted about
-    it. Phase 2 is stubbed to refuse the batch immediately, so nothing touches
-    the network -- but by then it has already received `links`, which is the one
-    thing under test.
+    it. The extraction engine is stubbed, so nothing touches the network -- but by
+    then it has already received `links_list`, which is the one thing under test.
 
-    IngestResult's own docstring records that returning a bare count "destroyed
-    the tier association at the Phase 2/Phase 3 boundary and forced every query
-    to run unscoped". That was fixed in the ingestor; the caller kept passing
-    tier-less strings, so the fix was inert until now.
+    Bare URL strings reaching the engine would lose the tier Phase 1 assigned,
+    which is what orders the corpus the engine actually reads.
     """
-    from src.ingestor.source_management import IngestResult
     from src.orchestrator import _run_master_pipeline
 
     _write_partition(links_dir, "itu", [
@@ -384,36 +397,27 @@ async def test_phase_1_hands_phase_2_tiered_records_not_bare_urls(
     async def fake_link_extractor(**kwargs):
         return None
 
-    class _FakeClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
     seen = {}
 
-    async def fake_ingest(*, uni_slug, uni_name, links, client, **kw):
-        seen["links"] = links
-        # Refuse the batch: the run stops here, having already taken the links.
-        return IngestResult(skipped=True, skip_reason="stubbed in test")
+    async def fake_extract(*, links_list, uni_name, uni_slug, uni_domain, **kw):
+        seen["links"] = links_list
+        return _dummy_payload(uni_name, uni_domain), ExtractionReport()
 
     monkeypatch.setattr("src.orchestrator.run_link_extractor", fake_link_extractor)
-    monkeypatch.setattr("src.orchestrator.ingest_university_sources", fake_ingest)
     monkeypatch.setattr(
-        "src.orchestrator.NotebookLMClient.from_storage", staticmethod(lambda *a, **k: _FakeClient())
+        "src.extractor.crawlers.gemini_extractor.extract_with_gemini_engine", fake_extract
     )
 
     state = StateManager(db_path=tmp_path / "state.sqlite")
     try:
-        await _run_master_pipeline(state, "https://itu.edu.pk")
+        await _run_master_pipeline(state, "https://itu.edu.pk", engine="gemini")
     finally:
         state.close()
 
     links = seen["links"]
-    assert links, "Phase 2 was handed nothing"
+    assert links, "the engine was handed nothing"
     assert all(isinstance(l, dict) for l in links), (
-        "bare strings reach Phase 2 as tier 1, silently disabling Phase 3 scoping"
+        "bare strings reach the engine as tier 1, silently disabling corpus scoping"
     )
     assert [l["tier"] for l in links] == [1, 2, 4]
     assert [l["url"] for l in links] == [
@@ -502,22 +506,21 @@ async def test_phase_1_skips_crawl_if_cached(tmp_path, monkeypatch):
     monkeypatch.setattr(_c, "data_links_dir", links_dir)
     monkeypatch.setattr(_c, "state_db_path", tmp_path / "state.sqlite")
 
+    async def fake_extract(*, uni_name, uni_domain, **kw):
+        return _dummy_payload(uni_name, uni_domain), ExtractionReport()
+
     mock_crawl = AsyncMock()
     with patch("src.orchestrator.run_link_extractor", mock_crawl):
-        # Also mock notebook execution to exit early or return clean outcome
-        with patch("src.orchestrator.ingest_university_sources") as mock_ingest:
-            mock_res = AsyncMock()
-            mock_res.skipped = True
-            mock_res.skip_reason = "Test short-circuit"
-            mock_ingest.return_value = mock_res
-
+        with patch(
+            "src.extractor.crawlers.gemini_extractor.extract_with_gemini_engine", fake_extract
+        ):
             sm = StateManager()
             try:
                 outcome = await _run_master_pipeline(
-                    sm, "https://itu.edu.pk", force_rerun=False
+                    sm, "https://itu.edu.pk", force_rerun=False, engine="gemini"
                 )
                 assert mock_crawl.await_count == 0  # Crawl was bypassed!
-                assert outcome.status == "skipped"
+                assert outcome.status == "processed"
             finally:
                 sm.close()
 
@@ -568,39 +571,33 @@ async def test_smart_resume_queries_only_failed_blocks(tmp_path, monkeypatch):
     monkeypatch.setattr(_c, "output_master_json_path", tmp_path / "outputs" / "master.json")
     monkeypatch.setattr(_c, "state_db_path", tmp_path / "state.sqlite")
 
-    mock_client = AsyncMock()
-    mock_extract = AsyncMock()
+    async def fake_extract(*, links_list, uni_name, uni_slug, uni_domain,
+                           failed_blocks=None, accumulated_results=None):
+        seen["failed_blocks"] = failed_blocks
+        seen["accumulated_results"] = accumulated_results
+        payload = UniversityPayload(**existing_data)
+        payload.programs.phd = [ProgramItem(name="PhD CS", degree_level="phd")]
+        return payload, ExtractionReport()
+
+    seen = {}
     from src.utilities.schema import ProgramItem, UniversityPayload
-    from src.extractor.crawlers.notebook_querying import ExtractionReport
-    dummy_payload = UniversityPayload(**existing_data)
-    dummy_payload.programs.phd = [ProgramItem(name="PhD CS", degree_level="phd")]
-    mock_extract.return_value = (dummy_payload, ExtractionReport())
 
-    with patch("src.orchestrator._resilient_notebooklm_client") as mock_ctx:
-        mock_ctx.return_value.__aenter__.return_value = mock_client
-        with patch("src.orchestrator.ingest_university_sources") as mock_ingest:
-            mock_ing_res = MagicMock()
-            mock_ing_res.skipped = False
-            mock_ing_res.notebook_id = "nb-123"
-            mock_ing_res.ingested_count = 1
-            mock_ing_res.ready_count = 1
-            mock_ing_res.sources = []
-            mock_ing_res.tier_histogram.return_value = {1: 1}
-            mock_ingest.return_value = mock_ing_res
+    with patch(
+        "src.extractor.crawlers.gemini_extractor.extract_with_gemini_engine", fake_extract
+    ):
+        sm = StateManager()
+        try:
+            await _run_master_pipeline(
+                sm, "https://itu.edu.pk", force_rerun=False, engine="gemini"
+            )
+        finally:
+            sm.close()
 
-            with patch("src.orchestrator.extract_university_payload", mock_extract):
-                sm = StateManager()
-                try:
-                    await _run_master_pipeline(sm, "https://itu.edu.pk", force_rerun=False)
-                    # Verify extract was called with query_keys containing ONLY ["phd", "diploma"]
-                    assert mock_extract.await_count == 1
-                    call_kwargs = mock_extract.call_args.kwargs
-                    assert sorted(call_kwargs["query_keys"]) == ["diploma", "phd"]
-                    # And accumulated_results had prior bachelors and masters!
-                    assert len(call_kwargs["accumulated_results"]["bachelors"]) == 1
-                    assert len(call_kwargs["accumulated_results"]["masters"]) == 1
-                finally:
-                    sm.close()
+    # Only the blocks the previous run left open are re-asked...
+    assert sorted(seen["failed_blocks"]) == ["diploma", "phd"]
+    # ...and what already succeeded is carried forward rather than re-queried.
+    assert len(seen["accumulated_results"]["bachelors"]) == 1
+    assert len(seen["accumulated_results"]["masters"]) == 1
 
 
 def test_status_summary_command(tmp_path, monkeypatch, capsys):
@@ -632,8 +629,12 @@ def test_build_parser_engine_options():
     args_deepseek = parser.parse_args(["--url", "https://mit.edu", "--engine", "deepseek"])
     assert args_deepseek.engine == "deepseek"
 
-    args_notebooklm = parser.parse_args(["--url", "https://mit.edu", "--engine", "notebooklm"])
-    assert args_notebooklm.engine == "notebooklm"
+    args_gemini = parser.parse_args(["--url", "https://mit.edu", "--engine", "gemini"])
+    assert args_gemini.engine == "gemini"
+
+    # The retired engine must not be silently accepted any more.
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--url", "https://mit.edu", "--engine", "notebooklm"])
 
     args_auto = parser.parse_args(["--url", "https://mit.edu", "--engine", "auto"])
     assert args_auto.engine == "auto"
@@ -663,12 +664,12 @@ async def test_run_master_pipeline_skips_already_completed(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_auto_engine_falls_back_to_notebooklm_on_quota_error(tmp_path, monkeypatch):
-    """When engine='auto' and DeepSeek encounters quota exhaustion, fall back to NotebookLM."""
+async def test_orchestrator_auto_engine_falls_back_to_gemini_on_quota_error(tmp_path, monkeypatch):
+    """When engine='auto' and DeepSeek hits its balance limit, Gemini takes over."""
+    from src.config import config as _c
     from src.orchestrator import _run_master_pipeline
     from src.utilities.state_management import StateManager
     from src.utilities.deepseek_client import DeepSeekQuotaError, reset_deepseek_exhausted
-    from src.ingestor.source_management import IngestResult
 
     reset_deepseek_exhausted()
     seen = {}
@@ -676,31 +677,59 @@ async def test_orchestrator_auto_engine_falls_back_to_notebooklm_on_quota_error(
     async def fake_deepseek_extract(*args, **kwargs):
         raise DeepSeekQuotaError("Insufficient Balance (HTTP 402)")
 
-    async def fake_ingest(*, uni_slug, uni_name, links, client, **kw):
-        seen["ingest_called"] = True
-        return IngestResult(skipped=True, skip_reason="stubbed NotebookLM fallback")
+    async def fake_gemini_extract(*, uni_name, uni_domain, **kwargs):
+        seen["gemini_called"] = True
+        return _dummy_payload(uni_name, uni_domain), ExtractionReport()
 
-    class _FakeClient:
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, *exc):
-            return False
-
-    monkeypatch.setattr("src.orchestrator._read_harvested_links", lambda slug: [{"url": "https://itu.edu.pk/p1", "tier": 1}])
+    # A single key is all the fallback needs.
+    monkeypatch.setattr(_c, "gemini_api_keys", "one-key")
+    monkeypatch.setattr(
+        "src.orchestrator._read_harvested_links",
+        lambda slug: [{"url": "https://itu.edu.pk/p1", "tier": 1}],
+    )
     monkeypatch.setattr("src.utilities.deepseek_client.is_deepseek_available", lambda: True)
-    monkeypatch.setattr("src.extractor.crawlers.deepseek_extractor.extract_with_deepseek_engine", fake_deepseek_extract)
-    monkeypatch.setattr("src.orchestrator.ingest_university_sources", fake_ingest)
-    monkeypatch.setattr("src.orchestrator.NotebookLMClient.from_storage", staticmethod(lambda *a, **k: _FakeClient()))
+    monkeypatch.setattr("src.utilities.gemini_client.is_gemini_available", lambda: True)
+    monkeypatch.setattr(
+        "src.extractor.crawlers.deepseek_extractor.extract_with_deepseek_engine",
+        fake_deepseek_extract,
+    )
+    monkeypatch.setattr(
+        "src.extractor.crawlers.gemini_extractor.extract_with_gemini_engine",
+        fake_gemini_extract,
+    )
 
     state = StateManager(db_path=tmp_path / "state.sqlite")
     try:
-        await _run_master_pipeline(state, "https://itu.edu.pk", engine="auto")
+        outcome = await _run_master_pipeline(state, "https://itu.edu.pk", engine="auto")
     finally:
         state.close()
         reset_deepseek_exhausted()
 
-    assert seen.get("ingest_called") is True, "NotebookLM ingest was not invoked after DeepSeek quota error!"
+    assert seen.get("gemini_called") is True, "Gemini did not take over after the DeepSeek quota error"
+    assert outcome.status == "processed"
 
 
+@pytest.mark.asyncio
+async def test_auto_engine_without_any_key_fails_clearly(tmp_path, monkeypatch):
+    """No engine configured is a stated failure, not a crash or a silent pass."""
+    from src.config import config as _c
+    from src.orchestrator import _run_master_pipeline
+    from src.utilities.state_management import StateManager
 
+    monkeypatch.setattr(_c, "gemini_api_keys", "")
+    monkeypatch.setattr(_c, "deepseek_api_key", "")
+    monkeypatch.setattr(
+        "src.orchestrator._read_harvested_links",
+        lambda slug: [{"url": "https://itu.edu.pk/p1", "tier": 1}],
+    )
+    monkeypatch.setattr("src.utilities.deepseek_client.is_deepseek_available", lambda: False)
+    monkeypatch.setattr("src.utilities.gemini_client.is_gemini_available", lambda: False)
 
+    state = StateManager(db_path=tmp_path / "state.sqlite")
+    try:
+        outcome = await _run_master_pipeline(state, "https://itu.edu.pk", engine="auto")
+    finally:
+        state.close()
+
+    assert outcome.status == "failed"
+    assert "GEMINI_API_KEY" in outcome.detail

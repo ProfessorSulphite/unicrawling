@@ -56,10 +56,12 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
             target.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(config, name, target)
 
-    # In tests, default extraction engine to notebooklm so existing mocks for
-    # NotebookLM ingestion/querying execute without hitting external APIs,
-    # unless a test explicitly requests deepseek.
-    monkeypatch.setattr(config, "extraction_engine", "notebooklm")
+    # Tests default to the Gemini engine and to no credentials: both engines
+    # are then inert unless a test supplies its own mock, so nothing reaches
+    # an external API by accident.
+    monkeypatch.setattr(config, "extraction_engine", "gemini")
+    monkeypatch.setattr(config, "gemini_api_keys", "")
+    monkeypatch.setattr(config, "deepseek_api_key", "")
 
     # The registry is read-only, so it keeps pointing at the real resource file:
     # tests assert against its actual contents.
