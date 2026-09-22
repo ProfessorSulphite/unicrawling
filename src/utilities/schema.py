@@ -113,6 +113,14 @@ class EligibilityRequirements(BaseModel):
     aggregate_formula: Optional[str] = None
 
 
+class NormalizedTuition(BaseModel):
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    interval: Optional[str] = None  # "annual", "semester", "credit", "total"
+    normalized_usd: Optional[float] = None
+    raw_fee: Optional[str] = None
+
+
 class ProgramItem(BaseModel):
     name: str
     program_info_link: Optional[str] = None
@@ -120,6 +128,7 @@ class ProgramItem(BaseModel):
     degree_level: DegreeLevel
     duration: Optional[str] = None
     tuition_fee: Optional[str] = None
+    tuition_fee_normalized: Optional[NormalizedTuition] = None
     # C19: was "PKR". A label for a fee nobody read is not a label, it is a claim.
     currency: Optional[str] = Field(None, description="Currency of tuition fee (e.g. EUR, USD, GBP, CHF, PKR)")
     scholarships_info: Optional[str] = None
@@ -328,6 +337,8 @@ class UniversityPayload(BaseModel):
     faculties: List[FacultyItem] = []
     contact: ContactInfo
     programs_possibly_truncated: bool = False
+    intake_year: Optional[str] = "2026"
+    data_version: int = 1
     # Which query blocks failed every retry, e.g. ["bachelors"]. A failed block
     # yields an EMPTY bucket, not an error, so without this field a consumer
     # cannot tell "this university offers no bachelors programmes" from "the

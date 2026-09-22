@@ -15,7 +15,7 @@ import sqlite3
 import logging
 import threading
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Iterable, Tuple
 
 logger = logging.getLogger("State")
@@ -112,9 +112,25 @@ class StateManager:
                     sources_ingested INTEGER DEFAULT 0,
                     queries_executed INTEGER DEFAULT 0,
                     error_log TEXT,
+                    intake_year TEXT DEFAULT '2026',
+                    data_version INTEGER DEFAULT 1,
+                    ttl_days INTEGER DEFAULT 180,
+                    expires_at TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            # Auto-migration for existing databases without TTL columns
+            cur.execute("PRAGMA table_info(pipeline_state);")
+            existing_cols = {r["name"] for r in cur.fetchall()}
+            if "intake_year" not in existing_cols:
+                cur.execute("ALTER TABLE pipeline_state ADD COLUMN intake_year TEXT DEFAULT '2026';")
+            if "data_version" not in existing_cols:
+                cur.execute("ALTER TABLE pipeline_state ADD COLUMN data_version INTEGER DEFAULT 1;")
+            if "ttl_days" not in existing_cols:
+                cur.execute("ALTER TABLE pipeline_state ADD COLUMN ttl_days INTEGER DEFAULT 180;")
+            if "expires_at" not in existing_cols:
+                cur.execute("ALTER TABLE pipeline_state ADD COLUMN expires_at TIMESTAMP;")
+
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS source_map (
                     university_slug TEXT NOT NULL,
@@ -151,9 +167,7 @@ class StateManager:
                 ON notebook_audit (notebook_id);
             """)
 
-            # Indexes for the three hot read paths. Without them every resumed
-            # batch full-scanned pipeline_state to answer get_completed_slugs(),
-            # and the quota check full-scanned query_ledger before every suite.
+            # Indexes for the hot read paths.
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_pipeline_state_status
                 ON pipeline_state (status);
@@ -161,6 +175,14 @@ class StateManager:
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_pipeline_state_updated_at
                 ON pipeline_state (updated_at DESC);
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_pipeline_state_expires_at
+                ON pipeline_state (expires_at);
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_pipeline_state_intake_year
+                ON pipeline_state (intake_year);
             """)
             # Covering index: queries_used_today() sums `queries` for one day and
             # never touches the row, so the scan stays inside the index.
@@ -194,19 +216,35 @@ class StateManager:
             ).fetchone()
             return row["status"] if row else None
 
-    def get_completed_slugs(self) -> List[str]:
+    def get_completed_slugs(
+        self,
+        current_intake_year: Optional[str] = None,
+        include_expired: bool = False,
+    ) -> List[str]:
         """
-        Slugs a resumed run may skip: fully extracted, nothing outstanding.
+        Slugs a resumed run may skip: fully extracted, unexpired, and matching intake year.
 
         'partial' is excluded on purpose. Those universities have a payload, but
         a query block in it failed every retry, and skipping them meant a
         transient API failure permanently cost a degree level -- the next batch
         saw "completed" and never asked again.
         """
+        target_year = current_intake_year or config.default_intake_year
         with self._get_connection() as conn:
-            rows = conn.execute(
-                "SELECT university_slug FROM pipeline_state WHERE status = 'completed'"
-            ).fetchall()
+            if include_expired:
+                rows = conn.execute(
+                    "SELECT university_slug FROM pipeline_state WHERE status = 'completed'"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT university_slug FROM pipeline_state
+                    WHERE status = 'completed'
+                      AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+                      AND (intake_year IS NULL OR intake_year = ?)
+                    """,
+                    (target_year,),
+                ).fetchall()
             return [r["university_slug"] for r in rows]
 
     def get_partial_slugs(self) -> List[str]:
@@ -235,13 +273,13 @@ class StateManager:
         sources_ingested: Optional[int] = None,
         queries_executed: Optional[int] = None,
         error_log: Optional[str] = None,
+        intake_year: Optional[str] = None,
+        data_version: Optional[int] = None,
+        ttl_days: Optional[int] = None,
     ) -> None:
         """
         Upsert pipeline state, preserving any field the caller left as None.
-
-        Rejects statuses outside the declared lifecycle. VALID_STATUSES was
-        previously declared and then never referenced, so a typo like "ingesting"
-        was written silently and the row became unresumable.
+        Computes TTL expiration timestamp upon reaching 'completed' status.
         """
         clean_slug = slug.lower().strip()
         clean_status = self._validate_status(status)
@@ -249,17 +287,29 @@ class StateManager:
         with self._get_connection() as conn:
             cur = conn.cursor()
             row = cur.execute(
-                "SELECT notebook_id, sources_ingested, queries_executed, error_log "
+                "SELECT notebook_id, sources_ingested, queries_executed, error_log, "
+                "intake_year, data_version, ttl_days, expires_at "
                 "FROM pipeline_state WHERE university_slug = ?",
                 (clean_slug,),
             ).fetchone()
+
+            calc_ttl = ttl_days if ttl_days is not None else (row["ttl_days"] if row and row["ttl_days"] else config.default_data_ttl_days)
+            calc_intake = intake_year or (row["intake_year"] if row and row["intake_year"] else config.default_intake_year)
+            calc_version = data_version if data_version is not None else (row["data_version"] if row and row["data_version"] else 1)
+
+            if clean_status == "completed":
+                expires_at = (datetime.now(timezone.utc) + timedelta(days=calc_ttl)).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                expires_at = row["expires_at"] if row else None
 
             if row:
                 cur.execute(
                     """
                     UPDATE pipeline_state
                        SET status = ?, notebook_id = ?, sources_ingested = ?,
-                           queries_executed = ?, error_log = ?, updated_at = CURRENT_TIMESTAMP
+                           queries_executed = ?, error_log = ?,
+                           intake_year = ?, data_version = ?, ttl_days = ?, expires_at = ?,
+                           updated_at = CURRENT_TIMESTAMP
                      WHERE university_slug = ?
                     """,
                     (
@@ -267,13 +317,15 @@ class StateManager:
                         notebook_id if notebook_id is not None else row["notebook_id"],
                         sources_ingested if sources_ingested is not None else row["sources_ingested"],
                         queries_executed if queries_executed is not None else row["queries_executed"],
-                        # Clearing the error is explicit: advancing past 'failed'
-                        # on a retry must not leave a stale error attached.
                         error_log if error_log is not None else (
                             None
                             if clean_status not in (TERMINAL_FAILURE, PARTIAL_EXTRACTION)
                             else row["error_log"]
                         ),
+                        calc_intake,
+                        calc_version,
+                        calc_ttl,
+                        expires_at,
                         clean_slug,
                     ),
                 )
@@ -282,19 +334,60 @@ class StateManager:
                     """
                     INSERT INTO pipeline_state
                         (university_slug, status, notebook_id, sources_ingested,
-                         queries_executed, error_log, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                         queries_executed, error_log, intake_year, data_version, ttl_days, expires_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """,
                     (
                         clean_slug, clean_status, notebook_id,
                         sources_ingested or 0, queries_executed or 0, error_log,
+                        calc_intake, calc_version, calc_ttl, expires_at,
                     ),
                 )
             conn.commit()
 
-    def is_complete(self, slug: str) -> bool:
-        """True when this university needs no further work in a resumed run."""
-        return self.get_status(slug) == "completed"
+    def is_complete(self, slug: str, current_intake_year: Optional[str] = None) -> bool:
+        """True when this university needs no further work in a resumed run (unexpired and matches intake year)."""
+        target_year = current_intake_year or config.default_intake_year
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT status, expires_at, intake_year FROM pipeline_state WHERE university_slug = ?",
+                (slug.lower().strip(),),
+            ).fetchone()
+            if not row or row["status"] != "completed":
+                return False
+            if row["expires_at"]:
+                try:
+                    exp = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+                    if exp.tzinfo is None:
+                        exp = exp.replace(tzinfo=timezone.utc)
+                    if exp < datetime.now(timezone.utc):
+                        return False
+                except Exception:
+                    pass
+            if row["intake_year"] and row["intake_year"] != target_year:
+                return False
+            return True
+
+    def expire_stale_records(self) -> int:
+        """
+        Transition completed records whose expires_at <= CURRENT_TIMESTAMP to 'pending'
+        so they are automatically picked up for fresh re-extraction.
+        """
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE pipeline_state
+                   SET status = 'pending',
+                       error_log = 'Payload TTL expired. Scheduled for re-extraction.'
+                 WHERE status = 'completed'
+                   AND expires_at IS NOT NULL
+                   AND expires_at <= CURRENT_TIMESTAMP
+                """
+            )
+            count = cur.rowcount
+            conn.commit()
+            return count
 
     def list_all(self) -> List[Dict[str, Any]]:
         """Retrieve all pipeline state records sorted by latest update time."""

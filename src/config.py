@@ -250,8 +250,18 @@ class Config:
     audit_min_overall_coverage: float = 0.70  # Floor for answered cells across the whole required-field grid
 
     # ═══════════════════════════════════════════════════════════════════════
+    # DATA LIFECYCLE & TTL (Pillar 3)
+    # ═══════════════════════════════════════════════════════════════════════
+    default_intake_year: str = "2026"         # Academic intake cycle year tag used to invalidate stale annual program catalogs
+    default_data_ttl_days: int = 180          # Days an extracted university payload remains valid before requiring re-extraction
+    extraction_engine: str = "auto"           # Engine used for schema extraction: 'auto', 'deepseek', or 'notebooklm'
+
+    # ═══════════════════════════════════════════════════════════════════════
     # EXTERNAL API KEYS
     # ═══════════════════════════════════════════════════════════════════════
+    deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))    # DeepSeek API credential used for fast direct extraction and financial normalization
+    deepseek_model: str = "deepseek-flash"                                                       # DeepSeek-V4.1-Flash model offering 1M token context and 2500 concurrency
+    deepseek_base_url: str = "https://api.deepseek.com"                                          # Standard OpenAI-compatible API base endpoint for DeepSeek services
     exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                              # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
     typesafe_api_key: str = field(default_factory=lambda: os.getenv("TYPESAFE_API_KEY", ""))                    # TypeSafe AI API key; enables Jev System One semantic decisions
     typesafe_model: str = "jev-latest"                                                                           # TypeSafe System One model identifier used for evaluation
