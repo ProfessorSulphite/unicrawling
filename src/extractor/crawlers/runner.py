@@ -28,7 +28,7 @@ from src.utilities.schema import (
     UniversityType,
 )
 
-from src.extractor.crawlers.exa_enriching import exa_find_application_portal
+from src.extractor.crawlers.free_search_enrichment import free_search_find_portal
 from src.extractor.crawlers.notebook_querying import (
     ExtractionReport,
     QUERY_SUITE,
@@ -226,7 +226,7 @@ async def extract_university_payload(
     main_info = apply_registry_facts(main_info, uni_domain)
 
     if not main_info.key_links.application_portal_url:
-        portal = await exa_find_application_portal(uni_domain, main_info.name)
+        portal = await free_search_find_portal(uni_domain, main_info.name)
         if portal:
             main_info.key_links.application_portal_url = portal
             main_info.exa_enriched = True

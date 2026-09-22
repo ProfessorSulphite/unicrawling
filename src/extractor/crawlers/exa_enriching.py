@@ -28,14 +28,16 @@ async def exa_find_application_portal(uni_domain: str, uni_name: str) -> Optiona
     unconstrained search returns third-party admissions aggregators that would be
     written into the payload as if they were official.
     """
+    from src.extractor.crawlers.free_search_enrichment import free_search_find_portal
+
     if not config.exa_api_key:
-        return None
+        return await free_search_find_portal(uni_domain, uni_name)
 
     try:
         from exa_py import AsyncExa
     except ImportError:
-        logger.warning("exa_py not installed; skipping portal enrichment.")
-        return None
+        logger.info("exa_py not installed; falling back to free search portal enrichment.")
+        return await free_search_find_portal(uni_domain, uni_name)
 
     query = f"{uni_name} online admission application portal apply now"
     try:
