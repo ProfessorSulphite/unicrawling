@@ -296,6 +296,14 @@ class ExtractionReport:
     def ok(self) -> bool:
         return not self.failed
 
+    def record_success(self, key: str, duration_sec: float = 0.0) -> None:
+        self.succeeded.append(key)
+        self.queries_used += 1
+
+    def record_failure(self, key: str, err: str) -> None:
+        self.failed[key] = err
+        self.queries_used += 1
+
     def note(self, msg: str) -> None:
         self.notes.append(msg)
 

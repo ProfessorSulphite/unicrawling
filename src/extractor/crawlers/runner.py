@@ -29,6 +29,8 @@ from src.utilities.schema import (
 )
 
 from src.extractor.crawlers.free_search_enrichment import free_search_find_portal
+# Compatibility alias for pipeline monkeypatching
+exa_find_application_portal = free_search_find_portal
 from src.extractor.crawlers.notebook_querying import (
     ExtractionReport,
     QUERY_SUITE,

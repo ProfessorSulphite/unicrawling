@@ -624,3 +624,42 @@ def test_status_summary_command(tmp_path, monkeypatch, capsys):
     assert "Summary Metrics" in captured.out or "Summary" in captured.out or True
 
 
+def test_build_parser_engine_options():
+    """Verify --engine option is accepted by argument parser."""
+    from src.orchestrator import build_parser
+
+    parser = build_parser()
+    args_deepseek = parser.parse_args(["--url", "https://mit.edu", "--engine", "deepseek"])
+    assert args_deepseek.engine == "deepseek"
+
+    args_notebooklm = parser.parse_args(["--url", "https://mit.edu", "--engine", "notebooklm"])
+    assert args_notebooklm.engine == "notebooklm"
+
+    args_auto = parser.parse_args(["--url", "https://mit.edu", "--engine", "auto"])
+    assert args_auto.engine == "auto"
+
+
+@pytest.mark.asyncio
+async def test_run_master_pipeline_skips_already_completed(tmp_path, monkeypatch):
+    """If a university is already completed, unexpired, and output exists, skip immediately."""
+    from src.orchestrator import run_master_pipeline
+    from src.utilities.state_management import StateManager
+    from src.config import config as _c
+
+    state_db = tmp_path / "state.sqlite"
+    outputs_dir = tmp_path / "outputs" / "uni_outputs"
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    (outputs_dir / "mit.json").write_text('{"name": "MIT"}', encoding="utf-8")
+
+    monkeypatch.setattr(_c, "state_db_path", state_db)
+    monkeypatch.setattr(_c, "outputs_uni_outputs_dir", outputs_dir)
+
+    sm = StateManager(db_path=state_db)
+    sm.set_status("mit", "completed", ttl_days=180, intake_year="2026")
+    sm.close()
+
+    outcome = await run_master_pipeline("https://mit.edu", force_rerun=False)
+    assert outcome.status == "completed"
+
+
+

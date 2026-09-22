@@ -178,6 +178,7 @@ async def run_master_pipeline(
     uptodate: bool = True,
     compile_master: bool = True,
     force_rerun: bool = False,
+    engine: Optional[str] = None,
 ):
     """
     Run all four phases for one university.
@@ -191,6 +192,7 @@ async def run_master_pipeline(
         return await _run_master_pipeline(
             state_mgr, url, uni_name_override, max_links,
             exclude_keywords, uptodate, compile_master, force_rerun,
+            engine=engine,
         )
     finally:
         state_mgr.close()
@@ -205,9 +207,16 @@ async def _run_master_pipeline(
     uptodate: bool = True,
     compile_master: bool = True,
     force_rerun: bool = False,
+    engine: Optional[str] = None,
 ):
     """Phase 1-4 body. See run_master_pipeline for the public entry point."""
     uni_name, uni_slug, uni_domain = derive_uni_info(url, uni_name_override)
+
+    # Check if already complete, unexpired, and matching intake cycle
+    uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+    if not force_rerun and state_mgr.is_complete(uni_slug, current_intake_year=config.default_intake_year) and uni_json_path.exists():
+        print(f"✓ [ALREADY COMPLETED] University '{uni_name}' ({uni_slug}) has a valid unexpired payload. Skipping.")
+        return PipelineOutcome("completed")
 
     print(f"\n================================================================================")
     print(f"🚀 STARTING MASTER RAG PIPELINE FOR: {uni_name} ({url})")
@@ -306,6 +315,67 @@ async def _run_master_pipeline(
                     failed_blocks_to_query = None
         except Exception as e:
             print(f"⚠️  [SMART RESUME] Could not read existing JSON: {e}")
+
+    active_engine = (engine or config.extraction_engine).lower().strip()
+    use_deepseek = False
+    if active_engine == "auto":
+        from src.utilities.deepseek_client import is_deepseek_available
+        use_deepseek = is_deepseek_available()
+    elif active_engine == "deepseek":
+        use_deepseek = True
+
+    if use_deepseek:
+        print(f"\n⚡ [ENGINE: DEEPSEEK DIRECT] Running DeepSeek-V4.1-Flash extraction engine for {uni_name}...")
+        from src.extractor.crawlers.deepseek_extractor import extract_with_deepseek_engine
+
+        state_mgr.set_status(uni_slug, "ingested", sources_ingested=len(links_list))
+        payload, report = await extract_with_deepseek_engine(
+            links_list=links_list,
+            uni_name=uni_name,
+            uni_slug=uni_slug,
+            uni_domain=uni_domain,
+            failed_blocks=failed_blocks_to_query,
+            accumulated_results=accumulated_results,
+        )
+
+        output_file = config.output_jsonl_path
+        append_jsonl(output_file, payload.model_dump_json())
+
+        config.outputs_uni_outputs_dir.mkdir(parents=True, exist_ok=True)
+        uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
+        atomic_write_json(uni_json_path, payload.model_dump())
+
+        print(f"✓ [PHASE 3 COMPLETE] Saved payload for {uni_name}:")
+        print(f"  └─ JSONL  : {output_file}")
+        print(f"  └─ Slug   : {uni_json_path}")
+
+        partial_note = (
+            f"Partial extraction: {len(report.failed)} query block(s) failed: {sorted(report.failed)}"
+            if not report.ok else None
+        )
+        state_mgr.set_status(
+            uni_slug,
+            PARTIAL_EXTRACTION if partial_note else "completed",
+            queries_executed=report.queries_used,
+            error_log=partial_note,
+            intake_year=config.default_intake_year,
+            data_version=1,
+        )
+        if partial_note:
+            print(f"⚠️  [PHASE 3] {partial_note}")
+
+        # Phase 4 Inspector Check
+        print(f"\n🔍 [PHASE 4: DATA QUALITY AUDIT] Auditing extracted payload for {uni_name}...")
+        try:
+            from src.inspector.auditor import audit_corpus
+            report_audit = audit_corpus([payload])
+            print(f"✓ [PHASE 4 AUDIT COMPLETE] Overall field completeness: {report_audit.overall_completeness:.1f}%")
+        except Exception as audit_err:
+            print(f"⚠️  [PHASE 4 AUDIT] Inspection skipped: {audit_err}")
+
+        if compile_master:
+            compile_master_json()
+        return PipelineOutcome("completed", None)
 
     cohorts = partition_links_into_cohorts(links_list, cohort_cap=250)
 
@@ -821,6 +891,7 @@ async def run_batch_pipeline(
     force_rerun_all: bool = False,
     dry_run: bool = False,
     resume: Optional[str] = None,
+    engine: Optional[str] = None,
 ):
     """
     Run every configured university, skipping those already complete.
@@ -850,6 +921,9 @@ async def run_batch_pipeline(
             return
         uni_dict = cfg.get("universities", {})
         settings = cfg.get("pipeline_settings", {})
+
+    if engine:
+        settings["engine"] = engine
 
     if settings.get("clean_logging", True):
         setup_clean_logging()
@@ -967,6 +1041,7 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                         # Aggregated once after the queue drains, not per university.
                         compile_master=False,
                         force_rerun=settings.get("force_rerun_all", False),
+                        engine=settings.get("engine"),
                     ),
                     timeout=config.university_timeout_sec,
                 )
@@ -1046,6 +1121,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exclude-keywords", type=str, default="news|events", help="Exclude keyword patterns")
     parser.add_argument("--uptodate", action="store_true", default=True, help="Enable recency filter")
     parser.add_argument(
+        "--engine",
+        type=str,
+        default=config.extraction_engine,
+        choices=["auto", "deepseek", "notebooklm"],
+        help="Extraction engine: 'auto' (DeepSeek if API key present, else NotebookLM), 'deepseek', or 'notebooklm'",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Expand the queue and write a run log without executing any phase or spending quota",
@@ -1079,6 +1161,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 force_rerun_all=args.rerun_all,
                 dry_run=args.dry_run,
                 resume=args.resume,
+                engine=args.engine,
             )
         )
     return 0
@@ -1091,6 +1174,7 @@ async def _run_single(args) -> None:
         "max_links": args.max_links,
         "exclude_keywords": args.exclude_keywords,
         "uptodate": args.uptodate,
+        "engine": args.engine,
     }
     with PipelineLogger(
         kind=RunKind.SINGLE,
@@ -1104,6 +1188,7 @@ async def _run_single(args) -> None:
                 max_links=args.max_links,
                 exclude_keywords=args.exclude_keywords,
                 uptodate=args.uptodate,
+                engine=args.engine,
             )
             run_log.record(slug, "processed", url=args.url)
         finally:
