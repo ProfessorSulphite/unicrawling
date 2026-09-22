@@ -1,14 +1,17 @@
 """
 Phase 3 schema extraction, split out of the 725-line src/extract_data.py in C15.
 
+  query_schemas.py      the six-block query suite, the consolidated prompts,
+                        QuerySpec/ExtractionReport and the response models
+  deepseek_extractor.py page fetching, corpus assembly and the DeepSeek engine
+  gemini_extractor.py   the same two passes against the Gemini API
   json_repairing.py     fence/citation stripping, balanced-span JSON recovery,
                         pydantic validation against the target type
-  notebook_querying.py  the five-query suite, QuerySpec/ExtractionReport, run_query
   exa_enriching.py      domain-scoped Exa fallback for the application portal URL
-  runner.py             rankings registry, orchestration, notebook deletion
+  verification.py       the Jev grounding gate over high-risk extracted claims
 
 Dependency order is a strict DAG and must stay one:
-    json_repairing <- notebook_querying <- runner
-    exa_enriching  <- runner
-Nothing here may import runner.
+    query_schemas <- deepseek_extractor <- gemini_extractor
+    json_repairing, verification, free_search_enrichment <- both engines
+Nothing here may import the orchestrator.
 """

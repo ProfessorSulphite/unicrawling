@@ -82,7 +82,7 @@ class PipelineOutcome(NamedTuple):
     dead site must not abort an 83-university batch. But `_drain_queue` treated
     "did not raise" as success and wrote "processed" into the manifest for every
     one of them. LUMS is recorded as processed in run c_1 on 2026-09-05 having
-    produced no notebook, no payload and no error; the manifest said the run
+    produced no payload and no error; the manifest said the run
     went fine and only sqlite disagreed.
     """
     status: str          # processed | failed | skipped
@@ -269,7 +269,7 @@ async def _run_master_pipeline(
         return PipelineOutcome("failed", error_msg)
 
     # --------------------------------------------------------------------------
-    # PHASE 2: NOTEBOOKLM INGESTION & PHASE 3 EXTRACTION
+    # PHASE 2: CORPUS FETCHING & PHASE 3: SCHEMA EXTRACTION
     # --------------------------------------------------------------------------
     # Check for existing partial payload to enable smart resume
     uni_json_path = config.outputs_uni_outputs_dir / f"{uni_slug}.json"
@@ -405,14 +405,14 @@ async def _run_master_pipeline(
 
 def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
     """
-    Phase 1's output for one university, in the shape Phase 2 documents:
+    Phase 1's output for one university, in the shape the engines expect:
     records of at least {"url": str, "tier": int}, in Phase 1's rank order.
 
     `selected` is carried through where the partition records it. A false value
-    marks a reserve link -- ranked and tiered like any other, held back from the
-    notebook unless a selected link fails Phase 2's pre-flight. Older partitions
-    and the flat-file fallback record no flag at all, and default to selected,
-    which is exactly their pre-reserve behaviour.
+    marks a reserve link -- ranked and tiered like any other, held out of the
+    corpus unless a selected link is unavailable. Older partitions and the
+    flat-file fallback record no flag at all, and default to selected, which is
+    exactly their pre-reserve behaviour.
 
     Reads data/links/<slug>.jsonl -- the per-university partition, written
     atomically with a tier per link. Falls back to the shared extracted_links.txt
@@ -426,10 +426,9 @@ def _read_harvested_links(uni_slug: str) -> List[Dict[str, Any]]:
       1. the loop tested `item.get("href")`, and the partition writes "url" --
          so the per-slug branch appended nothing, ever, and every run silently
          used the flat file;
-      2. the flat file yields bare URL strings, which ingest_university_sources
-         normalises to **tier 1**. Every source in every notebook was therefore
-         tier 1, and Phase 3's per-query source scoping -- the whole reason the
-         tier is recorded -- was a no-op that scoped every query to everything.
+      2. the flat file yields bare URL strings, which normalise to **tier 1**.
+         Every source was therefore tier 1, and the tier-ordered corpus -- the
+         whole reason the tier is recorded -- was a no-op.
     """
     records: List[Dict[str, Any]] = []
     links_file = config.data_links_dir / f"{uni_slug}.jsonl"
@@ -534,7 +533,7 @@ async def run_batch_pipeline(
     settings file says today. What to skip still comes from StateManager.
 
     `dry_run` walks the whole queue, writes a real run log, and executes no
-    phase. It spends no NotebookLM quota, so it is the cheap way to check that a
+    phase. It spends no extraction quota, so it is the cheap way to check that a
     settings file expands to the universities you meant.
     """
     resumed_from = None
@@ -677,7 +676,7 @@ async def _drain_queue(queue, settings, dry_run, run_log) -> None:
                 # What actually happened, not merely "nothing was raised".
                 # Phases 1 and 2 report failure by returning, so recording
                 # "processed" for every non-raising call put LUMS in run c_1's
-                # manifest as a success with no notebook and no payload.
+                # manifest as a success with no payload and no error.
                 outcome = outcome or PipelineOutcome("processed")
                 run_log.record(
                     entry["slug"], outcome.status, url=entry["url"],

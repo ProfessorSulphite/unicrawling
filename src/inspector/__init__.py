@@ -23,7 +23,6 @@ from src.inspector.auditor import (  # noqa: F401
 from src.inspector.cli import interactive_menu, main, retry_pipeline  # noqa: F401
 from src.inspector.dashboard import (  # noqa: F401
     compare_universities,
-    inspect_notebooks,
     inspect_schema,
     inspect_state,
     inspect_university,

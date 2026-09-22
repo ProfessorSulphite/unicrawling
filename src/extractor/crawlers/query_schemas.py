@@ -1,10 +1,9 @@
 """
 Shared query suite, extraction report, and consolidated prompt contracts.
 
-Extracted from notebook_querying.py so every direct-extraction engine (DeepSeek,
-Gemini) can import the suite without dragging in a NotebookLM dependency. This
-module is deliberately leaf-like: it imports the payload schema and nothing else
-from the package, so both engines and the orchestrator can depend on it freely.
+Shared by every direct-extraction engine (DeepSeek, Gemini). Deliberately
+leaf-like: it imports the payload schema and nothing else from the package, so
+both engines and the orchestrator can depend on it freely.
 
 Two things live here that used to be duplicated per engine:
 
@@ -64,16 +63,13 @@ PROGRAM_LEVELS: Tuple[str, ...] = ("bachelors", "masters", "phd", "diploma")
 
 @dataclass
 class QuerySpec:
-    """One query in the suite, bound to the source tiers that can answer it."""
+    """One block in the suite, bound to the link tiers that can answer it."""
     key: str
     prompt: str
     model: Any
     tiers: Tuple[int, ...]
-    # Text-protocol attributes, used only by the NotebookLM wire format. A
-    # direct-extraction engine leaves both unset.
-    fields: Optional[Any] = None
+    # True when the block is one object rather than a list of them.
     single: bool = False
-    text_prompt: Optional[str] = None
 
 
 _JSON_CONTRACT = (

@@ -169,7 +169,7 @@ def export_partitioned_links(
     This is the Phase 2 contract. The single shared extracted_links.txt cannot
     satisfy it: an --hec batch run wrote 287 undifferentiated links of which ~284
     were NUST, ~10 were LUMS and 0 were ITU, with nothing in the file recording
-    which university a given URL belonged to. Phase 2 provisions one notebook per
+    which university a given URL belonged to. Phase 2 builds one corpus per
     university and therefore needs the partition, plus the tier of each URL so
     Phase 3 can scope its queries with source_ids.
 

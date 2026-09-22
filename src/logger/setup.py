@@ -1,7 +1,7 @@
 """
 Logging configuration for a pipeline run.
 
-Separate from notebook_logger.py (which audits NotebookLM calls) and
+Separate from pipeline_logger.py (which writes the per-run manifests) and
 pipeline_logger.py (which writes the run manifest): this only decides how noisy
 third-party libraries are allowed to be on the console.
 """

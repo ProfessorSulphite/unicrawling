@@ -4,8 +4,8 @@ DeepSeek Direct Extraction Engine (deepseek_extractor.py).
 Provides zero-quota, ultra-fast end-to-end extraction using Crawl4AI/httpx
 page content fetching combined with DeepSeek-V4.1-Flash (1M context, 2,500 concurrency).
 
-Bypasses NotebookLM account limits, cookie expirations, and Google RPC buffer errors,
-completing full university extraction in 20-35 seconds with full schema compliance.
+Completes a full university extraction in 20-35 seconds with full schema compliance,
+in two consolidated requests rather than one per schema block.
 """
 
 import asyncio

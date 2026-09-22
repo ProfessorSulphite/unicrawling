@@ -112,12 +112,12 @@ EXCLUDED_PATH_PHRASES = {
     "cookie-policy", "code-of-conduct",
 }
 
-# Non-http(s) schemes that can never be ingested as a NotebookLM source.
+# Non-http(s) schemes that can never be fetched as a page source.
 EXCLUDED_SCHEMES = ("javascript:", "mailto:", "tel:", "whatsapp:", "skype:", "sms:", "fax:")
 
 # Query parameters that carry no routing meaning; stripped so that the same page
 # reached via different campaigns collapses to one source and does not burn two
-# of the 60 per-notebook slots.
+# of the per-university link slots.
 TRACKING_PARAMS = {
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "utm_id",
     "fbclid", "gclid", "msclkid", "dclid", "yclid", "igshid", "mc_cid", "mc_eid",

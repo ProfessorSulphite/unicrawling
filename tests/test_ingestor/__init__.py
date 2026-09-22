@@ -1,1 +1,0 @@
-"""Tests mirroring src/ingestor."""

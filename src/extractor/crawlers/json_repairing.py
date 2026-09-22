@@ -1,5 +1,5 @@
 """
-Turning NotebookLM's answer text into validated schema data.
+Turning a model's answer text into validated schema data.
 
 The model returns prose-wrapped, fence-wrapped, citation-annotated, sometimes
 truncated JSON. Everything here exists to recover a valid value from that without
@@ -10,13 +10,15 @@ Bottom of this package's dependency order -- imports nothing from its siblings.
 """
 
 import json
+import logging
 import re
 
 from functools import lru_cache
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from typing import Any, List, Optional, Tuple
 
-from src.logger.notebook_logger import log_json_repaired
+logger = logging.getLogger("ExtractData")
+
 
 
 class ExtractionError(RuntimeError):
@@ -29,7 +31,7 @@ class ExtractionError(RuntimeError):
 
 _FENCE_REGEX = re.compile(r"^\s*```(?:json|JSON)?\s*|\s*```\s*$", re.MULTILINE)
 
-# NotebookLM appends grounding markers like [1] or [2, 5] after cited spans. They
+# Grounded models append markers like [1] or [2, 5] after cited spans. They
 # must be stripped, but ONLY where they cannot be JSON.
 #
 # The naive rule re.sub(r"\[\s*\d+(\s*,\s*\d+)*\s*\]", "", text) applied to the
@@ -46,7 +48,7 @@ _CITATION_LEADING = re.compile(r"^\s*\\?\[\s*\d+(?:\s*,\s*\d+)*\s*\\?\]\s*")
 
 def strip_citation_markers(text: str) -> str:
     """
-    Remove NotebookLM grounding markers from inside JSON string values only.
+    Remove grounding markers from inside JSON string values only.
 
     Operates string-by-string so that structural JSON arrays of numbers survive.
 
@@ -261,7 +263,7 @@ def repair_and_validate_json(raw_text: str, target_model: Any) -> Any:
     """
     cleaned = extract_json_str(raw_text)
     if cleaned != raw_text:
-        log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="extracted_json_span")
+        logger.debug("JSON repaired: extracted the JSON span from surrounding text.")
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -269,12 +271,12 @@ def repair_and_validate_json(raw_text: str, target_model: Any) -> Any:
         repaired = _TRAILING_COMMA_REGEX.sub(r"\1", cleaned)
         try:
             parsed = json.loads(repaired)
-            log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="stripped_trailing_commas")
+            logger.debug("JSON repaired: stripped trailing commas.")
         except json.JSONDecodeError:
             repaired_escapes = sanitize_invalid_escapes(repaired)
             try:
                 parsed = json.loads(repaired_escapes)
-                log_json_repaired(notebook_id="N/A", query_key="schema_parse", fix_type="sanitized_invalid_escapes")
+                logger.debug("JSON repaired: sanitized invalid escapes.")
             except json.JSONDecodeError as e:
                 raise ExtractionError(f"Unparseable JSON ({e}); cleaned prefix: {cleaned[:200]!r}") from e
 

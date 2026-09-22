@@ -3,7 +3,7 @@
 Exhaustive reference for every runnable entry point in the Education Counselor RAG pipeline.
 Every command listed here was executed against this repository and verified to run.
 
-> **Run everything from the project root** (`notebooklm_scripts/`). All entry points insert the
+> **Run everything from the project root.** All entry points insert the
 > project root into `sys.path` themselves, but relative default paths (`run_settings.json`,
 > `extracted_links.txt`) resolve against your current working directory.
 
@@ -27,7 +27,7 @@ Every command listed here was executed against this repository and verified to r
 
 ## 1. Entry Points at a Glance
 
-| Command | Purpose | Network | Consumes NotebookLM quota |
+| Command | Purpose | Network | Spends extraction quota |
 | :--- | :--- | :---: | :---: |
 | `python3 cli.py <subcommand>` | Inspector: inspect, audit, export, … | varies | only `batch` / `retry` |
 | `python3 run.py` | Master 4-phase pipeline, single URL or batch | yes | **yes** |
@@ -35,10 +35,10 @@ Every command listed here was executed against this repository and verified to r
 | `python3 -m src.orchestrator` | The same pipeline, as a module | yes | **yes** |
 | `pytest` | Test suite | no | no |
 
-**Quota-consuming commands are marked ⚠️ throughout.** The daily NotebookLM Pro ceiling is
-500 queries; the pipeline reserves `config.queries_per_university` (6 since the diploma query was
-added) *before* querying, and refuses to start a university that cannot complete within the
-remaining budget. `run.py --dry-run` walks the whole queue and spends none of it.
+**Quota-consuming commands are marked ⚠️ throughout.** Extraction sends **two** API requests
+per university -- one consolidated pass for all four degree levels, one for identity, contact and
+faculties -- against whichever engine is selected. `run.py --dry-run` walks the whole queue and
+sends none of them.
 
 ---
 
@@ -62,29 +62,35 @@ python3 -m playwright install chromium
 win over the file**, so an explicitly exported key is never silently overridden.
 
 ```bash
+DEEPSEEK_API_KEY=...         # DeepSeek engine credential
+GEMINI_API_KEY=...           # Gemini engine credential -- ONE key is enough
+GEMINI_MODEL=...             # optional: defaults to gemini-2.0-flash
+TYPESAFE_API_KEY=...         # optional: Jev grounding and counselor reranking
 EXA_API_KEY=...              # optional: application-portal gap filling in Phase 3
-QDRANT_URL=...               # default: http://localhost:6333
-QDRANT_API_KEY=...           # optional: omit for a local Qdrant container
-QDRANT_COLLECTION_NAME=...   # default: education_counselor
-PINECONE_INDEX_NAME=...      # default: education-counselor
 ```
 
-### 2.3 NotebookLM authentication
+At least one extraction credential is required. `--engine auto` uses DeepSeek when
+`DEEPSEEK_API_KEY` is set and falls back to Gemini otherwise, including mid-run when DeepSeek
+returns 401/402.
 
-Phases 2 and 3 use `NotebookLMClient.from_storage()`, which reads a stored browser session
-from `~/.notebooklm/` (created by the `notebooklm` package's own login flow — it is **not**
-configured through `.env`).
+### 2.3 Gemini credentials
 
-Verify your session is live before starting a long batch:
+The Gemini engine reads its key from the first of these that holds a value:
+`GEMINI_API_KEYS`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`. A single key is a complete setup;
+several may be given comma-separated, and are rotated round-robin to multiply the per-minute
+allowance. Nothing in the pipeline requires more than one key or more than one account.
+
+```bash
+export GEMINI_API_KEY="your-key"           # one key
+export GEMINI_API_KEYS="key-a,key-b"       # or several, rotated
+```
+
+Verify the engine is reachable before starting a long batch:
 
 ```bash
 python3 -c "
-import asyncio
-from notebooklm import NotebookLMClient
-async def m():
-    async with NotebookLMClient.from_storage() as c:
-        print('AUTH OK —', len(await c.notebooks.list()), 'notebooks')
-asyncio.run(m())"
+from src.utilities.gemini_client import describe_gemini_keys, is_gemini_available
+print('GEMINI READY' if is_gemini_available() else 'GEMINI NOT CONFIGURED', '-', describe_gemini_keys())"
 ```
 
 ### 2.4 Verify the install without touching the network
@@ -205,7 +211,7 @@ python3 cli.py state
 ```
 
 Shows each university's slug, status (`pending` → `crawled` → `ingested` → `extracted` →
-`completed`, or `failed`), notebook ID, sources ingested, queries executed, and last update.
+`completed`, or `failed`), pages fetched, schema blocks extracted, and last update.
 
 A university whose payload was written but had a query block fail every retry is `partial`,
 flagged ⚠ with the failed blocks in the Notes column. `partial` is deliberately not a
@@ -218,16 +224,7 @@ empty bucket is an artefact of the failure and not a fact about the university.
 python3 cli.py schema
 ```
 
-### 3.10 `notebooks` ⚠️ — list live NotebookLM notebooks
-
-```bash
-python3 cli.py notebooks
-```
-
-Requires a valid NotebookLM session. Useful for confirming that
-`delete_notebook_after_success()` is actually reclaiming workspace slots.
-
-### 3.11 `interactive` — Rich TUI menu
+### 3.10 `interactive` — Rich TUI menu
 
 ```bash
 python3 cli.py interactive
@@ -290,12 +287,13 @@ comes from `state.sqlite`, which is the only authority on completion.
 | Phase | Module | Output |
 | :--- | :--- | :--- |
 | 1 — Link harvesting | `src/extractor/linkers/` | `data/links/<slug>.jsonl`, one record per link with its tier |
-| 2 — NotebookLM ingestion | `src/ingestor/` | a notebook, its sources, and the url→source_id→tier map in `state.sqlite` |
+| 2 — Corpus fetching | `src/extractor/crawlers/` | page text for the top-ranked links, assembled into one labelled context |
 | 3 — Schema extraction | `src/extractor/crawlers/` | a validated `UniversityPayload` |
 | 4 — Audit & aggregation | `src/inspector/` | `data/outputs/`, the master array, and the health report |
 
-Phase 3 issues its queries **serially** against a notebook. That is a correctness requirement,
-not a throughput choice: concurrent asks share a conversation and return each other's answers.
+Phase 3 sends two consolidated requests per university: one for every degree programme, one
+for identity, contact and faculties. A smart resume re-asks only the blocks a previous run left
+open.
 
 ---
 
@@ -316,16 +314,14 @@ python3 -m src.extractor.linkers.runner --help
 
 ## 6. Maintenance
 
-### 6.1 Migrating the legacy notebook audit trail
+### 6.1 Re-extracting a university
+
+A university whose payload is stale, partial, or expired is picked up by the next run; to force
+one immediately:
 
 ```bash
-python3 -m src.logger.migrate_audit --check
-python3 -m src.logger.migrate_audit
+python3 run.py --url https://itu.edu.pk --rerun-all
 ```
-
-Converts the pre-C26 append-only `loggings/notebook_audit.jsonl` into one JSON document per
-notebook under `loggings/notebook_logs/`. Idempotent — it rebuilds each document from the
-source rather than appending — and it never deletes the source file.
 
 ---
 
@@ -337,15 +333,15 @@ pytest -q                                 # quiet
 pytest -v                                 # verbose, per-test names
 pytest tests/test_pipeline.py             # core pipeline suite
 pytest tests/test_utilities/test_json_io.py   # streaming/atomic JSON I/O
-pytest tests/test_ingest_resilience.py    # ingestion resilience
-pytest tests/test_cli_interactive.py      # interactive CLI
-pytest tests/test_notebook_logger.py      # lifecycle logging
+pytest tests/test_extractor/test_gemini_extractor.py   # the Gemini engine
+pytest tests/test_utilities/test_gemini_client.py      # keys, rotation, quota
+pytest tests/test_inspector/test_cli_interactive.py    # interactive CLI
 pytest -k "citation or json"              # filter by name
 pytest -x                                 # stop at first failure
 pytest --lf                               # rerun last failures
 ```
 
-The suite is fully offline — it makes no network calls and consumes no NotebookLM quota.
+The suite is fully offline — it makes no network calls and spends no extraction quota.
 
 ---
 
@@ -371,7 +367,7 @@ The suite is fully offline — it makes no network calls and consumes no Noteboo
 ```
 
 Entries may be objects (`{"name": ..., "url": ...}`) or bare URL strings. **Prefer objects** —
-an explicit `name` produces a correct notebook title and registry lookup.
+an explicit `name` produces a correct slug and registry lookup.
 
 | Setting | Default | Meaning |
 | :--- | :--- | :--- |
@@ -389,7 +385,7 @@ Edit the `Config` dataclass to change these.
 
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
-| `max_sources_per_notebook` | `150` | Hard ceiling on sources per notebook |
+| `max_links_per_university` | `150` | Hard ceiling on links exported per university |
 | `dynamic_link_ratio` | `0.50` | Fraction of scored candidates selected |
 | `semantic_threshold` | `0.68` | Minimum similarity to survive scoring |
 | `max_crawl_pages` | `35` | Pages crawled per site |
@@ -427,37 +423,33 @@ Edit the `Config` dataclass to change these.
 | `readiness_backoff_factor` | `1.5` | Backoff multiplier |
 | `readiness_jitter_ratio` | `0.35` | Randomisation applied to the first interval |
 
-**Phase 3 — queries**
+**Phase 3 — extraction**
 
 | Field | Default | Meaning |
 | :--- | :--- | :--- |
-| `chat_timeout_sec` | `180` | Per-query timeout — **enforced** on every `chat.ask` |
+| `extraction_engine` | `auto` | `auto`, `deepseek` or `gemini`; `auto` prefers DeepSeek and falls back to Gemini |
+| `gemini_model` | `gemini-2.0-flash` | Gemini model used for extraction; override with `GEMINI_MODEL` |
+| `gemini_rpm_per_key` | `15` | Free-tier requests per minute **per key**; requests are spaced to respect it across every configured key |
+| `deepseek_model` | `deepseek-flash` | DeepSeek model used for extraction |
 | `university_timeout_sec` | `4200` | Wall-clock ceiling for one university across all phases |
-| `max_query_retries` | `2` | Repair retries per query |
-| `max_query_split_depth` | `3` | Times an oversized query may be halved over its sources (see note below) |
-| `query_concurrency` | `3` | Notebooks queried in parallel (see note below) |
-| `daily_query_budget` | `500` | NotebookLM Pro daily ceiling — **enforced** |
-| `queries_per_university` | `6` | Reserved per university before querying |
+| `daily_query_budget` | `500` | Daily request ceiling enforced by the state ledger |
+| `queries_per_university` | `2` | Requests one full extraction sends |
 
-> **Note on `chat_timeout_sec` and `university_timeout_sec`:** these are the two deadlines that
-> bound a batch. `chat_timeout_sec` bounds one `chat.ask`; `university_timeout_sec` bounds
-> everything else for one university — a wedged crawl, a stuck upload, a readiness poll that never
-> converges. Both exist because run `c_1` on 2026-09-05 had neither: a single COMSATS ask hung for
-> 7h11m of an 11-hour window, and the twelve universities queued behind it never ran. A timed-out
-> ask is now an ordinary failed attempt; a timed-out university fails and the batch moves on.
+> **Note on `university_timeout_sec`:** it bounds everything for one university — a wedged
+> crawl, a page fetch that never returns, an API call that hangs. It exists because run `c_1`
+> on 2026-09-05 had no such ceiling: a single hung call took 7h11m of an 11-hour window and the
+> twelve universities queued behind it never ran. A timed-out university now fails and the
+> batch moves on.
 
-> **Note on `query_concurrency`:** the suite against one notebook is **serial**, and must stay
-> that way. Concurrent unkeyed asks share a conversation, and an ask still waiting when a later
-> ask's turn lands returns *that* turn's answer — observed live on 2026-09-03, where `bachelors`
-> and `phd` came back byte-identical and the PhD programmes were filed as bachelors with no
-> error raised. This setting governs notebook-level parallelism only, where no conversation is
-> shared.
+> **Note on the two consolidated passes:** a full extraction sends one request for all four
+> degree levels and one for identity, contact and faculties — two requests for six schema
+> blocks. A smart resume re-asks only the blocks a previous run left open, and re-asks them
+> one at a time when there are fewer than three.
 
-> **Note on `max_query_split_depth`:** a `RPCResponseTooLargeError` means the answer did not
-> fit, not that it was wrong, so re-asking the same question of the same sources fails
-> identically. Such a query is re-asked over halves of its source set and the answers merged.
-> Each level doubles the sub-asks, so this trades daily query budget for coverage; `0` disables
-> narrowing entirely.
+> **Note on Gemini keys:** one key is a complete setup. Several may be configured
+> comma-separated in `GEMINI_API_KEYS` and are rotated round-robin, which multiplies the
+> per-minute allowance; nothing requires a second key or a second account.
+
 
 **Phase 4 — vectors**
 
@@ -480,8 +472,8 @@ Edit the `Config` dataclass to change these.
 | `data/outputs/uni_outputs/<slug>.json` | Phase 3 | Per-university pretty JSON |
 | `data/outputs/country_outputs/` | `export --format json` | Per-country groupings |
 | `data/outputs/result.json` | Batch end | Global analytics summary |
-| `data/state.sqlite` | All phases | Resumable state, source map, quota ledger, audit log |
-| `loggings/` | All phases | Notebook lifecycle logs |
+| `data/state.sqlite` | All phases | Resumable state and the daily request ledger |
+| `loggings/` | All phases | Per-run pipeline logs (`s_`/`c_` ids) |
 
 Notes:
 - **The JSONL is the source of truth.** The master `.json` is derived from it and can be
@@ -568,30 +560,29 @@ The site blocked the crawler or the threshold is too strict. Retry Phase 1 stand
 lower `--threshold` and more pages:
 `python3 -m src.extractor.linkers.runner --url <url> --threshold 0.5 --max-pages 20`.
 
-**`RPCError rpc_code=9` during upload**
-NotebookLM's server-side crawler could not fetch the URL. The pre-flight check
-(`preflight_http_check`) filters most of these, and unreachable pages fall back to local text
-extraction. Persistent failures are recorded in `IngestResult.failed_urls` and the run
-continues.
+**`Gemini quota/rate limit exhausted`**
+Every configured key was rate-limited past retry, or the daily allowance is spent. The
+university is left `partial` and the batch stops, so a resumed run picks it up rather than
+burning the rest of the queue against a spent quota. Add a second key to `GEMINI_API_KEYS`, or
+wait for the quota to roll over.
 
-**Fewer sources "ready" than uploaded**
-Expected and non-fatal. Readiness is polled per source with failure isolation, so two bad
-sources out of twenty-five report `23 ready` — the notebook is still queried against the ones
-that succeeded. Only a `0 ready` result is worth investigating.
+**`No Gemini API key configured`**
+The client checks `GEMINI_API_KEYS`, then `GEMINI_API_KEY`, then `GOOGLE_API_KEY`, in the
+config first and the environment second. One key in any of them is enough. Confirm with the
+snippet in §2.3.
 
-**`Daily NotebookLM query budget exhausted`**
-The 500/day ceiling was reached. The ledger is keyed by **UTC** day. Check with the quota
-snippet in §10; wait for UTC rollover or raise `daily_query_budget` if your plan allows.
+**`DeepSeek balance/quota exhausted` mid-batch**
+With `--engine auto` this is not fatal: the run falls back to Gemini for that university and
+the rest of the batch, provided a Gemini key exists. With `--engine deepseek` it fails the
+university, by design — an explicit engine choice is not silently overridden.
 
-**Notebooks accumulating in your NotebookLM account**
-`delete_notebook_after_success()` runs only after the payload validates and is written. A
-crashed run leaves its notebook behind by design, so the ingested sources can be reused.
-Audit with `python3 cli.py notebooks`.
+**A degree bucket is empty**
+Check `failed_query_blocks` in the payload. Empty *and* listed there means the pass failed and
+the university was left `partial` for the next run to retry; empty and *not* listed means the
+sources genuinely showed no such programme.
 
 **Two degree buckets holding identical programmes**
-One query received another's answer. The extractor refuses to file that and reports both
-blocks failed; `python3 cli.py audit` also detects it in payloads written before the guard
-existed. Re-extract the university.
+`python3 cli.py audit` detects it. Re-extract the university.
 
 **HTTP/2 unavailable warning**
 The optional `h2` package is missing. The pooled client falls back to HTTP/1.1 keep-alive,
@@ -602,5 +593,5 @@ The shared browser is closed by the batch and CLI drivers. After a hard kill, cl
 with `pkill -f chromium`.
 
 **Tests pass but the pipeline fails**
-The suite is fully mocked and offline by design. Real failures are almost always
-authentication (§2.3), network, or quota — check those three first.
+The suite is fully mocked and offline by design. Real failures are almost always credentials
+(§2.2, §2.3), network, or quota — check those three first.

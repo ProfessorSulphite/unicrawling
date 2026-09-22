@@ -14,11 +14,9 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
     """
     No test may write into the real workspace.
 
-    Found in C26: the suite was appending ~203 records to the production
-    notebook audit trail on every run. 17,423 of that file's 19,395 lines were
-    synthetic -- notebook ids like "nb-123" and "nb-health-1" from fixtures --
-    so 90% of the audit trail for a pipeline that talks to a paid API was test
-    exhaust, and every `pytest` made it worse.
+    Found in C26: the suite was appending ~203 records to a production log on
+    every run, 90% of which was synthetic test exhaust, and every `pytest` made
+    it worse.
 
     Autouse and unconditional, because the failure is silent: a test that forgets
     to redirect a path still passes, and the damage lands in a file nobody reads
@@ -33,7 +31,7 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
     # base_dir too, and not only for tidiness: the orchestrator's flat-file link
     # fallback reads `config.base_dir / "extracted_links.txt"`, so without this a
     # test that harvests zero links silently picks up the repo root's real file
-    # and provisions a notebook for it. Found writing the C27 e2e suite.
+    # and extracts from it. Found writing the C27 e2e suite.
     monkeypatch.setattr(config, "base_dir", workspace)
     for name, relative in [
         ("data_dir", "data"),
@@ -47,9 +45,6 @@ def _isolate_writable_paths(monkeypatch, tmp_path):
         ("loggings_dir", "loggings"),
         ("loggings_single_logs_dir", "loggings/single_logs"),
         ("loggings_complete_logs_dir", "loggings/complete_logs"),
-        ("notebook_logs_dir", "loggings/notebook_logs"),
-        ("notebook_lifecycle_log_path", "loggings/notebook_lifecycle.log"),
-        ("notebook_audit_jsonl_path", "loggings/notebook_audit.jsonl"),
     ]:
         target = workspace / relative
         if not target.suffix:

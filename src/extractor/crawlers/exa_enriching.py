@@ -1,5 +1,5 @@
 """
-Domain-scoped Exa fallback for the one field NotebookLM most often misses.
+Domain-scoped Exa fallback for the one field extraction most often misses.
 
 Deliberately restricted to the university's own domain: an unconstrained search
 returns third-party admissions aggregators, which would be written into the

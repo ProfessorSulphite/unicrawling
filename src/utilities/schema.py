@@ -167,7 +167,7 @@ class ProgramItem(BaseModel):
     # Defaulted rather than required: every field inside EligibilityRequirements is
     # itself optional, so a missing block carries no less information than an empty
     # one -- but marking it required forces a repair re-ask that spends real budget
-    # from the 500/day NotebookLM ceiling to learn nothing. Output shape is
+    # from the daily request ceiling to learn nothing. Output shape is
     # unchanged; the object still always serialises.
     eligibility_requirements: EligibilityRequirements = Field(default_factory=EligibilityRequirements)
     # C19: was ROLLING, which told a student applications were open year-round.
@@ -233,7 +233,7 @@ class ProgramItem(BaseModel):
 # "Required" here means *required to be answered*, not required by Pydantic.
 # Every one of these is Optional on the model on purpose: forcing them at
 # validation would reject a whole university's payload over one unanswered field,
-# and spend real NotebookLM budget on a repair re-ask that learns nothing. The
+# and spend real request budget on a repair re-ask that learns nothing. The
 # schema lets a gap through; the auditor is what refuses to ship it.
 REQUIRED_PROGRAM_FIELDS = (
     "name",
@@ -311,7 +311,7 @@ class ContactInfo(BaseModel):
     def _coerce_sub_campuses_contact(cls, v: Any) -> Any:
         """
         Coerce string representations of sub-campus contacts into SubCampusContact dicts.
-        Handles cases where NotebookLM returns strings like "Kenya Campus: 3rd Parklands (Tel: +254...)"
+        Handles cases where the model returns strings like "Kenya Campus: 3rd Parklands (Tel: +254...)"
         """
         if v is None:
             return []

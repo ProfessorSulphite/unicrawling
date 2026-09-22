@@ -18,7 +18,7 @@ import pathlib
 
 import pytest
 
-from src.extractor.crawlers.notebook_querying import QUERY_SUITE
+from src.extractor.crawlers.query_schemas import QUERY_SUITE
 from src.extractor.normalizers.program_fields import apply_program_field_carryover
 from src.extractor.normalizers.runner import normalize_universal_payload
 from src.utilities.schema import (

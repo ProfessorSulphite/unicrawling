@@ -106,20 +106,30 @@ def test_ensure_directories_is_idempotent(tmp_path):
     cfg.ensure_directories()  # must not raise on an existing tree
 
 
-def test_health_check_knobs_exist_for_c13():
-    """Plan section 6.6: sampling must be tunable without code changes."""
-    for name in ("health_check_enabled", "health_check_sample_ratio",
-                 "health_check_min_sample", "health_check_min_pass_ratio"):
+def test_the_engine_knobs_exist():
+    """An engine must be selectable, and Gemini addressable, without code changes."""
+    for name in ("extraction_engine", "gemini_api_keys", "gemini_model",
+                 "gemini_rpm_per_key", "deepseek_api_key", "deepseek_model"):
         assert name in Config.__dataclass_fields__
-    assert 0 < config.health_check_sample_ratio <= 1
-    assert config.health_check_min_sample >= 1
-    assert 0 < config.health_check_min_pass_ratio <= 1
+    assert config.extraction_engine in {"auto", "deepseek", "gemini"}
+    assert config.gemini_model
+    assert config.gemini_rpm_per_key >= 1
+
+
+def test_no_notebooklm_knob_survives():
+    """
+    C33 removed the NotebookLM engine. A knob for it left behind is documentation
+    that lies: it reads as a supported setting and changes nothing.
+    """
+    stale = [n for n in Config.__dataclass_fields__
+             if "notebook" in n or n.startswith(("readiness_", "preflight_", "health_check_"))]
+    assert stale == [], f"NotebookLM-era config fields still declared: {stale}"
 
 
 def test_query_budget_is_internally_consistent():
     """
-    reserve_queries() claims queries_per_university up front, so the daily budget
-    must admit at least one university. C17 raises the suite to 6 queries.
+    The ledger claims queries_per_university up front, so the daily budget must
+    admit at least one university. A direct-engine extraction is 2 requests.
     """
     assert config.queries_per_university >= 1
     assert config.daily_query_budget >= config.queries_per_university

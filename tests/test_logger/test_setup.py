@@ -39,9 +39,8 @@ def test_every_named_logger_actually_exists_in_the_tree():
     A name that no module logs under is dead configuration. "Linker" was in this
     list when it was written and no module used it.
     """
-    import src.extractor.crawlers.runner  # noqa: F401
+    import src.extractor.crawlers.gemini_extractor  # noqa: F401
     import src.extractor.linkers.constants  # noqa: F401
-    import src.ingestor.source_management  # noqa: F401
 
     known = set(logging.root.manager.loggerDict)
     unused = [n for n in NOISY_LOGGERS if n not in known]

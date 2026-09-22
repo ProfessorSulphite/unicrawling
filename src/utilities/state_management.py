@@ -6,7 +6,7 @@ Three responsibilities:
      batch restarts from where it stopped instead of re-ingesting everything.
   2. source_map     -- url -> source_id -> tier, so Phase 3 can scope each query to
      the sources that can actually answer it (chat.ask(source_ids=...)).
-  3. query_ledger   -- an append-only count of NotebookLM queries per UTC day, so
+  3. query_ledger   -- an append-only count of extraction requests per UTC day, so
      the 500/day Pro ceiling is enforced by the pipeline rather than discovered
      when the API starts refusing halfway through a run.
 """
@@ -40,7 +40,7 @@ class InvalidStatusError(ValueError):
 
 
 class QuotaExceededError(RuntimeError):
-    """Raised when the daily NotebookLM query budget would be exceeded."""
+    """Raised when the daily extraction request budget would be exceeded."""
 
 
 class StateManager:
@@ -505,7 +505,7 @@ class StateManager:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     def queries_used_today(self) -> int:
-        """Total NotebookLM queries recorded for the current UTC day."""
+        """Total extraction requests recorded for the current UTC day."""
         with self._get_connection() as conn:
             row = conn.execute(
                 "SELECT COALESCE(SUM(queries), 0) AS n FROM query_ledger WHERE day = ?",
@@ -530,7 +530,7 @@ class StateManager:
         remaining = self.remaining_query_budget()
         if count > remaining:
             raise QuotaExceededError(
-                f"Daily NotebookLM query budget exhausted: requested {count}, "
+                f"Daily extraction request budget exhausted: requested {count}, "
                 f"{remaining} of {config.daily_query_budget} remaining today."
             )
         with self._get_connection() as conn:
@@ -616,7 +616,7 @@ class StateManager:
         uni_slug: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Record a structured NotebookLM lifecycle event into SQLite."""
+        """Record a structured lifecycle event into SQLite (legacy table, kept for existing databases)."""
         details_str = json.dumps(details or {}, ensure_ascii=False)
         clean_slug = uni_slug.lower().strip() if uni_slug else None
         with self._get_connection() as conn:

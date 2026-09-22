@@ -326,7 +326,7 @@ def test_every_link_carries_the_tier_phase_1_assigned(links_dir):
 
 
 def test_rank_order_from_phase_1_is_preserved(links_dir):
-    """Phase 2 caps at max_sources_per_notebook, so order decides what survives."""
+    """The corpus fetch caps at max_links_per_university, so order decides what survives."""
     records = [
         {**PARTITION_RECORD, "rank": i, "url": f"https://itu.edu.pk/p{i}", "tier": 1}
         for i in range(1, 6)

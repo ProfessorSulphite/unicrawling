@@ -1,7 +1,6 @@
 """
 Rendered views of what the pipeline produced: one university, two side by side,
-a global programme search, and the three system manifests (state, schema,
-notebooks).
+a global programme search, and the two system manifests (state and schema).
 
 Read-only. No module here imports the orchestrator, at module scope or
 otherwise -- see Finding 6. Triggering a run lives in cli.py.
@@ -545,9 +544,8 @@ def inspect_state():
         table = Table(title="🗄️ SQLite Pipeline State Manifest", show_lines=True)
         table.add_column("University Slug", style="bold cyan")
         table.add_column("Status", style="bold yellow")
-        table.add_column("Notebook ID", style="dim")
-        table.add_column("Sources", style="green")
-        table.add_column("Queries", style="magenta")
+        table.add_column("Pages", style="green")
+        table.add_column("Blocks", style="magenta")
         table.add_column("Last Updated", style="dim")
         table.add_column("Notes", style="dim")
 
@@ -567,7 +565,6 @@ def inspect_state():
             table.add_row(
                 show(r.get('university_slug')).upper(),
                 f"[{status_style}]{status_label}[/{status_style}]",
-                r.get('notebook_id') or "N/A",
                 str(r.get('sources_ingested', 0)),
                 str(r.get('queries_executed', 0)),
                 str(r.get('updated_at', 'N/A')),
@@ -682,30 +679,3 @@ def inspect_schema():
         console.print(f"[bold red]Failed to generate schema:[/bold red] {e}")
 
 
-# ------------------------------------------------------------------------------
-# 9. NOTEBOOKLM ACTIVE WORKSPACES COMMAND (notebooks)
-# ------------------------------------------------------------------------------
-
-async def _inspect_notebooks_async():
-    from notebooklm import NotebookLMClient
-    async with NotebookLMClient.from_storage() as client:
-        notebooks = await client.notebooks.list()
-        table = Table(title=f"☁️ Active NotebookLM Notebooks (Total: {len(notebooks)})", show_lines=True)
-        table.add_column("Notebook ID", style="dim")
-        table.add_column("Title", style="bold cyan")
-        table.add_column("Sources Count", style="bold yellow")
-
-        for nb in notebooks:
-            try:
-                sources = await client.sources.list(nb.id)
-                count_str = str(len(sources))
-            except Exception:
-                count_str = "N/A"
-            table.add_row(nb.id, getattr(nb, "title", "Untitled"), count_str)
-        console.print(table)
-
-def inspect_notebooks():
-    try:
-        asyncio.run(_inspect_notebooks_async())
-    except Exception as e:
-        console.print(f"[bold red]NotebookLM Inspection Error:[/bold red] {e}")

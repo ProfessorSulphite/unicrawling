@@ -8,7 +8,7 @@ from src.extractor.crawlers.deepseek_extractor import (
     query_deepseek_block,
     extract_with_deepseek_engine,
 )
-from src.extractor.crawlers.notebook_querying import QUERY_SUITE, Q1Payload
+from src.extractor.crawlers.query_schemas import QUERY_SUITE, Q1Payload
 from src.utilities.schema import DegreeLevel, UniversityPayload, ProgramItem, ContactInfo
 
 

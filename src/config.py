@@ -36,7 +36,7 @@ class Config:
     outputs_uni_outputs_dir: Path = BASE_DIR / "data" / "outputs" / "uni_outputs"          # One validated JSON payload per university
     outputs_all_uni_outputs_dir: Path = BASE_DIR / "data" / "outputs" / "all_uni_outputs"  # Aggregated dataset across all universities
 
-    state_db_path: Path = BASE_DIR / "data" / "state.sqlite"                     # SQLite pipeline state; authoritative for per-university progress and the daily query ledger
+    state_db_path: Path = BASE_DIR / "data" / "state.sqlite"                     # SQLite pipeline state; authoritative for per-university progress and the daily request ledger
     output_jsonl_path: Path = BASE_DIR / "data" / "outputs" / "all_uni_outputs" / "universities_crawling_data.jsonl"  # Append-only ledger; one record per university as it completes
     output_master_json_path: Path = BASE_DIR / "data" / "outputs" / "all_uni_outputs" / "universities_crawling_data.json"  # Compiled array form of the ledger; the file downstream consumers read
 
@@ -66,32 +66,26 @@ class Config:
     loggings_dir: Path = BASE_DIR / "loggings"                                   # Parent directory for all log output
     loggings_single_logs_dir: Path = BASE_DIR / "loggings" / "single_logs"       # s_{id}.json -- single/partial runs
     loggings_complete_logs_dir: Path = BASE_DIR / "loggings" / "complete_logs"   # c_{id}.json -- full batch runs
-    notebook_lifecycle_log_path: Path = BASE_DIR / "loggings" / "notebook_lifecycle.log"   # Human-readable NotebookLM lifecycle trace
-    notebook_logs_dir: Path = BASE_DIR / "loggings" / "notebook_logs"                      # One JSON audit document per notebook (C26)
-    # Legacy single-file audit trail, replaced by notebook_logs_dir in C26. Kept
-    # so the migration can find it; nothing writes here any more.
-    notebook_audit_jsonl_path: Path = BASE_DIR / "loggings" / "notebook_audit.jsonl"       # DEPRECATED: pre-C26 append-only audit stream, migration input only
 
     # ═══════════════════════════════════════════════════════════════════════
     # CRAWLING LIMITS & THRESHOLDS (Phase 1)
     # ═══════════════════════════════════════════════════════════════════════
-    max_sources_per_notebook: int = 150      # Hard ceiling on sources per notebook; raise to ingest more links per university, at the cost of upload time
+    max_links_per_university: int = 150      # Hard ceiling on links exported per university; raise to widen the corpus the engines read, at the cost of crawl time
     dynamic_link_ratio: float = 0.50         # Fraction of clean candidate links actually sent; lower = fewer but higher-quality sources
     # 15 pages at depth 2 reached little beyond the landing page's own menu: the
     # 2026-09-05 batch harvested 41 usable links for COMSATS and 36 for BNU, and
     # the sparse tiers were being filled from a candidate pool that barely had
     # any. Discovery is the cheapest stage in the pipeline -- it spends no
-    # NotebookLM quota -- so it is the right place to spend time.
+    # extraction quota -- so it is the right place to spend time.
     max_crawl_pages: int = 35                # Pages Crawl4AI visits per domain; raise for deeper discovery, costs proportionally more time
     crawl_max_depth: int = 3                 # Link hops Crawl4AI follows from the start URL; 2 rarely leaves the top-level menu, 4+ reaches leaf programme pages at a steep time cost
-    # Phase 2's pre-flight drops every link that no longer resolves, and the
-    # notebook simply ended up smaller -- COMSATS ingested 41 of 80 selected
-    # links. The reserve is exported alongside the selection so those slots can
-    # be refilled from the next-best candidates instead of being lost.
+    # Dead links drop out of the corpus when the fetch fails, and the context the
+    # engine reads simply ends up smaller. The reserve is exported alongside the
+    # selection so those slots can be refilled from the next-best candidates.
     link_reserve_ratio: float = 0.35         # Extra ranked links exported beyond the selection, as a fraction of it, to backfill pre-flight casualties; 0 disables backfill
-    # Sources must belong to the university being described. A live ITU notebook
-    # ingested collegereadiness.collegeboard.org as a Tier 2 source, so answers
-    # about ITU's admissions were partly grounded in College Board's SAT pages.
+    # Sources must belong to the university being described. A live ITU run took
+    # collegereadiness.collegeboard.org in as a Tier 2 source, so answers about
+    # ITU's admissions were partly grounded in College Board's SAT pages.
     # Subdomains of the institution (application.itu.edu.pk) always count as
     # on-site; only a genuinely different registrable domain is dropped.
     restrict_links_to_university_domain: bool = True   # Drop harvested links outside the university's own registrable domain; disabling re-admits third-party pages as sources
@@ -144,97 +138,17 @@ class Config:
     bge_query_prefix: str = "Represent this sentence for searching relevant passages: "   # Required query-side prefix; removing it silently degrades scoring
 
     # ═══════════════════════════════════════════════════════════════════════
-    # HTTP CONNECTION POOL
-    # One HTTP/2 client is reused for every pre-flight probe and text-fallback
-    # fetch. Building an AsyncClient per URL paid a fresh TCP + TLS handshake
-    # on every one of ~150 links per university.
-    # ═══════════════════════════════════════════════════════════════════════
-    http_timeout_sec: float = 10.0           # Total request timeout; raise for slow university servers
-    http_connect_timeout_sec: float = 5.0    # Connection-establishment timeout; raise for distant or slow hosts
-    http_max_connections: int = 50           # Pool ceiling on simultaneous connections
-    http_max_keepalive_connections: int = 20 # Idle connections kept warm for reuse
-    http_keepalive_expiry_sec: float = 30.0  # How long an idle connection survives before being closed
-    http2_enabled: bool = True               # Use HTTP/2 multiplexing; disable only for servers that mis-negotiate it
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # INGESTION (Phase 2)
-    # ═══════════════════════════════════════════════════════════════════════
-    concurrent_uploads: int = 2              # Parallel source uploads to NotebookLM; keep low to avoid write rate limits
-    source_ready_timeout_sec: int = 600      # Give-up time waiting for a source to become queryable
-    upload_max_retries: int = 3              # Retries per failing source before it is abandoned
-    preflight_http_check: bool = True        # Probe each URL before uploading; disabling is faster but wastes notebook slots on dead links
-    # Pre-flight is pure network wait, so it parallelises far wider than the
-    # upload path, which is bounded by NotebookLM's own write rate limits.
-    preflight_concurrency: int = 24          # Parallel pre-flight probes; safe to raise, it is network-bound not API-bound
-    # The probe carried its own literal 5.0s deadline while the pooled client was
-    # built for 10.0s, so a merely slow university failed a check the pool would
-    # have survived. NUST scored 0/8 on 2026-09-05 and was skipped for the batch.
-    preflight_probe_timeout_sec: float = 12.0    # Per-URL deadline for a reachability probe; raise for slow or distant university servers
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # LINK HEALTH PRE-FLIGHT (plan section 6; consumed by C13)
-    # Sample a subset of links before committing a full batch, so a university
-    # whose pages NotebookLM cannot ingest is skipped instead of burning quota.
-    # ═══════════════════════════════════════════════════════════════════════
-    health_check_enabled: bool = True        # Master switch for pre-flight sampling; disabling sends every batch unchecked
-    health_check_sample_ratio: float = 0.10  # Fraction of candidate links sampled; raise for a more confident verdict at higher cost
-    health_check_min_sample: int = 5         # Floor on sample size, so small link sets are still meaningfully tested
-    health_check_min_pass_ratio: float = 0.5 # Fraction of the sample that must succeed to proceed with the full batch
-    # A whole university is abandoned on this verdict, so a single bad minute on
-    # the network must not decide it. Failures are probed once more, patiently,
-    # before the batch is refused.
-    health_check_recheck_failures: bool = True   # Re-probe failed sample links once with a longer deadline before condemning a university; disabling makes the first verdict final
-    health_check_recheck_timeout_sec: float = 25.0   # Deadline for that second, patient probe; only paid for links that already failed
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # SOURCE READINESS POLLING
-    # Sources are all created within a few seconds of each other, so pollers
-    # started in lockstep re-converge on the same instants for the whole run.
-    # A randomised first interval spreads the fan-out permanently.
-    # ═══════════════════════════════════════════════════════════════════════
-    readiness_poll_concurrency: int = 10     # Sources polled concurrently for readiness
-    readiness_initial_interval_sec: float = 1.5  # First poll delay, before backoff begins
-    readiness_max_interval_sec: float = 5.0      # Ceiling on the backed-off poll interval
-    readiness_backoff_factor: float = 1.5        # Multiplier applied to the interval after each miss
-    readiness_jitter_ratio: float = 0.35         # Randomisation applied to each interval to prevent lockstep polling
-
-    # ═══════════════════════════════════════════════════════════════════════
     # QUERY & EXTRACTION (Phase 3)
     # ═══════════════════════════════════════════════════════════════════════
-    # Wired into _ask() in C31. It was declared here and read by nothing: the
-    # chat.ask await had no deadline at all, and on 2026-09-05 a single COMSATS
-    # call hung for 7h11m, taking the remaining 12 universities of the batch with
-    # it. Every ask now runs under this deadline.
-    chat_timeout_sec: int = 180              # Seconds to wait for a NotebookLM response before timing out; a stalled ask fails and retries instead of hanging the batch
-    # Bounds the whole of Phases 1-4 for one university. chat_timeout_sec bounds a
-    # single ask; this bounds everything else -- a wedged crawl, a stuck upload, a
-    # readiness poll that never converges -- so no one university can consume a
-    # batch window. Sized for the worst observed healthy university (AKU, 51 min).
+    # Bounds the whole of Phases 1-4 for one university: a wedged crawl, a page
+    # fetch that never returns, an API call that hangs. No one university can
+    # consume a batch window.
     university_timeout_sec: int = 4200       # Wall-clock ceiling for one university across all phases; exceeding it fails that university and the batch moves on
-    max_query_retries: int = 2               # Retries per failing query before the university is marked failed
-    # An oversized response (RPCResponseTooLargeError, 50 MB ceiling) is not
-    # fixed by re-asking: the answer size tracks how much corpus the question is
-    # pointed at. The query is instead re-asked over halves of its source set and
-    # the answers merged. Each level doubles the sub-asks, so this trades daily
-    # query budget for coverage -- 2 allows at most 4 narrowed asks per query.
-    max_query_split_depth: int = 3           # How many times an oversized query may be halved over its sources; 0 disables narrowing
-    # NOT the query suite. The suite against one notebook is serial and must stay
-    # that way: concurrent unkeyed asks share a conversation, and an ask still
-    # waiting when a later ask's turn lands returns THAT turn's answer. Observed
-    # live on 2026-09-03 -- `bachelors` and `phd` came back byte-identical and the
-    # PhD programmes were filed as bachelors, with no error raised. This knob now
-    # governs notebook-level parallelism only, where no conversation is shared.
-    query_concurrency: int = 3               # Notebooks queried in parallel; the per-notebook suite is always serial
-    # NotebookLM Pro daily ceiling. C17 added the 6th (diploma) query, so the
-    # arithmetic is now 6 x 83 universities = 498 -- which clears the cap by two
-    # queries and leaves no retry headroom at all. A full 83-university batch
-    # therefore no longer fits in one day: at 6 queries the budget covers 83
-    # universities only if nothing is ever retried, and 75 with the same ~10%
-    # retry headroom the 5-query suite had. Batch sizing, not this number, is
-    # what has to give -- daily_query_budget is a real external quota, not a knob.
-    daily_query_budget: int = 500            # Hard daily cap enforced by the state ledger; must match the real NotebookLM quota
-    queries_per_university: int = 6          # Queries in the suite; reserved up-front per university, so it must match QUERY_SUITE
-    response_format: str = "text"            # Wire protocol format: 'text' (delimited @@RECORD protocol) or 'json' (legacy)
+    # The daily request ledger in state_management. A direct-engine extraction
+    # is two consolidated requests -- one for programmes, one for identity -- so
+    # the budget is read in requests, not in universities.
+    daily_query_budget: int = 500            # Daily request ceiling enforced by the state ledger; set it to the real per-day allowance of the engine in use
+    queries_per_university: int = 2          # Requests one full extraction sends; must match what the engines actually issue
 
     # ═══════════════════════════════════════════════════════════════════════
     # AUDIT THRESHOLDS (plan section 5; consumed by inspector/auditor.py)
@@ -254,7 +168,7 @@ class Config:
     # ═══════════════════════════════════════════════════════════════════════
     default_intake_year: str = "2026"         # Academic intake cycle year tag used to invalidate stale annual program catalogs
     default_data_ttl_days: int = 180          # Days an extracted university payload remains valid before requiring re-extraction
-    extraction_engine: str = "auto"           # Engine used for schema extraction: 'auto', 'deepseek', or 'notebooklm'
+    extraction_engine: str = "auto"           # Engine used for schema extraction: 'auto', 'deepseek', or 'gemini'
 
     # ═══════════════════════════════════════════════════════════════════════
     # EXTERNAL API KEYS
@@ -269,7 +183,7 @@ class Config:
     gemini_api_keys: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEYS", "") or os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""))  # Gemini credential(s); one key, or several separated by commas
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "") or "gemini-2.0-flash")   # Gemini model used for schema extraction; override per account entitlement
     gemini_rpm_per_key: int = 15                                                                             # Free-tier requests per minute per key; requests are spaced to respect it across all configured keys
-    exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                            # Exa web search key; enables fallback enrichment when NotebookLM data is incomplete
+    exa_api_key: str = field(default_factory=lambda: os.getenv("EXA_API_KEY", ""))                            # Exa web search key; enables fallback enrichment when the extracted data is incomplete
     typesafe_api_key: str = field(default_factory=lambda: os.getenv("TYPESAFE_API_KEY", ""))                    # TypeSafe AI API key; enables Jev System One semantic decisions
     typesafe_model: str = "jev-latest"                                                                           # TypeSafe System One model identifier used for evaluation
     typesafe_enabled: bool = True                                                                                # Master toggle for Jev System One decisions; disabling falls back to deterministic rules
@@ -306,7 +220,6 @@ class Config:
             self.loggings_dir,
             self.loggings_single_logs_dir,
             self.loggings_complete_logs_dir,
-            self.notebook_logs_dir,
             self.tests_dir,
         ]:
             path.mkdir(parents=True, exist_ok=True)

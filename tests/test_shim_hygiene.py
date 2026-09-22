@@ -3,8 +3,8 @@ Guard against the C12 failure class: a test that patches a name on a compatibili
 shim silently stops testing anything.
 
 `monkeypatch.setattr("src.ingest.check_url_accessible", fake)` rebinds the name in
-the *shim's* globals. The real caller lives in src/ingestor/source_management.py
-and resolves `check_url_accessible` from its own module globals, so it never sees
+the *shim's* globals. The real caller lived in the ingestor package and resolved
+`check_url_accessible` from its own module globals, so it never saw
 the fake -- the test keeps passing while exercising the unpatched production path.
 That is exactly what happened to the pre-flight test during the ingest split, and
 it was found by reading, not by the suite.
@@ -123,6 +123,7 @@ def test_classifier_allows_attributes_reached_through_a_shim():
 
 def test_classifier_ignores_non_shim_modules():
     assert classify_patch_target(
-        "src.ingestor.source_management.check_url_accessible", _SYNTHETIC_SHIMS
+        "src.extractor.crawlers.gemini_extractor.fetch_corpus_text_for_links",
+        _SYNTHETIC_SHIMS,
     ) is None
     assert classify_patch_target("httpx.AsyncClient", _SYNTHETIC_SHIMS) is None

@@ -16,7 +16,7 @@ import pathlib
 
 import pytest
 
-from src.extractor.crawlers.notebook_querying import QUERY_SUITE
+from src.extractor.crawlers.query_schemas import QUERY_SUITE
 from src.extractor.normalizers.degree_names import (
     apply_degree_level,
     classify_degree_level,

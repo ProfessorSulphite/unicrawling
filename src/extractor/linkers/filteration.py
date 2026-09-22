@@ -60,7 +60,7 @@ def is_excluded_path(url: str) -> bool:
     if any(k.lower() in SEARCH_QUERY_PARAMS for k, _ in parse_qsl(parsed.query)):
         return True
 
-    # Exclude video hosts and social media URLs (cannot be ingested as NotebookLM web documents)
+    # Exclude video hosts and social media URLs (they carry no extractable page text)
     if any(h in host for h in ("youtu.be", "youtube.com", "vimeo.com", "facebook.com", "twitter.com", "instagram.com", "linkedin.com")):
         return True
 
@@ -143,7 +143,7 @@ def dedupe_key(url: str) -> str:
     """
     Identity key for exact-duplicate collapse. Ignores scheme and a leading 'www.'
     so http://uni.edu.pk/x and https://www.uni.edu.pk/x count as one source --
-    they would otherwise consume two of the 60 per-notebook slots for one page.
+    they would otherwise consume two of the per-university link slots for one page.
     """
     parsed = urlparse(url)
     host = parsed.netloc.lower()
@@ -346,7 +346,7 @@ def preprocess_and_filter_links(
         # Sources must belong to the university being described. `base_url` was
         # accepted here and passed to normalize_url, which ignores it entirely,
         # so the only host rule in the whole filter was a social-media denylist.
-        # A live ITU notebook ingested https://collegereadiness.collegeboard.org/sat
+        # A live ITU run took in https://collegereadiness.collegeboard.org/sat
         # as a Tier 2 source: answers about ITU's admissions were grounded in
         # College Board's SAT pages, and the link consumed one of 33 slots.
         if config.restrict_links_to_university_domain and not is_same_institution(

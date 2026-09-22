@@ -24,7 +24,6 @@ from src.inspector.auditor import audit_corpus
 from src.inspector.dashboard import (
     compare_universities,
     display_status_summary,
-    inspect_notebooks,
     inspect_schema,
     inspect_state,
     inspect_university,
@@ -113,14 +112,13 @@ def interactive_menu():
         console.print("A. 🔬 Audit Per-Programme Required Fields (Supabase readiness)")
         console.print("6. 🗄️ Inspect SQLite State Manifest")
         console.print("7. 📜 Display Master JSON Schema")
-        console.print("8. ☁️ List Active NotebookLM Notebooks")
-        console.print("9. 📤 Export Dataset (CSV / JSON)")
+        console.print("8. 📤 Export Dataset (CSV / JSON)")
         console.print("0. 🚪 Exit")
         console.print("=" * 55, style="cyan")
 
         choice = Prompt.ask(
             "Select an option",
-            choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A"],
+            choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "A"],
             default="0",
         ).upper()
 
@@ -155,8 +153,6 @@ def interactive_menu():
         elif choice == "7":
             inspect_schema()
         elif choice == "8":
-            inspect_notebooks()
-        elif choice == "9":
             fmt = Prompt.ask("Select export format", choices=["csv", "json"], default="json")
             export_dataset(fmt)
 
@@ -228,8 +224,6 @@ def build_parser() -> argparse.ArgumentParser:
     # Command: schema
     subparsers.add_parser("schema", help="Display Master JSON Data Schema")
 
-    # Command: notebooks
-    subparsers.add_parser("notebooks", help="List active NotebookLM notebooks and source counts")
 
     # Command: batch
     batch_parser = subparsers.add_parser(
@@ -299,8 +293,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         inspect_state()
     elif args.command == "schema":
         inspect_schema()
-    elif args.command == "notebooks":
-        inspect_notebooks()
     elif args.command == "interactive":
         interactive_menu()
     else:
